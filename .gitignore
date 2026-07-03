@@ -1,0 +1,17 @@
+node_modules
+dist
+.output
+.vinxi
+.tanstack
+
+# Env / secrets
+.env
+.env.local
+.env.*.local
+
+# Convex
+convex/_generated
+
+# OS / editor
+.DS_Store
+*.log

@@ -1,0 +1,59 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # The app is scaffolded in Task 1 of the implementation plan. Until package.json
+      # exists, skip the build steps so CI stays green on docs-only commits.
+      - name: Detect app scaffold
+        id: scaffold
+        run: |
+          if [ -f package.json ]; then
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Awaiting scaffold
+        if: steps.scaffold.outputs.ready == 'false'
+        run: echo "No package.json yet. Full checks run once the app is scaffolded (Task 1)."
+
+      - uses: pnpm/action-setup@v4
+        if: steps.scaffold.outputs.ready == 'true'
+        with:
+          version: 9
+
+      - uses: actions/setup-node@v4
+        if: steps.scaffold.outputs.ready == 'true'
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        if: steps.scaffold.outputs.ready == 'true'
+        run: pnpm install --frozen-lockfile
+
+      - name: Convex codegen
+        if: steps.scaffold.outputs.ready == 'true'
+        run: pnpm dlx convex codegen
+
+      - name: Typecheck
+        if: steps.scaffold.outputs.ready == 'true'
+        run: pnpm tsc --noEmit
+
+      - name: Test
+        if: steps.scaffold.outputs.ready == 'true'
+        run: pnpm test
