@@ -9,6 +9,7 @@ import type { QueryClient } from '@tanstack/react-query'
 import type { ConvexQueryClient } from '@convex-dev/react-query'
 import type { ConvexReactClient } from 'convex/react'
 
+import { Toaster } from '@/components/ui/sonner'
 import appCss from '../styles.css?url'
 
 // Router context provided by getRouter() in src/router.tsx. Auth and query
@@ -52,6 +53,7 @@ function RootDocument({ children }: { children: React.ReactNode }) {
       </head>
       <body>
         {children}
+        <Toaster />
         <TanStackDevtools
           config={{
             position: 'bottom-right',
