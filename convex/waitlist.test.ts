@@ -92,14 +92,18 @@ test("an expired hold reverts to the waitlist and the seat is offered again", as
       .unique();
     await ctx.db.patch(row!._id, { claimExpiresAt: 1 });
   });
+  const sweepNow = 10 + CLAIM_WINDOW_MS;
   const reprocessed = await t.mutation(internal.waitlist.sweepExpiredClaims, {
-    now: 10 + CLAIM_WINDOW_MS,
+    now: sweepNow,
   });
   expect(reprocessed).toBeGreaterThanOrEqual(1);
 
-  // Only one waitlister existed, so B is re-offered (pending claim again).
+  // B was the only waitlister, so after expiry the sweep re-offers the same
+  // seat back to B with a fresh claim window -- a deterministic outcome, so
+  // assert it exactly rather than accepting the intermediate waitlisted state.
   const bRow = await byToken(t, b.token);
-  expect(["confirmed_pending_claim", "waitlisted"]).toContain(bRow?.status);
+  expect(bRow?.status).toBe("confirmed_pending_claim");
+  expect(bRow?.claimExpiresAt ?? 0).toBeGreaterThan(sweepNow);
 });
 
 test("claiming after expiry returns expired and does not confirm", async () => {
