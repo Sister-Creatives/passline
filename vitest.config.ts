@@ -16,5 +16,10 @@ export default defineConfig({
     environment: 'jsdom',
     globals: true,
     passWithNoTests: true,
+    server: {
+      deps: {
+        inline: ['convex-test'],
+      },
+    },
   },
 })
