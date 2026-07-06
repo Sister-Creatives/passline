@@ -1,9 +1,11 @@
 import { mutation, query, type QueryCtx, type MutationCtx } from "./_generated/server";
 import { internal } from "./_generated/api";
 import { v } from "convex/values";
+import type { Id } from "./_generated/dataModel";
 import { countSeatsTaken, nextWaitlistPosition } from "./lib/capacity";
 import { SEAT_HOLDING_STATUSES } from "./lib/constants";
 import { promoteNext } from "./waitlist";
+import { getAuthOrganizerId } from "./auth";
 
 async function rsvpByToken(ctx: MutationCtx, token: string) {
   const row = await ctx.db
@@ -165,5 +167,64 @@ export const getEventPublicState = query({
       .withIndex("by_event_and_status", (q) => q.eq("eventId", event._id).eq("status", "waitlisted"))
       .collect();
     return { capacity: event.capacity, seatsTaken, waitlistCount: waitlisted.length };
+  },
+});
+
+/**
+ * Door check-in. Looked up by the ticket's token (the same unguessable secret
+ * used for `getRsvpByToken`), so door staff scan/paste a QR-encoded token with
+ * no organizer account required at the point of scanning -- the dashboard
+ * that surfaces the result is what's owner-gated (see `getDoorState`).
+ *
+ * Idempotent: checking in an already-checked-in rsvp returns "already" rather
+ * than erroring, so a duplicate scan at a busy door is harmless. Only a
+ * `confirmed` rsvp can be checked in; anything else (waitlisted, pending
+ * claim, cancelled) returns "not_confirmed" without mutating state.
+ */
+export const checkIn = mutation({
+  args: { token: v.string() },
+  handler: async (ctx, { token }) => {
+    const row = await rsvpByToken(ctx, token);
+    if (row.status === "checked_in") return { status: "already" as const };
+    if (row.status !== "confirmed") return { status: "not_confirmed" as const };
+    await ctx.db.patch(row._id, { status: "checked_in", checkedInAt: Date.now() });
+    return { status: "checked_in" as const };
+  },
+});
+
+/**
+ * Live door dashboard state for one event. Owner-only: mirrors
+ * `events.requireOwnedEvent`'s non-disclosure pattern (that helper is not
+ * exported, so the check is inlined here) -- throws "Not authenticated" when
+ * no organizer is signed in, and "Not found" for both a missing event and one
+ * belonging to a different organizer, so a non-owner never learns which.
+ *
+ * `confirmed` counts seats that are confirmed OR already checked in (a
+ * checked-in attendee still occupies a confirmed seat), `checkedIn` counts
+ * only `checked_in` rows, and `recent` is the most recently checked-in
+ * attendees (newest first), by `checkedInAt`.
+ */
+export const getDoorState = query({
+  args: { eventId: v.id("events") },
+  handler: async (ctx, { eventId }: { eventId: Id<"events"> }) => {
+    const organizerId = await getAuthOrganizerId(ctx);
+    if (!organizerId) throw new Error("Not authenticated");
+    const event = await ctx.db.get(eventId);
+    if (!event || event.organizerId !== organizerId) throw new Error("Not found");
+
+    const rows = await ctx.db
+      .query("rsvps")
+      .withIndex("by_event", (q) => q.eq("eventId", eventId))
+      .collect();
+
+    const checkedInRows = rows.filter((r) => r.status === "checked_in");
+    const confirmed = rows.filter((r) => r.status === "confirmed" || r.status === "checked_in").length;
+    const recent = checkedInRows
+      .slice()
+      .sort((a, b) => (b.checkedInAt ?? b._creationTime) - (a.checkedInAt ?? a._creationTime))
+      .slice(0, 10)
+      .map((r) => ({ name: r.name, at: r.checkedInAt ?? r._creationTime }));
+
+    return { checkedIn: checkedInRows.length, confirmed, recent };
   },
 });

@@ -6,6 +6,7 @@ import { convexQuery } from "@convex-dev/react-query";
 import { api } from "../../../convex/_generated/api";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader } from "@/components/ui/card";
+import { Qr } from "@/components/Qr";
 import { formatEventDateRange } from "@/lib/format-event-date";
 
 // PUBLIC route: no AuthGuard. This is the attendee's own ticket, reached via
@@ -61,11 +62,10 @@ function RsvpConfirmationContent({ token }: { token: string }) {
             {formatEventDateRange(ticket.eventStartsAt, ticket.eventEndsAt)}
           </p>
           <p className="text-sm text-muted-foreground">{ticket.eventLocation}</p>
-          {/*
-            QR code placeholder for Task 11: render a scannable QR code here
-            (the `qrcode` package is already a dependency) encoding this
-            ticket's token, for door check-in. Not implemented in this task.
-          */}
+          <div className="mt-4 flex flex-col items-center gap-2">
+            <Qr value={ticket.token} />
+            <p className="text-sm text-muted-foreground">Show this at the door</p>
+          </div>
         </CardContent>
       </Card>
     </div>

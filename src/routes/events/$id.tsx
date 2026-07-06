@@ -1,8 +1,9 @@
 import { Suspense } from "react";
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useSuspenseQuery } from "@tanstack/react-query";
 import { convexQuery } from "@convex-dev/react-query";
 import { useMutation } from "convex/react";
+import { ScanLine } from "lucide-react";
 import { toast } from "sonner";
 
 import { api } from "../../../convex/_generated/api";
@@ -75,9 +76,16 @@ function EventManageContent({ eventId }: { eventId: Id<"events"> }) {
             {event.status}
           </Badge>
         </div>
-        <Button onClick={handleTogglePublish} variant={isPublished ? "outline" : "default"}>
-          {isPublished ? "Unpublish" : "Publish"}
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button asChild variant="outline">
+            <Link to="/events/$id/door" params={{ id: eventId }}>
+              <ScanLine /> Door check-in
+            </Link>
+          </Button>
+          <Button onClick={handleTogglePublish} variant={isPublished ? "outline" : "default"}>
+            {isPublished ? "Unpublish" : "Publish"}
+          </Button>
+        </div>
       </div>
 
       <div className="mt-6">

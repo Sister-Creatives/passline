@@ -17,6 +17,7 @@ import { Route as EventsNewRouteImport } from './routes/events/new'
 import { Route as EventsIdRouteImport } from './routes/events/$id'
 import { Route as ESlugRouteImport } from './routes/e/$slug'
 import { Route as ClaimTokenRouteImport } from './routes/claim/$token'
+import { Route as EventsIdDoorRouteImport } from './routes/events/$id.door'
 
 const LoginRoute = LoginRouteImport.update({
   id: '/login',
@@ -58,6 +59,11 @@ const ClaimTokenRoute = ClaimTokenRouteImport.update({
   path: '/claim/$token',
   getParentRoute: () => rootRouteImport,
 } as any)
+const EventsIdDoorRoute = EventsIdDoorRouteImport.update({
+  id: '/door',
+  path: '/door',
+  getParentRoute: () => EventsIdRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -65,9 +71,10 @@ export interface FileRoutesByFullPath {
   '/login': typeof LoginRoute
   '/claim/$token': typeof ClaimTokenRoute
   '/e/$slug': typeof ESlugRoute
-  '/events/$id': typeof EventsIdRoute
+  '/events/$id': typeof EventsIdRouteWithChildren
   '/events/new': typeof EventsNewRoute
   '/rsvp/$token': typeof RsvpTokenRoute
+  '/events/$id/door': typeof EventsIdDoorRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -75,9 +82,10 @@ export interface FileRoutesByTo {
   '/login': typeof LoginRoute
   '/claim/$token': typeof ClaimTokenRoute
   '/e/$slug': typeof ESlugRoute
-  '/events/$id': typeof EventsIdRoute
+  '/events/$id': typeof EventsIdRouteWithChildren
   '/events/new': typeof EventsNewRoute
   '/rsvp/$token': typeof RsvpTokenRoute
+  '/events/$id/door': typeof EventsIdDoorRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -86,9 +94,10 @@ export interface FileRoutesById {
   '/login': typeof LoginRoute
   '/claim/$token': typeof ClaimTokenRoute
   '/e/$slug': typeof ESlugRoute
-  '/events/$id': typeof EventsIdRoute
+  '/events/$id': typeof EventsIdRouteWithChildren
   '/events/new': typeof EventsNewRoute
   '/rsvp/$token': typeof RsvpTokenRoute
+  '/events/$id/door': typeof EventsIdDoorRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -101,6 +110,7 @@ export interface FileRouteTypes {
     | '/events/$id'
     | '/events/new'
     | '/rsvp/$token'
+    | '/events/$id/door'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -111,6 +121,7 @@ export interface FileRouteTypes {
     | '/events/$id'
     | '/events/new'
     | '/rsvp/$token'
+    | '/events/$id/door'
   id:
     | '__root__'
     | '/'
@@ -121,6 +132,7 @@ export interface FileRouteTypes {
     | '/events/$id'
     | '/events/new'
     | '/rsvp/$token'
+    | '/events/$id/door'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -129,7 +141,7 @@ export interface RootRouteChildren {
   LoginRoute: typeof LoginRoute
   ClaimTokenRoute: typeof ClaimTokenRoute
   ESlugRoute: typeof ESlugRoute
-  EventsIdRoute: typeof EventsIdRoute
+  EventsIdRoute: typeof EventsIdRouteWithChildren
   EventsNewRoute: typeof EventsNewRoute
   RsvpTokenRoute: typeof RsvpTokenRoute
 }
@@ -192,8 +204,27 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ClaimTokenRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/events/$id/door': {
+      id: '/events/$id/door'
+      path: '/door'
+      fullPath: '/events/$id/door'
+      preLoaderRoute: typeof EventsIdDoorRouteImport
+      parentRoute: typeof EventsIdRoute
+    }
   }
 }
+
+interface EventsIdRouteChildren {
+  EventsIdDoorRoute: typeof EventsIdDoorRoute
+}
+
+const EventsIdRouteChildren: EventsIdRouteChildren = {
+  EventsIdDoorRoute: EventsIdDoorRoute,
+}
+
+const EventsIdRouteWithChildren = EventsIdRoute._addFileChildren(
+  EventsIdRouteChildren,
+)
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
@@ -201,7 +232,7 @@ const rootRouteChildren: RootRouteChildren = {
   LoginRoute: LoginRoute,
   ClaimTokenRoute: ClaimTokenRoute,
   ESlugRoute: ESlugRoute,
-  EventsIdRoute: EventsIdRoute,
+  EventsIdRoute: EventsIdRouteWithChildren,
   EventsNewRoute: EventsNewRoute,
   RsvpTokenRoute: RsvpTokenRoute,
 }

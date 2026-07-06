@@ -42,6 +42,11 @@ export default defineSchema({
     status: rsvpStatus,
     waitlistPosition: v.optional(v.number()),
     claimExpiresAt: v.optional(v.number()),
+    // Set by rsvps.checkIn when the attendee is scanned in at the door. Kept
+    // separate from `_creationTime` (which reflects the original RSVP, not
+    // the check-in event) so the door dashboard's "recent check-ins" list can
+    // sort by actual arrival time.
+    checkedInAt: v.optional(v.number()),
   })
     .index("by_event", ["eventId"])
     .index("by_event_and_status", ["eventId", "status"])
