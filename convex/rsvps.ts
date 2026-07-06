@@ -1,4 +1,5 @@
 import { mutation, query, type QueryCtx, type MutationCtx } from "./_generated/server";
+import { internal } from "./_generated/api";
 import { v } from "convex/values";
 import { countSeatsTaken, nextWaitlistPosition } from "./lib/capacity";
 import { SEAT_HOLDING_STATUSES } from "./lib/constants";
@@ -52,6 +53,14 @@ export const rsvp = mutation({
         token,
         status: "confirmed",
       });
+      // Fire-and-forget the confirmation email. Scheduling keeps this mutation
+      // pure and transactional; the send happens in a separate action.
+      await ctx.scheduler.runAfter(0, internal.email.sendConfirmationEmail, {
+        email,
+        name,
+        eventTitle: event.title,
+        token,
+      });
       return { status: "confirmed" as const, token };
     }
 
@@ -62,6 +71,12 @@ export const rsvp = mutation({
       email,
       token,
       status: "waitlisted",
+      waitlistPosition,
+    });
+    await ctx.scheduler.runAfter(0, internal.email.sendWaitlistEmail, {
+      email,
+      name,
+      eventTitle: event.title,
       waitlistPosition,
     });
     return { status: "waitlisted" as const, token, waitlistPosition };

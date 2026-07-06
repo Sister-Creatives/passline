@@ -1,4 +1,5 @@
 import { internalMutation, type MutationCtx } from "./_generated/server";
+import { internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 import { v } from "convex/values";
 import { CLAIM_WINDOW_MS } from "./lib/constants";
@@ -41,7 +42,14 @@ export async function promoteNext(
     claimExpiresAt: now + CLAIM_WINDOW_MS,
     waitlistPosition: undefined,
   });
-  // Claim-link email is scheduled here in Task 7.
+  // Offer the freed seat to the promoted attendee via a time-limited claim link.
+  // Scheduled (not sent inline) so this stays a pure, transactional mutation.
+  await ctx.scheduler.runAfter(0, internal.email.sendClaimEmail, {
+    email: next.email,
+    name: next.name,
+    eventTitle: event.title,
+    claimUrl: `${process.env.APP_URL}/claim/${next.token}`,
+  });
   return next._id;
 }
 
