@@ -1,10 +1,26 @@
-import { HeadContent, Scripts, createRootRoute } from '@tanstack/react-router'
+import {
+  HeadContent,
+  Scripts,
+  createRootRouteWithContext,
+} from '@tanstack/react-router'
 import { TanStackRouterDevtoolsPanel } from '@tanstack/react-router-devtools'
 import { TanStackDevtools } from '@tanstack/react-devtools'
+import type { QueryClient } from '@tanstack/react-query'
+import type { ConvexQueryClient } from '@convex-dev/react-query'
+import type { ConvexReactClient } from 'convex/react'
 
 import appCss from '../styles.css?url'
 
-export const Route = createRootRoute({
+// Router context provided by getRouter() in src/router.tsx. Auth and query
+// providers are wired there (ConvexAuthProvider + QueryClientProvider); these
+// clients are exposed on context so route loaders can prefetch Convex queries.
+export interface RouterAppContext {
+  queryClient: QueryClient
+  convexClient: ConvexReactClient
+  convexQueryClient: ConvexQueryClient
+}
+
+export const Route = createRootRouteWithContext<RouterAppContext>()({
   head: () => ({
     meta: [
       {

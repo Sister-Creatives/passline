@@ -1,5 +1,6 @@
 import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
+import { authTables } from "@convex-dev/auth/server";
 
 export const rsvpStatus = v.union(
   v.literal("confirmed"),
@@ -10,6 +11,9 @@ export const rsvpStatus = v.union(
 );
 
 export default defineSchema({
+  // Convex Auth tables (users, authSessions, authAccounts, etc.).
+  ...authTables,
+
   organizers: defineTable({
     name: v.string(),
     email: v.string(),
