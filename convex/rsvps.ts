@@ -124,6 +124,37 @@ export const claimSpot = mutation({
   },
 });
 
+/**
+ * Public ticket lookup by token, for the confirmation/ticket page.
+ *
+ * The token is an unguessable secret minted by `rsvp` and handed only to the
+ * attendee who holds it, so an unauthenticated lookup-by-token is the intended
+ * design (equivalent to a paper ticket's barcode). Returns a safe subset of
+ * just that one RSVP plus its event's public display fields -- never other
+ * attendees' data -- or null if no RSVP has that token.
+ */
+export const getRsvpByToken = query({
+  args: { token: v.string() },
+  handler: async (ctx, { token }) => {
+    const row = await ctx.db
+      .query("rsvps")
+      .withIndex("by_token", (q) => q.eq("token", token))
+      .unique();
+    if (!row) return null;
+    const event = await ctx.db.get(row.eventId);
+    if (!event) return null;
+    return {
+      name: row.name,
+      status: row.status,
+      token: row.token,
+      eventTitle: event.title,
+      eventStartsAt: event.startsAt,
+      eventEndsAt: event.endsAt,
+      eventLocation: event.location,
+    };
+  },
+});
+
 export const getEventPublicState = query({
   args: { slug: v.string() },
   handler: async (ctx, { slug }) => {

@@ -98,3 +98,25 @@ test("rsvp rejects an unpublished (draft) event", async () => {
     t.mutation(api.rsvps.rsvp, { slug: draft!.slug, name: "A", email: "a@x.com" }),
   ).rejects.toThrow();
 });
+
+test("getRsvpByToken returns the attendee's name, status, and event title", async () => {
+  const t = convexTest(schema, modules);
+  const slug = await seedPublishedEvent(t, 5);
+
+  const a = await t.mutation(api.rsvps.rsvp, { slug, name: "A", email: "a@x.com" });
+
+  const ticket = await t.query(api.rsvps.getRsvpByToken, { token: a.token });
+  expect(ticket).toMatchObject({
+    name: "A",
+    status: "confirmed",
+    token: a.token,
+    eventTitle: "Room",
+  });
+});
+
+test("getRsvpByToken returns null for an unknown token", async () => {
+  const t = convexTest(schema, modules);
+
+  const ticket = await t.query(api.rsvps.getRsvpByToken, { token: "does-not-exist" });
+  expect(ticket).toBeNull();
+});
