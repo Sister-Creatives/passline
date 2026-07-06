@@ -11,9 +11,10 @@
     "jsx": "react-jsx",
     "skipLibCheck": true,
     "allowSyntheticDefaultImports": true,
-    // process.env is used in auth.config.ts; _generated (which normally pulls in
-    // the node ambient types) is excluded from this project, so request them here.
-    "types": ["node"],
+    // process.env (used in auth.config.ts) is declared narrowly in env.d.ts rather
+    // than importing all of @types/node, which would let Node-only APIs typecheck in
+    // the V8 isolate runtime where they do not exist.
+    "types": [],
 
     /* These compiler options are required by Convex */
     "target": "ESNext",
