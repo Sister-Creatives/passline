@@ -170,3 +170,86 @@ test("createEvent rejects when unauthenticated", async () => {
     }),
   ).rejects.toThrow();
 });
+
+test("getMyEventWithRsvps buckets rsvps by status and sorts the waitlist", async () => {
+  const t = convexTest(schema, modules);
+  const { as } = await asOrganizer(t, "ada@example.com");
+  await as.mutation(api.organizers.ensureOrganizer, {});
+
+  const eventId = await as.mutation(api.events.createEvent, {
+    title: "Bucket Test",
+    description: "x",
+    startsAt: 1,
+    endsAt: 2,
+    location: "x",
+    capacity: 3,
+  });
+
+  await t.run(async (ctx) => {
+    await ctx.db.insert("rsvps", {
+      eventId,
+      name: "Confirmed One",
+      email: "c1@example.com",
+      token: "t-confirmed-1",
+      status: "confirmed",
+    });
+    await ctx.db.insert("rsvps", {
+      eventId,
+      name: "Pending One",
+      email: "p1@example.com",
+      token: "t-pending-1",
+      status: "confirmed_pending_claim",
+      claimExpiresAt: Date.now() + 1000,
+    });
+    await ctx.db.insert("rsvps", {
+      eventId,
+      name: "Waitlist Two",
+      email: "w2@example.com",
+      token: "t-waitlist-2",
+      status: "waitlisted",
+      waitlistPosition: 2,
+    });
+    await ctx.db.insert("rsvps", {
+      eventId,
+      name: "Waitlist One",
+      email: "w1@example.com",
+      token: "t-waitlist-1",
+      status: "waitlisted",
+      waitlistPosition: 1,
+    });
+    await ctx.db.insert("rsvps", {
+      eventId,
+      name: "Cancelled One",
+      email: "x1@example.com",
+      token: "t-cancelled-1",
+      status: "cancelled",
+    });
+  });
+
+  const result = await as.query(api.events.getMyEventWithRsvps, { eventId });
+
+  expect(result.event._id).toEqual(eventId);
+  expect(result.confirmed.map((r) => r.name)).toEqual(["Confirmed One"]);
+  expect(result.pendingClaim.map((r) => r.name)).toEqual(["Pending One"]);
+  // Ascending by waitlistPosition, not insertion order.
+  expect(result.waitlisted.map((r) => r.name)).toEqual(["Waitlist One", "Waitlist Two"]);
+});
+
+test("a second organizer cannot read another organizer's rsvps via getMyEventWithRsvps", async () => {
+  const t = convexTest(schema, modules);
+  const { as: asAda } = await asOrganizer(t, "ada@example.com");
+  await asAda.mutation(api.organizers.ensureOrganizer, {});
+  const { as: asBob } = await asOrganizer(t, "bob@example.com");
+  await asBob.mutation(api.organizers.ensureOrganizer, {});
+
+  const eventId = await asAda.mutation(api.events.createEvent, {
+    title: "Ada's Gala",
+    description: "Ada's own event.",
+    startsAt: 10,
+    endsAt: 20,
+    location: "Ballroom",
+    capacity: 40,
+  });
+
+  await expect(asBob.query(api.events.getMyEventWithRsvps, { eventId })).rejects.toThrow();
+});

@@ -67,7 +67,7 @@ export function EventForm() {
 
   async function onSubmit(values: EventFormValues) {
     try {
-      await createEvent({
+      const eventId = await createEvent({
         title: values.title,
         description: values.description,
         location: values.location,
@@ -76,7 +76,7 @@ export function EventForm() {
         endsAt: new Date(values.endsAt).getTime(),
       });
       toast.success("Event created");
-      navigate({ to: "/dashboard" });
+      navigate({ to: "/events/$id", params: { id: eventId } });
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Failed to create event");
     }

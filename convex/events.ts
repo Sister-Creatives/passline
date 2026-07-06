@@ -72,6 +72,38 @@ export const listMyEvents = query({
   },
 });
 
+/**
+ * Owner-only view of an event plus its RSVPs, bucketed by status.
+ *
+ * Ownership is enforced by `requireOwnedEvent` (throws "Not found" for both a
+ * missing event and one belonging to a different organizer, so callers never
+ * learn which). RSVPs are loaded once via `by_event` and split into buckets
+ * client code renders directly: `confirmed`, `pendingClaim` (holding a seat
+ * pending claim), `waitlisted` (sorted ascending by `waitlistPosition`, so the
+ * next-in-line is first), and `checkedIn`. This is the query the live
+ * management page subscribes to, so any RSVP change (new RSVP, cancellation,
+ * autopilot promotion) re-renders the page with no manual refetch.
+ */
+export const getMyEventWithRsvps = query({
+  args: { eventId: v.id("events") },
+  handler: async (ctx, { eventId }) => {
+    const event = await requireOwnedEvent(ctx, eventId);
+    const rsvps = await ctx.db
+      .query("rsvps")
+      .withIndex("by_event", (q) => q.eq("eventId", eventId))
+      .collect();
+
+    const confirmed = rsvps.filter((r) => r.status === "confirmed");
+    const pendingClaim = rsvps.filter((r) => r.status === "confirmed_pending_claim");
+    const checkedIn = rsvps.filter((r) => r.status === "checked_in");
+    const waitlisted = rsvps
+      .filter((r) => r.status === "waitlisted")
+      .sort((a, b) => (a.waitlistPosition ?? 0) - (b.waitlistPosition ?? 0));
+
+    return { event, confirmed, pendingClaim, waitlisted, checkedIn };
+  },
+});
+
 export const getEventBySlug = query({
   args: { slug: v.string() },
   handler: async (ctx, { slug }) => {

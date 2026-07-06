@@ -69,7 +69,15 @@ function DashboardContent() {
             <TableBody>
               {events.map((event) => (
                 <TableRow key={event._id}>
-                  <TableCell className="font-medium">{event.title}</TableCell>
+                  <TableCell className="font-medium">
+                    <Link
+                      to="/events/$id"
+                      params={{ id: event._id }}
+                      className="hover:underline"
+                    >
+                      {event.title}
+                    </Link>
+                  </TableCell>
                   <TableCell>
                     <Badge variant={event.status === "published" ? "default" : "secondary"}>
                       {event.status}
