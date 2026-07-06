@@ -1,14 +1,19 @@
-import { createFileRoute } from '@tanstack/react-router'
+import { createFileRoute, Link } from "@tanstack/react-router";
 
-export const Route = createFileRoute('/')({ component: Home })
+import { Button } from "@/components/ui/button";
+
+export const Route = createFileRoute("/")({ component: Home });
 
 function Home() {
   return (
-    <div className="p-8">
-      <h1 className="text-4xl font-bold">Welcome to TanStack Start</h1>
-      <p className="mt-4 text-lg">
-        Edit <code>src/routes/index.tsx</code> to get started.
+    <div className="mx-auto flex min-h-svh max-w-md flex-col items-center justify-center gap-4 p-4 text-center">
+      <h1 className="text-4xl font-bold">Passline</h1>
+      <p className="text-lg text-muted-foreground">
+        Free events with a live waitlist that fills itself.
       </p>
+      <Button asChild>
+        <Link to="/login">Organizer sign in</Link>
+      </Button>
     </div>
-  )
+  );
 }

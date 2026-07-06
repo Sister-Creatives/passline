@@ -13,14 +13,31 @@ import { formatEventDateRange } from "@/lib/format-event-date";
 export const Route = createFileRoute("/e/$slug")({
   // Prefetch the event for SSR/SEO: the crawler/first paint gets real HTML
   // instead of a loading state, and useSuspenseQuery below reads the same
-  // cached entry so there's no duplicate fetch on hydration.
+  // cached entry so there's no duplicate fetch on hydration. The loader
+  // also returns the event so `head` below can build a per-event <title>.
   loader: async ({ params, context }) => {
-    await context.queryClient.ensureQueryData(
+    const event = await context.queryClient.ensureQueryData(
       convexQuery(api.events.getEventBySlug, { slug: params.slug }),
     );
+    return { event };
   },
+  head: ({ loaderData }) => ({
+    meta: [
+      {
+        title: loaderData?.event
+          ? `${stripHtml(loaderData.event.title)} — Passline`
+          : "Event — Passline",
+      },
+    ],
+  }),
   component: EventPage,
 });
+
+// Event titles may contain inline <i>/<em>/<br>/<strong> markup for display;
+// strip it for the plain-text <title> tag.
+function stripHtml(html: string): string {
+  return html.replace(/<[^>]*>/g, "");
+}
 
 function EventPage() {
   const { slug } = Route.useParams();

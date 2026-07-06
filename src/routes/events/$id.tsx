@@ -34,14 +34,17 @@ function EventManageContent({ eventId }: { eventId: Id<"events"> }) {
   // Reactive query: any RSVP change (new RSVP, cancellation, waitlist
   // autopilot promotion) re-renders this page live, with no manual refetch.
   const { data } = useSuspenseQuery(convexQuery(api.events.getMyEventWithRsvps, { eventId }));
-  const { event, confirmed, pendingClaim, waitlisted } = data;
+  const { event, confirmed, pendingClaim, waitlisted, checkedIn } = data;
 
   const publishEvent = useMutation(api.events.publishEvent);
   const unpublishEvent = useMutation(api.events.unpublishEvent);
   const cancelRsvp = useMutation(api.rsvps.cancelRsvp);
 
   const isPublished = event.status === "published";
-  const seatsTaken = confirmed.length + pendingClaim.length;
+  // Matches the backend's countSeatsTaken: confirmed + confirmed_pending_claim
+  // + checked_in. Checked-in attendees leave the `confirmed` bucket, so they
+  // must be added back in here or the meter under-counts taken seats.
+  const seatsTaken = confirmed.length + pendingClaim.length + checkedIn.length;
   const capacityPercent = Math.min(100, (seatsTaken / event.capacity) * 100);
 
   async function handleTogglePublish() {
