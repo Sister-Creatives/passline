@@ -1,6 +1,17 @@
 import { mutation, query, type QueryCtx, type MutationCtx } from "./_generated/server";
 import { v } from "convex/values";
 import { countSeatsTaken, nextWaitlistPosition } from "./lib/capacity";
+import { SEAT_HOLDING_STATUSES } from "./lib/constants";
+import { promoteNext } from "./waitlist";
+
+async function rsvpByToken(ctx: MutationCtx, token: string) {
+  const row = await ctx.db
+    .query("rsvps")
+    .withIndex("by_token", (q) => q.eq("token", token))
+    .unique();
+  if (!row) throw new Error("RSVP not found");
+  return row;
+}
 
 /**
  * Look up a published event by its public slug.
@@ -54,6 +65,47 @@ export const rsvp = mutation({
       waitlistPosition,
     });
     return { status: "waitlisted" as const, token, waitlistPosition };
+  },
+});
+
+/**
+ * Cancel an RSVP by its token. If the cancelled RSVP was holding a seat
+ * (confirmed, pending claim, or checked in), the freed seat is immediately
+ * offered to the next waitlisted attendee in the same mutation, so promotion
+ * is atomic with the cancellation.
+ */
+export const cancelRsvp = mutation({
+  args: { token: v.string() },
+  handler: async (ctx, { token }) => {
+    const row = await rsvpByToken(ctx, token);
+    const heldSeat = (SEAT_HOLDING_STATUSES as readonly string[]).includes(row.status);
+    await ctx.db.patch(row._id, {
+      status: "cancelled",
+      waitlistPosition: undefined,
+      claimExpiresAt: undefined,
+    });
+    if (heldSeat) await promoteNext(ctx, row.eventId, Date.now());
+    return null;
+  },
+});
+
+/**
+ * Claim a seat that was auto-offered off the waitlist. Succeeds only while the
+ * hold is a live `confirmed_pending_claim`; an already-confirmed RSVP claims as
+ * a no-op, and an expired or otherwise non-holdable RSVP returns "expired".
+ */
+export const claimSpot = mutation({
+  args: { token: v.string() },
+  handler: async (ctx, { token }) => {
+    const row = await rsvpByToken(ctx, token);
+    if (row.status !== "confirmed_pending_claim") {
+      return { status: row.status === "confirmed" ? ("confirmed" as const) : ("expired" as const) };
+    }
+    if ((row.claimExpiresAt ?? 0) < Date.now()) {
+      return { status: "expired" as const };
+    }
+    await ctx.db.patch(row._id, { status: "confirmed", claimExpiresAt: undefined });
+    return { status: "confirmed" as const };
   },
 });
 
