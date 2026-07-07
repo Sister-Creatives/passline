@@ -50,10 +50,14 @@ export function RsvpForm({ slug, isFull }: RsvpFormProps) {
   async function onSubmit(values: RsvpFormValues) {
     try {
       const result = await rsvp({ slug, name: values.name, email: values.email });
-      if (result.status === "confirmed") {
-        toast.success("You are confirmed");
-      } else {
+      // A repeat RSVP is deduped server-side and returns the existing ticket, so the
+      // status may be any non-cancelled state. Only a fresh waitlist entry carries a
+      // position; every seat-holding status (confirmed / pending claim / checked in)
+      // gets the positive message.
+      if (result.status === "waitlisted") {
         toast.success(`You are #${result.waitlistPosition} on the waitlist`);
+      } else {
+        toast.success("You are confirmed");
       }
       navigate({ to: "/rsvp/$token", params: { token: result.token } });
     } catch (error) {
