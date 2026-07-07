@@ -253,3 +253,208 @@ test("a second organizer cannot read another organizer's rsvps via getMyEventWit
 
   await expect(asBob.query(api.events.getMyEventWithRsvps, { eventId })).rejects.toThrow();
 });
+
+test("updateEvent lets the owner change fields", async () => {
+  const t = convexTest(schema, modules);
+  const { as } = await asOrganizer(t, "ada@example.com");
+  await as.mutation(api.organizers.ensureOrganizer, {});
+
+  const eventId = await as.mutation(api.events.createEvent, {
+    title: "Original Title",
+    description: "Original description.",
+    startsAt: 100,
+    endsAt: 200,
+    location: "Original Location",
+    capacity: 10,
+  });
+
+  await as.mutation(api.events.updateEvent, {
+    eventId,
+    title: "Updated Title",
+    description: "Updated description.",
+    startsAt: 300,
+    endsAt: 400,
+    location: "Updated Location",
+    capacity: 20,
+  });
+
+  const updated = await t.run((ctx) => ctx.db.get(eventId));
+  expect(updated?.title).toBe("Updated Title");
+  expect(updated?.description).toBe("Updated description.");
+  expect(updated?.startsAt).toBe(300);
+  expect(updated?.endsAt).toBe(400);
+  expect(updated?.location).toBe("Updated Location");
+  expect(updated?.capacity).toBe(20);
+});
+
+test("updateEvent rejects lowering capacity below seats already taken", async () => {
+  const t = convexTest(schema, modules);
+  const { as } = await asOrganizer(t, "ada@example.com");
+  await as.mutation(api.organizers.ensureOrganizer, {});
+
+  const eventId = await as.mutation(api.events.createEvent, {
+    title: "Small Venue",
+    description: "x",
+    startsAt: 1,
+    endsAt: 2,
+    location: "x",
+    capacity: 10,
+  });
+
+  // Seed 3 confirmed (seat-holding) rsvps directly, bypassing the rsvp mutation.
+  await t.run(async (ctx) => {
+    for (let i = 0; i < 3; i++) {
+      await ctx.db.insert("rsvps", {
+        eventId,
+        name: `Confirmed ${i}`,
+        email: `c${i}@example.com`,
+        token: `t-confirmed-${i}`,
+        status: "confirmed",
+      });
+    }
+  });
+
+  await expect(
+    as.mutation(api.events.updateEvent, {
+      eventId,
+      title: "Small Venue",
+      description: "x",
+      startsAt: 1,
+      endsAt: 2,
+      location: "x",
+      capacity: 2,
+    }),
+  ).rejects.toThrow();
+
+  // The rejected update must not have altered capacity.
+  const stillTen = await t.run((ctx) => ctx.db.get(eventId));
+  expect(stillTen?.capacity).toBe(10);
+});
+
+test("updateEvent raising capacity promotes the next waitlister to a pending claim", async () => {
+  const t = convexTest(schema, modules);
+  const { as } = await asOrganizer(t, "ada@example.com");
+  await as.mutation(api.organizers.ensureOrganizer, {});
+
+  const eventId = await as.mutation(api.events.createEvent, {
+    title: "One Seat",
+    description: "x",
+    startsAt: 1,
+    endsAt: 2,
+    location: "x",
+    capacity: 1,
+  });
+
+  const waitlistedId = await t.run(async (ctx) => {
+    await ctx.db.insert("rsvps", {
+      eventId,
+      name: "Confirmed One",
+      email: "c1@example.com",
+      token: "t-confirmed-1",
+      status: "confirmed",
+    });
+    return ctx.db.insert("rsvps", {
+      eventId,
+      name: "Waitlisted One",
+      email: "w1@example.com",
+      token: "t-waitlisted-1",
+      status: "waitlisted",
+      waitlistPosition: 1,
+    });
+  });
+
+  await as.mutation(api.events.updateEvent, {
+    eventId,
+    title: "One Seat",
+    description: "x",
+    startsAt: 1,
+    endsAt: 2,
+    location: "x",
+    capacity: 2,
+  });
+
+  const promoted = await t.run((ctx) => ctx.db.get(waitlistedId));
+  expect(promoted?.status).toBe("confirmed_pending_claim");
+  expect(promoted?.claimExpiresAt ?? 0).toBeGreaterThan(0);
+  expect(promoted?.waitlistPosition).toBeUndefined();
+});
+
+test("a second organizer cannot update or delete another organizer's event", async () => {
+  const t = convexTest(schema, modules);
+  const { as: asAda } = await asOrganizer(t, "ada@example.com");
+  await asAda.mutation(api.organizers.ensureOrganizer, {});
+  const { as: asBob } = await asOrganizer(t, "bob@example.com");
+  await asBob.mutation(api.organizers.ensureOrganizer, {});
+
+  const eventId = await asAda.mutation(api.events.createEvent, {
+    title: "Ada's Gala",
+    description: "Ada's own event.",
+    startsAt: 10,
+    endsAt: 20,
+    location: "Ballroom",
+    capacity: 40,
+  });
+
+  await expect(
+    asBob.mutation(api.events.updateEvent, {
+      eventId,
+      title: "Hijacked",
+      description: "x",
+      startsAt: 1,
+      endsAt: 2,
+      location: "x",
+      capacity: 5,
+    }),
+  ).rejects.toThrow();
+  await expect(asBob.mutation(api.events.deleteEvent, { eventId })).rejects.toThrow();
+
+  // Bob's rejected calls must not have altered Ada's event.
+  const stillThere = await t.run((ctx) => ctx.db.get(eventId));
+  expect(stillThere?.title).toBe("Ada's Gala");
+});
+
+test("deleteEvent removes the event and all of its rsvps", async () => {
+  const t = convexTest(schema, modules);
+  const { as } = await asOrganizer(t, "ada@example.com");
+  await as.mutation(api.organizers.ensureOrganizer, {});
+
+  const eventId = await as.mutation(api.events.createEvent, {
+    title: "Doomed Event",
+    description: "x",
+    startsAt: 1,
+    endsAt: 2,
+    location: "x",
+    capacity: 5,
+  });
+
+  await t.run(async (ctx) => {
+    await ctx.db.insert("rsvps", {
+      eventId,
+      name: "Confirmed One",
+      email: "c1@example.com",
+      token: "t-confirmed-1",
+      status: "confirmed",
+    });
+    await ctx.db.insert("rsvps", {
+      eventId,
+      name: "Waitlisted One",
+      email: "w1@example.com",
+      token: "t-waitlisted-1",
+      status: "waitlisted",
+      waitlistPosition: 1,
+    });
+  });
+
+  await as.mutation(api.events.deleteEvent, { eventId });
+
+  const gone = await t.run((ctx) => ctx.db.get(eventId));
+  expect(gone).toBeNull();
+
+  const remainingRsvps = await t.run((ctx) =>
+    ctx.db
+      .query("rsvps")
+      .withIndex("by_event", (q) => q.eq("eventId", eventId))
+      .collect(),
+  );
+  expect(remainingRsvps).toEqual([]);
+});

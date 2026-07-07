@@ -1,17 +1,37 @@
-import { Suspense } from "react";
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { Suspense, useState } from "react";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useSuspenseQuery } from "@tanstack/react-query";
 import { convexQuery } from "@convex-dev/react-query";
 import { useMutation } from "convex/react";
-import { ScanLine } from "lucide-react";
+import { Download, Pencil, ScanLine, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { api } from "../../../convex/_generated/api";
 import type { Id } from "../../../convex/_generated/dataModel";
 import { AuthGuard } from "@/components/AuthGuard";
 import { AttendeeTable } from "@/components/AttendeeTable";
+import { EventForm } from "@/components/EventForm";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 
 export const Route = createFileRoute("/events/$id/")({ component: EventManagePage });
 
@@ -30,7 +50,24 @@ function EventManagePage() {
   );
 }
 
+/** CSV-escapes a single field: wraps in double quotes, doubling any embedded quotes. */
+function csvEscape(value: string): string {
+  return `"${value.replace(/"/g, '""')}"`;
+}
+
+/** Human-friendly labels for RSVP statuses (used in the CSV and the UI). */
+const STATUS_LABEL: Record<string, string> = {
+  confirmed: "Confirmed",
+  confirmed_pending_claim: "Pending claim",
+  waitlisted: "Waitlisted",
+  checked_in: "Checked in",
+  cancelled: "Cancelled",
+};
+
 function EventManageContent({ eventId }: { eventId: Id<"events"> }) {
+  const navigate = useNavigate();
+  const [editOpen, setEditOpen] = useState(false);
+
   // Reactive query: any RSVP change (new RSVP, cancellation, waitlist
   // autopilot promotion) re-renders this page live, with no manual refetch.
   const { data } = useSuspenseQuery(convexQuery(api.events.getMyEventWithRsvps, { eventId }));
@@ -39,6 +76,7 @@ function EventManageContent({ eventId }: { eventId: Id<"events"> }) {
   const publishEvent = useMutation(api.events.publishEvent);
   const unpublishEvent = useMutation(api.events.unpublishEvent);
   const cancelRsvp = useMutation(api.rsvps.cancelRsvp);
+  const deleteEvent = useMutation(api.events.deleteEvent);
 
   const isPublished = event.status === "published";
   // Matches the backend's countSeatsTaken: confirmed + confirmed_pending_claim
@@ -70,6 +108,44 @@ function EventManageContent({ eventId }: { eventId: Id<"events"> }) {
     }
   }
 
+  async function handleDelete() {
+    try {
+      await deleteEvent({ eventId });
+      toast.success("Event deleted");
+      navigate({ to: "/dashboard" });
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to delete event");
+    }
+  }
+
+  function handleExportCsv() {
+    try {
+      const header = ["Name", "Email", "Status", "Checked in at"];
+      const attendees = [...confirmed, ...pendingClaim, ...waitlisted, ...checkedIn];
+      const rows = attendees.map((attendee) => [
+        attendee.name,
+        attendee.email,
+        STATUS_LABEL[attendee.status] ?? attendee.status,
+        attendee.checkedInAt ? new Date(attendee.checkedInAt).toLocaleString() : "",
+      ]);
+      const csv = [header, ...rows]
+        .map((row) => row.map((field) => csvEscape(field)).join(","))
+        .join("\r\n");
+
+      const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `${event.slug}-attendees.csv`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to export CSV");
+    }
+  }
+
   return (
     <div className="mx-auto max-w-4xl p-4 sm:p-8">
       <div className="flex flex-wrap items-center justify-between gap-4">
@@ -79,12 +155,50 @@ function EventManageContent({ eventId }: { eventId: Id<"events"> }) {
             {event.status}
           </Badge>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <Button asChild variant="outline">
             <Link to="/events/$id/door" params={{ id: eventId }}>
               <ScanLine /> Door check-in
             </Link>
           </Button>
+          <Button variant="outline" onClick={handleExportCsv}>
+            <Download /> Export CSV
+          </Button>
+          <Dialog open={editOpen} onOpenChange={setEditOpen}>
+            <DialogTrigger asChild>
+              <Button variant="outline">
+                <Pencil /> Edit
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="sm:max-w-lg">
+              <DialogHeader>
+                <DialogTitle>Edit event</DialogTitle>
+                <DialogDescription>Update the details guests will see.</DialogDescription>
+              </DialogHeader>
+              <EventForm event={event} onDone={() => setEditOpen(false)} />
+            </DialogContent>
+          </Dialog>
+          <AlertDialog>
+            <AlertDialogTrigger asChild>
+              <Button variant="destructive">
+                <Trash2 /> Delete event
+              </Button>
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Delete this event?</AlertDialogTitle>
+                <AlertDialogDescription>
+                  This permanently deletes the event and all RSVPs. This cannot be undone.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                <AlertDialogAction variant="destructive" onClick={handleDelete}>
+                  Delete
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
           <Button onClick={handleTogglePublish} variant={isPublished ? "outline" : "default"}>
             {isPublished ? "Unpublish" : "Publish"}
           </Button>
@@ -126,6 +240,11 @@ function EventManageContent({ eventId }: { eventId: Id<"events"> }) {
           title={`Waitlist (${waitlisted.length})`}
           attendees={waitlisted}
           emptyMessage="The waitlist is empty."
+        />
+        <AttendeeTable
+          title={`Checked in (${checkedIn.length})`}
+          attendees={checkedIn}
+          emptyMessage="No one has checked in yet."
         />
       </div>
     </div>
