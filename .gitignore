@@ -18,6 +18,14 @@ dist-ssr
 
 # Convex: convex/_generated is intentionally committed so CI can typecheck and
 # test without a Convex deployment. Regenerate it locally with `convex dev`.
+convex/_generated/ai/
+
+# Agent / skills tooling artifacts (not part of the app)
+/.claude/
+/.agents/
+/AGENTS.md
+/CLAUDE.md
+/skills-lock.json
 
 # TanStack / tooling
 __unconfig*
