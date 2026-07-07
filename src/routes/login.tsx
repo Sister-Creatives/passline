@@ -4,11 +4,9 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useAuthActions } from "@convex-dev/auth/react";
-import { useMutation } from "convex/react";
 import { LoaderCircle } from "lucide-react";
 import { toast } from "sonner";
 
-import { api } from "../../convex/_generated/api";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -39,7 +37,6 @@ type Credentials = z.infer<typeof credentialsSchema>;
 function LoginPage() {
   const [flow, setFlow] = useState<"signIn" | "signUp">("signIn");
   const { signIn } = useAuthActions();
-  const ensureOrganizer = useMutation(api.organizers.ensureOrganizer);
   const navigate = useNavigate();
 
   const form = useForm<Credentials>({
@@ -52,7 +49,8 @@ function LoginPage() {
   async function onSubmit(values: Credentials) {
     try {
       await signIn("password", { email: values.email, password: values.password, flow });
-      await ensureOrganizer({});
+      // The organizer row is created inside AuthGuard once the session is
+      // confirmed authenticated, which avoids racing the auth token here.
       navigate({ to: "/dashboard" });
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Something went wrong. Try again.");

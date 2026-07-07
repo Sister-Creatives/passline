@@ -17,6 +17,7 @@ import { Route as EventsNewRouteImport } from './routes/events/new'
 import { Route as EventsIdRouteImport } from './routes/events/$id'
 import { Route as ESlugRouteImport } from './routes/e/$slug'
 import { Route as ClaimTokenRouteImport } from './routes/claim/$token'
+import { Route as EventsIdIndexRouteImport } from './routes/events/$id.index'
 import { Route as EventsIdDoorRouteImport } from './routes/events/$id.door'
 
 const LoginRoute = LoginRouteImport.update({
@@ -59,6 +60,11 @@ const ClaimTokenRoute = ClaimTokenRouteImport.update({
   path: '/claim/$token',
   getParentRoute: () => rootRouteImport,
 } as any)
+const EventsIdIndexRoute = EventsIdIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => EventsIdRoute,
+} as any)
 const EventsIdDoorRoute = EventsIdDoorRouteImport.update({
   id: '/door',
   path: '/door',
@@ -75,6 +81,7 @@ export interface FileRoutesByFullPath {
   '/events/new': typeof EventsNewRoute
   '/rsvp/$token': typeof RsvpTokenRoute
   '/events/$id/door': typeof EventsIdDoorRoute
+  '/events/$id/': typeof EventsIdIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -82,10 +89,10 @@ export interface FileRoutesByTo {
   '/login': typeof LoginRoute
   '/claim/$token': typeof ClaimTokenRoute
   '/e/$slug': typeof ESlugRoute
-  '/events/$id': typeof EventsIdRouteWithChildren
   '/events/new': typeof EventsNewRoute
   '/rsvp/$token': typeof RsvpTokenRoute
   '/events/$id/door': typeof EventsIdDoorRoute
+  '/events/$id': typeof EventsIdIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -98,6 +105,7 @@ export interface FileRoutesById {
   '/events/new': typeof EventsNewRoute
   '/rsvp/$token': typeof RsvpTokenRoute
   '/events/$id/door': typeof EventsIdDoorRoute
+  '/events/$id/': typeof EventsIdIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -111,6 +119,7 @@ export interface FileRouteTypes {
     | '/events/new'
     | '/rsvp/$token'
     | '/events/$id/door'
+    | '/events/$id/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -118,10 +127,10 @@ export interface FileRouteTypes {
     | '/login'
     | '/claim/$token'
     | '/e/$slug'
-    | '/events/$id'
     | '/events/new'
     | '/rsvp/$token'
     | '/events/$id/door'
+    | '/events/$id'
   id:
     | '__root__'
     | '/'
@@ -133,6 +142,7 @@ export interface FileRouteTypes {
     | '/events/new'
     | '/rsvp/$token'
     | '/events/$id/door'
+    | '/events/$id/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -204,6 +214,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ClaimTokenRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/events/$id/': {
+      id: '/events/$id/'
+      path: '/'
+      fullPath: '/events/$id/'
+      preLoaderRoute: typeof EventsIdIndexRouteImport
+      parentRoute: typeof EventsIdRoute
+    }
     '/events/$id/door': {
       id: '/events/$id/door'
       path: '/door'
@@ -216,10 +233,12 @@ declare module '@tanstack/react-router' {
 
 interface EventsIdRouteChildren {
   EventsIdDoorRoute: typeof EventsIdDoorRoute
+  EventsIdIndexRoute: typeof EventsIdIndexRoute
 }
 
 const EventsIdRouteChildren: EventsIdRouteChildren = {
   EventsIdDoorRoute: EventsIdDoorRoute,
+  EventsIdIndexRoute: EventsIdIndexRoute,
 }
 
 const EventsIdRouteWithChildren = EventsIdRoute._addFileChildren(
