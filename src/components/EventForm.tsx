@@ -185,7 +185,7 @@ export function EventForm({ event, onDone }: EventFormProps) {
               <FormItem>
                 <FormLabel>Starts at</FormLabel>
                 <FormControl>
-                  <DateTimePicker value={field.value} onChange={field.onChange} />
+                  <DateTimePicker {...field} />
                 </FormControl>
                 <FormMessage />
               </FormItem>
@@ -198,7 +198,7 @@ export function EventForm({ event, onDone }: EventFormProps) {
               <FormItem>
                 <FormLabel>Ends at</FormLabel>
                 <FormControl>
-                  <DateTimePicker value={field.value} onChange={field.onChange} />
+                  <DateTimePicker {...field} />
                 </FormControl>
                 <FormMessage />
               </FormItem>

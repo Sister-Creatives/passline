@@ -1,3 +1,4 @@
+import * as React from "react";
 import { format } from "date-fns";
 import { CalendarIcon } from "lucide-react";
 
@@ -11,13 +12,16 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 /** Used to seed the time field the first time a date is picked on a blank form. */
 const DEFAULT_TIME = "18:00";
 
-interface DateTimePickerProps {
+// Extends the trigger Button's props (minus the ones we own) so the id,
+// aria-describedby, and aria-invalid that FormControl injects onto its child --
+// plus onBlur/name from react-hook-form's field -- flow through onto the actual
+// trigger, keeping the label/error association and focus-on-invalid working.
+type DateTimePickerProps = {
   /** `YYYY-MM-DDTHH:mm` (local time), or `""` when nothing is picked yet. */
   value: string;
   /** Emits the same `YYYY-MM-DDTHH:mm` (local time) format. */
   onChange: (value: string) => void;
-  id?: string;
-}
+} & Omit<React.ComponentPropsWithoutRef<typeof Button>, "value" | "onChange" | "type">;
 
 /**
  * Splits a `YYYY-MM-DDTHH:mm` string into a `Date` (date part only) and an
@@ -57,9 +61,10 @@ function combine(date: Date, time: string): string {
  * (local-time) string contract: a `Popover` + `Calendar` for the date, and a
  * plain `time` `Input` for the time, recombined on every change.
  */
-export function DateTimePicker({ value, onChange, id }: DateTimePickerProps) {
-  const { date, time } = splitValue(value);
-  const timeId = id ? `${id}-time` : undefined;
+export const DateTimePicker = React.forwardRef<HTMLButtonElement, DateTimePickerProps>(
+  function DateTimePicker({ value, onChange, id, ...rest }, ref) {
+    const { date, time } = splitValue(value);
+    const timeId = id ? `${id}-time` : undefined;
 
   function handleDateChange(nextDate: Date | undefined) {
     if (!nextDate) {
@@ -85,6 +90,8 @@ export function DateTimePicker({ value, onChange, id }: DateTimePickerProps) {
       <Popover>
         <PopoverTrigger asChild>
           <Button
+            {...rest}
+            ref={ref}
             id={id}
             type="button"
             variant="outline"
@@ -108,6 +115,7 @@ export function DateTimePicker({ value, onChange, id }: DateTimePickerProps) {
         <Input
           id={timeId}
           type="time"
+          aria-invalid={rest["aria-invalid"]}
           value={date ? time || DEFAULT_TIME : ""}
           disabled={!date}
           onChange={(event) => handleTimeChange(event.target.value)}
@@ -116,4 +124,5 @@ export function DateTimePicker({ value, onChange, id }: DateTimePickerProps) {
       </div>
     </div>
   );
-}
+  },
+);
