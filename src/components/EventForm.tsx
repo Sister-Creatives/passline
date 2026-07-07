@@ -9,6 +9,7 @@ import { toast } from "sonner";
 import { api } from "../../convex/_generated/api";
 import type { Doc } from "../../convex/_generated/dataModel";
 import { Button } from "@/components/ui/button";
+import { DateTimePicker } from "@/components/DateTimePicker";
 import {
   Form,
   FormControl,
@@ -184,7 +185,7 @@ export function EventForm({ event, onDone }: EventFormProps) {
               <FormItem>
                 <FormLabel>Starts at</FormLabel>
                 <FormControl>
-                  <Input type="datetime-local" {...field} />
+                  <DateTimePicker value={field.value} onChange={field.onChange} />
                 </FormControl>
                 <FormMessage />
               </FormItem>
@@ -197,7 +198,7 @@ export function EventForm({ event, onDone }: EventFormProps) {
               <FormItem>
                 <FormLabel>Ends at</FormLabel>
                 <FormControl>
-                  <Input type="datetime-local" {...field} />
+                  <DateTimePicker value={field.value} onChange={field.onChange} />
                 </FormControl>
                 <FormMessage />
               </FormItem>
