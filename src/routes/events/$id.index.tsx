@@ -55,6 +55,15 @@ function csvEscape(value: string): string {
   return `"${value.replace(/"/g, '""')}"`;
 }
 
+/** Human-friendly labels for RSVP statuses (used in the CSV and the UI). */
+const STATUS_LABEL: Record<string, string> = {
+  confirmed: "Confirmed",
+  confirmed_pending_claim: "Pending claim",
+  waitlisted: "Waitlisted",
+  checked_in: "Checked in",
+  cancelled: "Cancelled",
+};
+
 function EventManageContent({ eventId }: { eventId: Id<"events"> }) {
   const navigate = useNavigate();
   const [editOpen, setEditOpen] = useState(false);
@@ -116,7 +125,7 @@ function EventManageContent({ eventId }: { eventId: Id<"events"> }) {
       const rows = attendees.map((attendee) => [
         attendee.name,
         attendee.email,
-        attendee.status,
+        STATUS_LABEL[attendee.status] ?? attendee.status,
         attendee.checkedInAt ? new Date(attendee.checkedInAt).toLocaleString() : "",
       ]);
       const csv = [header, ...rows]
@@ -231,6 +240,11 @@ function EventManageContent({ eventId }: { eventId: Id<"events"> }) {
           title={`Waitlist (${waitlisted.length})`}
           attendees={waitlisted}
           emptyMessage="The waitlist is empty."
+        />
+        <AttendeeTable
+          title={`Checked in (${checkedIn.length})`}
+          attendees={checkedIn}
+          emptyMessage="No one has checked in yet."
         />
       </div>
     </div>
