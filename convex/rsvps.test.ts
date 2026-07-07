@@ -1,5 +1,6 @@
 // @vitest-environment edge-runtime
-import { convexTest, type TestConvex } from "convex-test";
+import { convexTest as rawConvexTest, type TestConvex } from "convex-test";
+import { register as registerRateLimiter } from "@convex-dev/rate-limiter/test";
 import { expect, test } from "vitest";
 import schema from "./schema";
 import { api } from "./_generated/api";
@@ -7,6 +8,17 @@ import { api } from "./_generated/api";
 // Passed explicitly for the same pnpm module-resolution reason documented in
 // schema.test.ts.
 const modules = import.meta.glob("./**/*.*s");
+
+// `rsvp` now calls the rate limiter component synchronously (before its
+// dedupe/insert work -- see convex/rateLimits.ts and convex/rsvps.ts), so
+// every test instance needs that component registered. Wrapping convex-test's
+// constructor here means every `convexTest(schema, modules)` call below gets
+// it for free, with no changes to the test bodies themselves.
+function convexTest(schemaArg: typeof schema, modulesArg: typeof modules) {
+  const t = rawConvexTest(schemaArg, modulesArg);
+  registerRateLimiter(t);
+  return t;
+}
 
 // Auth identity subject is `${userId}|${sessionId}` (divider "|"). See
 // auth.test.ts for the full derivation of this format from @convex-dev/auth's
@@ -179,4 +191,40 @@ test("the same email can rsvp again after cancelling", async () => {
 
   const rows = await t.run((ctx) => ctx.db.query("rsvps").collect());
   expect(rows.length).toBe(2);
+});
+
+// The `rsvp` rate limit (convex/rateLimits.ts) is a token bucket with
+// capacity 5, keyed by email, checked before the dedupe/insert logic runs --
+// so every call consumes a token even when it dedupes to an existing ticket.
+// That lets these tests exhaust the bucket with repeat calls from the same
+// email without needing distinct events or to wait out a time window.
+test("rsvp rate-limits repeated attempts from the same email", async () => {
+  const t = convexTest(schema, modules);
+  const slug = await seedPublishedEvent(t, 5);
+
+  for (let i = 0; i < 5; i++) {
+    const res = await t.mutation(api.rsvps.rsvp, { slug, name: "A", email: "a@x.com" });
+    expect(res.status).toBe("confirmed");
+  }
+
+  await expect(
+    t.mutation(api.rsvps.rsvp, { slug, name: "A", email: "a@x.com" }),
+  ).rejects.toThrow(/too many/i);
+});
+
+test("the rsvp rate limit is keyed per email, so a different email is unaffected", async () => {
+  const t = convexTest(schema, modules);
+  const slug = await seedPublishedEvent(t, 5);
+
+  // Exhaust a@x.com's bucket.
+  for (let i = 0; i < 5; i++) {
+    await t.mutation(api.rsvps.rsvp, { slug, name: "A", email: "a@x.com" });
+  }
+  await expect(
+    t.mutation(api.rsvps.rsvp, { slug, name: "A", email: "a@x.com" }),
+  ).rejects.toThrow(/too many/i);
+
+  // b@x.com has its own bucket and is untouched by a@x.com's exhaustion.
+  const b = await t.mutation(api.rsvps.rsvp, { slug, name: "B", email: "b@x.com" });
+  expect(b.status).toBe("confirmed");
 });

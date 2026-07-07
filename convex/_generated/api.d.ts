@@ -17,6 +17,7 @@ import type * as lib_capacity from "../lib/capacity.js";
 import type * as lib_constants from "../lib/constants.js";
 import type * as lib_slug from "../lib/slug.js";
 import type * as organizers from "../organizers.js";
+import type * as rateLimits from "../rateLimits.js";
 import type * as rsvps from "../rsvps.js";
 import type * as waitlist from "../waitlist.js";
 
@@ -36,6 +37,7 @@ declare const fullApi: ApiFromModules<{
   "lib/constants": typeof lib_constants;
   "lib/slug": typeof lib_slug;
   organizers: typeof organizers;
+  rateLimits: typeof rateLimits;
   rsvps: typeof rsvps;
   waitlist: typeof waitlist;
 }>;
@@ -68,4 +70,5 @@ export declare const internal: FilterApi<
 
 export declare const components: {
   resend: import("@convex-dev/resend/_generated/component.js").ComponentApi<"resend">;
+  rateLimiter: import("@convex-dev/rate-limiter/_generated/component.js").ComponentApi<"rateLimiter">;
 };
