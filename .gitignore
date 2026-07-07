@@ -1,16 +1,27 @@
+# Dependencies
 node_modules
+
+# Build output
 dist
+dist-ssr
 .output
+.nitro
 .vinxi
 .tanstack
+.wrangler
 
 # Env / secrets
 .env
 .env.local
 .env.*.local
+*.local
 
-# Convex
-convex/_generated
+# Convex: convex/_generated is intentionally committed so CI can typecheck and
+# test without a Convex deployment. Regenerate it locally with `convex dev`.
+
+# TanStack / tooling
+__unconfig*
+todos.json
 
 # OS / editor
 .DS_Store

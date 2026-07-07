@@ -33,8 +33,6 @@ jobs:
 
       - uses: pnpm/action-setup@v4
         if: steps.scaffold.outputs.ready == 'true'
-        with:
-          version: 9
 
       - uses: actions/setup-node@v4
         if: steps.scaffold.outputs.ready == 'true'
@@ -46,13 +44,17 @@ jobs:
         if: steps.scaffold.outputs.ready == 'true'
         run: pnpm install --frozen-lockfile
 
-      - name: Convex codegen
-        if: steps.scaffold.outputs.ready == 'true'
-        run: pnpm dlx convex codegen
+      # convex/_generated is committed to the repo so CI can typecheck and test
+      # without a Convex deployment (convex codegen requires CONVEX_DEPLOYMENT,
+      # which CI intentionally does not have). Regenerate locally via convex dev.
 
       - name: Typecheck
         if: steps.scaffold.outputs.ready == 'true'
         run: pnpm tsc --noEmit
+
+      - name: Typecheck (Convex)
+        if: steps.scaffold.outputs.ready == 'true'
+        run: pnpm exec tsc -p convex/tsconfig.json --noEmit
 
       - name: Test
         if: steps.scaffold.outputs.ready == 'true'
