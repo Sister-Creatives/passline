@@ -120,3 +120,63 @@ test("getRsvpByToken returns null for an unknown token", async () => {
   const ticket = await t.query(api.rsvps.getRsvpByToken, { token: "does-not-exist" });
   expect(ticket).toBeNull();
 });
+
+test("a repeat rsvp with the same email returns the same token and creates no new row", async () => {
+  const t = convexTest(schema, modules);
+  const slug = await seedPublishedEvent(t, 5);
+
+  const first = await t.mutation(api.rsvps.rsvp, { slug, name: "A", email: "a@x.com" });
+  const second = await t.mutation(api.rsvps.rsvp, { slug, name: "A", email: "a@x.com" });
+
+  expect(second).toMatchObject({ status: "confirmed", token: first.token });
+
+  const rows = await t.run((ctx) => ctx.db.query("rsvps").collect());
+  expect(rows.length).toBe(1);
+});
+
+test("a repeat rsvp with the same email while waitlisted returns the same waitlist position", async () => {
+  const t = convexTest(schema, modules);
+  const slug = await seedPublishedEvent(t, 1);
+
+  // Fill the single seat so the next rsvp lands on the waitlist.
+  await t.mutation(api.rsvps.rsvp, { slug, name: "Filler", email: "filler@x.com" });
+
+  const first = await t.mutation(api.rsvps.rsvp, { slug, name: "A", email: "a@x.com" });
+  expect(first).toMatchObject({ status: "waitlisted", waitlistPosition: 1 });
+
+  const second = await t.mutation(api.rsvps.rsvp, { slug, name: "A", email: "a@x.com" });
+  expect(second).toMatchObject({
+    status: "waitlisted",
+    token: first.token,
+    waitlistPosition: 1,
+  });
+
+  const rows = await t.run((ctx) => ctx.db.query("rsvps").collect());
+  expect(rows.length).toBe(2);
+});
+
+test("a different email still creates a new rsvp", async () => {
+  const t = convexTest(schema, modules);
+  const slug = await seedPublishedEvent(t, 5);
+
+  await t.mutation(api.rsvps.rsvp, { slug, name: "A", email: "a@x.com" });
+  await t.mutation(api.rsvps.rsvp, { slug, name: "B", email: "b@x.com" });
+
+  const rows = await t.run((ctx) => ctx.db.query("rsvps").collect());
+  expect(rows.length).toBe(2);
+});
+
+test("the same email can rsvp again after cancelling", async () => {
+  const t = convexTest(schema, modules);
+  const slug = await seedPublishedEvent(t, 5);
+
+  const first = await t.mutation(api.rsvps.rsvp, { slug, name: "A", email: "a@x.com" });
+  await t.mutation(api.rsvps.cancelRsvp, { token: first.token });
+
+  const second = await t.mutation(api.rsvps.rsvp, { slug, name: "A", email: "a@x.com" });
+  expect(second.status).toBe("confirmed");
+  expect(second.token).not.toBe(first.token);
+
+  const rows = await t.run((ctx) => ctx.db.query("rsvps").collect());
+  expect(rows.length).toBe(2);
+});

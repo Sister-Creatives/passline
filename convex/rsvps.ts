@@ -1,7 +1,7 @@
 import { mutation, query, type QueryCtx, type MutationCtx } from "./_generated/server";
 import { internal } from "./_generated/api";
 import { v } from "convex/values";
-import type { Id } from "./_generated/dataModel";
+import type { Id, Doc } from "./_generated/dataModel";
 import { countSeatsTaken, nextWaitlistPosition } from "./lib/capacity";
 import { SEAT_HOLDING_STATUSES } from "./lib/constants";
 import { promoteNext } from "./waitlist";
@@ -32,6 +32,35 @@ async function publishedEventBySlug(ctx: QueryCtx | MutationCtx, slug: string) {
   return event;
 }
 
+// An rsvps row that is not `cancelled` -- i.e. it still holds a seat
+// (confirmed / confirmed_pending_claim / checked_in) or a waitlist spot.
+type ActiveRsvp = Doc<"rsvps"> & { status: Exclude<Doc<"rsvps">["status"], "cancelled"> };
+
+/**
+ * Find this event's existing ACTIVE rsvp (any status except `cancelled`) for
+ * a given email, if one exists. Backs the `rsvp` mutation's idempotency: a
+ * repeat RSVP from the same email returns the existing ticket instead of
+ * creating a duplicate row and scheduling a second email. A cancelled row is
+ * not active, so it never blocks a fresh RSVP from the same email.
+ *
+ * Full collect-then-filter over the `by_event` index, consistent with
+ * `countSeatsTaken` -- an event has few enough rsvps that this stays cheap,
+ * and it avoids adding a schema index for a lookup that is not on a hot path.
+ * The email is compared exactly as stored (the insert path does not
+ * normalize it either), so this intentionally does not trim/lowercase.
+ */
+async function findActiveRsvpByEmail(
+  ctx: MutationCtx,
+  eventId: Id<"events">,
+  email: string,
+): Promise<ActiveRsvp | undefined> {
+  const rows = await ctx.db
+    .query("rsvps")
+    .withIndex("by_event", (q) => q.eq("eventId", eventId))
+    .collect();
+  return rows.find((r): r is ActiveRsvp => r.email === email && r.status !== "cancelled");
+}
+
 /**
  * Public RSVP mutation. No account required: attendees identify themselves
  * with name + email and get back a token used later to manage their RSVP.
@@ -39,11 +68,29 @@ async function publishedEventBySlug(ctx: QueryCtx | MutationCtx, slug: string) {
  * The capacity read (countSeatsTaken) and the insert happen in this single
  * mutation, which Convex runs transactionally -- this is what makes the
  * "last seat" check atomic under concurrent RSVPs instead of racy.
+ *
+ * Idempotent per (event, email): if this email already has an active rsvp for
+ * the event, that existing ticket is returned as-is -- no duplicate row, no
+ * second email -- so one address cannot consume multiple seats or flood the
+ * waitlist by repeating the same request.
  */
 export const rsvp = mutation({
   args: { slug: v.string(), name: v.string(), email: v.string() },
   handler: async (ctx, { slug, name, email }) => {
     const event = await publishedEventBySlug(ctx, slug);
+
+    const existing = await findActiveRsvpByEmail(ctx, event._id, email);
+    if (existing) {
+      if (existing.status === "waitlisted") {
+        return {
+          status: "waitlisted" as const,
+          token: existing.token,
+          waitlistPosition: existing.waitlistPosition ?? 0,
+        };
+      }
+      return { status: existing.status, token: existing.token };
+    }
+
     const token = crypto.randomUUID();
     const seatsTaken = await countSeatsTaken(ctx, event._id);
 
