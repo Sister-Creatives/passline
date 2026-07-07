@@ -3,6 +3,7 @@ import { convexTest, type TestConvex } from "convex-test";
 import { expect, test } from "vitest";
 import schema from "./schema";
 import { api } from "./_generated/api";
+import { escapeHtml } from "./email";
 
 // Passed explicitly for the same pnpm module-resolution reason documented in
 // schema.test.ts.
@@ -95,4 +96,14 @@ test("cancelling a seat promotes the next waitlister and schedules a claim email
   expect(args.email).toBe("b@x.com");
   expect(args.eventTitle).toBe("Claim Me");
   expect(args.claimUrl).toContain(`/claim/${b.token}`);
+});
+
+test("escapeHtml escapes the characters that matter for HTML interpolation", () => {
+  expect(escapeHtml(`<script>alert('hi & "bye"')</script>`)).toBe(
+    "&lt;script&gt;alert(&#39;hi &amp; &quot;bye&quot;&#39;)&lt;/script&gt;",
+  );
+});
+
+test("escapeHtml leaves plain names untouched", () => {
+  expect(escapeHtml("Ada Lovelace")).toBe("Ada Lovelace");
 });

@@ -52,6 +52,10 @@ jobs:
         if: steps.scaffold.outputs.ready == 'true'
         run: pnpm tsc --noEmit
 
+      - name: Typecheck (Convex)
+        if: steps.scaffold.outputs.ready == 'true'
+        run: pnpm exec tsc -p convex/tsconfig.json --noEmit
+
       - name: Test
         if: steps.scaffold.outputs.ready == 'true'
         run: pnpm test

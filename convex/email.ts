@@ -12,6 +12,21 @@ export const resend = new Resend(components.resend, {});
 // until then the RESEND_API_KEY guard keeps these handlers a clean no-op.
 const FROM = "Passline <events@passline.app>";
 
+// Escapes the characters that matter for safe interpolation into HTML markup.
+// Applied to attendee-supplied fields (e.g. `name`) before they go into an
+// email's `html` body -- defense-in-depth, since an attendee's own name is
+// today only ever emailed back to that same attendee. Never applied to
+// `eventTitle`, which is organizer-authored and may intentionally contain
+// inline tags (<i>, <em>, <br>, <strong>).
+export function escapeHtml(s: string): string {
+  return s
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
+}
+
 // Live email delivery is a deferred runtime concern: RESEND_API_KEY, APP_URL,
 // and a verified sender domain are only needed to actually send. When the key is
 // absent (codegen, typecheck, tests, previews) the scheduled action runs as a
@@ -39,7 +54,7 @@ export const sendConfirmationEmail = internalAction({
       from: FROM,
       to: email,
       subject: `You are confirmed for ${eventTitle}`,
-      html: `<p>Hi ${name}, you are confirmed for ${eventTitle}. Manage your RSVP here: <a href="${url}">${url}</a></p>`,
+      html: `<p>Hi ${escapeHtml(name)}, you are confirmed for ${eventTitle}. Manage your RSVP here: <a href="${url}">${url}</a></p>`,
     });
   },
 });
@@ -61,7 +76,7 @@ export const sendWaitlistEmail = internalAction({
       from: FROM,
       to: email,
       subject: `You are on the waitlist for ${eventTitle}`,
-      html: `<p>Hi ${name}, ${eventTitle} is currently full. You are number ${waitlistPosition} on the waitlist; we will email you a claim link if a spot opens.</p>`,
+      html: `<p>Hi ${escapeHtml(name)}, ${eventTitle} is currently full. You are number ${waitlistPosition} on the waitlist; we will email you a claim link if a spot opens.</p>`,
     });
   },
 });
@@ -84,7 +99,7 @@ export const sendClaimEmail = internalAction({
       from: FROM,
       to: email,
       subject: `A spot opened for ${eventTitle} - claim it`,
-      html: `<p>Hi ${name}, a spot just opened for ${eventTitle}. Claim it before the window closes: <a href="${claimUrl}">${claimUrl}</a></p>`,
+      html: `<p>Hi ${escapeHtml(name)}, a spot just opened for ${eventTitle}. Claim it before the window closes: <a href="${claimUrl}">${claimUrl}</a></p>`,
     });
   },
 });
