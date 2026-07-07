@@ -7,6 +7,7 @@ import { LoaderCircle } from "lucide-react";
 import { toast } from "sonner";
 
 import { api } from "../../convex/_generated/api";
+import type { Doc } from "../../convex/_generated/dataModel";
 import { Button } from "@/components/ui/button";
 import {
   Form,
@@ -43,42 +44,93 @@ const eventFormSchema = z
 type EventFormValues = z.infer<typeof eventFormSchema>;
 
 /**
- * Create-event form. Collects title, description, location, capacity, and a
- * start/end window (as `datetime-local` inputs), converts the two dates to
- * epoch milliseconds, and submits `api.events.createEvent`.
+ * Converts epoch milliseconds to the local-time string a `datetime-local`
+ * input expects: `YYYY-MM-DDTHH:mm`. Deliberately uses the local getters
+ * (`getFullYear`/`getMonth`/...) rather than `toISOString`, which is UTC and
+ * would shift the displayed time across timezones.
  */
-export function EventForm() {
+function toDatetimeLocal(ms: number): string {
+  const date = new Date(ms);
+  const pad = (value: number) => String(value).padStart(2, "0");
+  const year = date.getFullYear();
+  const month = pad(date.getMonth() + 1);
+  const day = pad(date.getDate());
+  const hours = pad(date.getHours());
+  const minutes = pad(date.getMinutes());
+  return `${year}-${month}-${day}T${hours}:${minutes}`;
+}
+
+interface EventFormProps {
+  /** When provided, the form edits this event instead of creating a new one. */
+  event?: Doc<"events">;
+  /** Called after a successful edit save (edit mode only). */
+  onDone?: () => void;
+}
+
+/**
+ * Create/edit event form. Collects title, description, location, capacity,
+ * and a start/end window (as `datetime-local` inputs), converts the two
+ * dates to epoch milliseconds, and submits either `api.events.createEvent`
+ * (no `event` prop) or `api.events.updateEvent` (`event` prop supplied).
+ */
+export function EventForm({ event, onDone }: EventFormProps) {
   const navigate = useNavigate();
   const createEvent = useMutation(api.events.createEvent);
+  const updateEvent = useMutation(api.events.updateEvent);
+  const isEditMode = event !== undefined;
 
   const form = useForm<EventFormValues>({
     resolver: zodResolver(eventFormSchema),
-    defaultValues: {
-      title: "",
-      description: "",
-      location: "",
-      capacity: "1",
-      startsAt: "",
-      endsAt: "",
-    },
+    defaultValues: event
+      ? {
+          title: event.title,
+          description: event.description,
+          location: event.location,
+          capacity: String(event.capacity),
+          startsAt: toDatetimeLocal(event.startsAt),
+          endsAt: toDatetimeLocal(event.endsAt),
+        }
+      : {
+          title: "",
+          description: "",
+          location: "",
+          capacity: "1",
+          startsAt: "",
+          endsAt: "",
+        },
   });
 
   const isSubmitting = form.formState.isSubmitting;
 
   async function onSubmit(values: EventFormValues) {
     try {
-      const eventId = await createEvent({
-        title: values.title,
-        description: values.description,
-        location: values.location,
-        capacity: Number(values.capacity),
-        startsAt: new Date(values.startsAt).getTime(),
-        endsAt: new Date(values.endsAt).getTime(),
-      });
-      toast.success("Event created");
-      navigate({ to: "/events/$id", params: { id: eventId } });
+      if (event) {
+        await updateEvent({
+          eventId: event._id,
+          title: values.title,
+          description: values.description,
+          location: values.location,
+          capacity: Number(values.capacity),
+          startsAt: new Date(values.startsAt).getTime(),
+          endsAt: new Date(values.endsAt).getTime(),
+        });
+        toast.success("Event updated");
+        onDone?.();
+      } else {
+        const eventId = await createEvent({
+          title: values.title,
+          description: values.description,
+          location: values.location,
+          capacity: Number(values.capacity),
+          startsAt: new Date(values.startsAt).getTime(),
+          endsAt: new Date(values.endsAt).getTime(),
+        });
+        toast.success("Event created");
+        navigate({ to: "/events/$id", params: { id: eventId } });
+      }
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Failed to create event");
+      const fallback = event ? "Failed to update event" : "Failed to create event";
+      toast.error(error instanceof Error ? error.message : fallback);
     }
   }
 
@@ -167,7 +219,7 @@ export function EventForm() {
         />
         <Button type="submit" disabled={isSubmitting}>
           {isSubmitting && <LoaderCircle className="animate-spin" />}
-          Create event
+          {isEditMode ? "Save changes" : "Create event"}
         </Button>
       </form>
     </Form>
