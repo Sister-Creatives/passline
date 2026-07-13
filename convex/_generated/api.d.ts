@@ -11,6 +11,7 @@
 import type * as apiHttp from "../apiHttp.js";
 import type * as apiKeys from "../apiKeys.js";
 import type * as auth from "../auth.js";
+import type * as checkoutQuestions from "../checkoutQuestions.js";
 import type * as crons from "../crons.js";
 import type * as email from "../email.js";
 import type * as events from "../events.js";
@@ -39,6 +40,7 @@ declare const fullApi: ApiFromModules<{
   apiHttp: typeof apiHttp;
   apiKeys: typeof apiKeys;
   auth: typeof auth;
+  checkoutQuestions: typeof checkoutQuestions;
   crons: typeof crons;
   email: typeof email;
   events: typeof events;
