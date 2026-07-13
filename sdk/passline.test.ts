@@ -62,8 +62,9 @@ describe("PasslineClient", () => {
 
       expect(result).toEqual(ticketTypes);
       expect(fetchMock).toHaveBeenCalledTimes(1);
-      const [url] = fetchMock.mock.calls[0]!;
+      const [url, requestInit] = fetchMock.mock.calls[0]!;
       expect(url).toBe(`${BASE_URL}/v1/events/${encodeURIComponent("evt/weird id")}/ticket-types`);
+      expect(requestInit?.headers).toMatchObject({ Authorization: `Bearer ${API_KEY}` });
     });
 
     it("throws PasslineApiError with status and message on a non-2xx response", async () => {
@@ -93,6 +94,17 @@ describe("PasslineClient", () => {
 
       const [url] = fetchMock.mock.calls[0]!;
       expect(url).toBe(`${BASE_URL}/v1/events`);
+    });
+  });
+
+  describe("error handling", () => {
+    it("falls back to statusText when the error body isn't JSON", async () => {
+      const fetchMock = vi.fn(async (..._args: Parameters<typeof fetch>) =>
+        new Response("upstream boom", { status: 502, statusText: "Bad Gateway" }),
+      );
+      const client = new PasslineClient({ apiKey: API_KEY, baseUrl: BASE_URL, fetch: fetchMock });
+
+      await expect(client.listEvents()).rejects.toMatchObject({ status: 502, message: "Bad Gateway" });
     });
   });
 });
