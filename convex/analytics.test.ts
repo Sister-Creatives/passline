@@ -177,6 +177,55 @@ test("getEventSummary: byTicketType groups sold + revenue correctly per type", a
   expect(summary.ticketsSold).toBe(5);
 });
 
+test("getEventSummary: byTicketType revenue is net of discount and reconciles with the top-line", async () => {
+  const t = convexTest(schema, modules);
+  const { as } = await asOrganizer(t, "ada@example.com");
+  await as.mutation(api.organizers.ensureOrganizer, {});
+  const eventId = await makePublishedEvent(as);
+  const adultId = await makePaidTicketType(as, eventId, 1000, "Adult");
+  const childId = await makePaidTicketType(as, eventId, 500, "Child");
+
+  await as.mutation(api.promoCodes.create, {
+    eventId,
+    code: "SAVE10",
+    discountKind: "percent",
+    percentBps: 1000, // 10%
+  });
+
+  // Discounted order: 2 adult @ 1000 + 3 child @ 500 = 3500 gross, 10% off -> 3150 net.
+  const discountedResult = await as.mutation(api.orders.createOrder, {
+    eventId,
+    items: [
+      { ticketTypeId: adultId, quantity: 2 },
+      { ticketTypeId: childId, quantity: 3 },
+    ],
+    buyerName: "Discount Buyer",
+    buyerEmail: "discount@example.com",
+    promoCode: "SAVE10",
+  });
+  await t.mutation(internal.orders.markOrderPaid, { orderId: discountedResult.orderId });
+  const discountedOrder = await t.run((ctx) => ctx.db.get(discountedResult.orderId));
+  expect(discountedOrder!.subtotalCents).toBe(3150);
+
+  // Undiscounted order: 1 adult @ 1000, gross.
+  await makePaidOrder(t, as, eventId, adultId, 1);
+
+  const summary = await as.query(api.analytics.getEventSummary, { eventId });
+  const byType = new Map(summary.byTicketType.map((row) => [row.ticketTypeId, row]));
+
+  const totalByTicketType = (byType.get(adultId)?.revenueCents ?? 0) + (byType.get(childId)?.revenueCents ?? 0);
+  // Sum of per-type revenue reconciles with the discounted top-line
+  // (revenue.grossCents = 3150 discounted + 1000 undiscounted = 4150),
+  // within a couple cents of rounding.
+  expect(summary.revenue.grossCents).toBe(4150);
+  expect(Math.abs(totalByTicketType - summary.revenue.grossCents)).toBeLessThanOrEqual(2);
+
+  // The undiscounted order's 1000 is exact/identity, so the adult total is
+  // its share of the discounted order (2000 * 3150/3500 = 1800) plus the
+  // undiscounted order's 1000 -- exact, no rounding needed here.
+  expect(byType.get(adultId)?.revenueCents).toBe(1800 + 1000);
+});
+
 test("getEventSummary: rejects a foreign organizer and unauthenticated callers", async () => {
   const t = convexTest(schema, modules);
   const { as: asAda } = await asOrganizer(t, "ada@example.com");

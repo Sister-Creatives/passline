@@ -76,12 +76,26 @@ export const getEventSummary = query({
         ctx.db.query("orderItems").withIndex("by_order", (q) => q.eq("orderId", o._id)).collect(),
       ),
     );
+    // Scale each item's gross (unitPriceCents * quantity) by its order's
+    // discount ratio (subtotalCents / grossSubtotalCents) so per-type revenue
+    // is net of any promo discount and reconciles with `revenue.grossCents`
+    // (which reads the already-discounted `subtotalCents`) -- to within at
+    // most a rounding cent per item, which is acceptable for a breakdown.
+    // `grossSubtotalCents` falls back to `subtotalCents` for orders predating
+    // the F4 column, making the ratio 1 (identity, exact) for those.
     const revenueByTicketType = new Map<Id<"ticketTypes">, number>();
-    for (const items of orderItemsByPaidOrder) {
+    for (let i = 0; i < paidOrders.length; i++) {
+      const order = paidOrders[i];
+      const items = orderItemsByPaidOrder[i];
+      const orderGross = order.grossSubtotalCents ?? order.subtotalCents;
+      const orderNet = order.subtotalCents;
       for (const item of items) {
+        const itemGrossCents = item.unitPriceCents * item.quantity;
+        const itemRevenueCents =
+          orderGross === 0 ? 0 : Math.round((itemGrossCents * orderNet) / orderGross);
         revenueByTicketType.set(
           item.ticketTypeId,
-          (revenueByTicketType.get(item.ticketTypeId) ?? 0) + item.unitPriceCents * item.quantity,
+          (revenueByTicketType.get(item.ticketTypeId) ?? 0) + itemRevenueCents,
         );
       }
     }

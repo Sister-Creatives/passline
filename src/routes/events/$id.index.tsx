@@ -15,6 +15,7 @@ import { TicketTypesPanel } from "@/components/TicketTypesPanel";
 import { OrdersPanel } from "@/components/OrdersPanel";
 import { AnalyticsPanel } from "@/components/AnalyticsPanel";
 import { PromoCodesPanel } from "@/components/PromoCodesPanel";
+import { csvField } from "@/lib/csv";
 import { CheckoutQuestionsPanel } from "@/components/CheckoutQuestionsPanel";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -61,11 +62,6 @@ function EventManagePage() {
       </Suspense>
     </DashboardLayout>
   );
-}
-
-/** CSV-escapes a single field: wraps in double quotes, doubling any embedded quotes. */
-function csvEscape(value: string): string {
-  return `"${value.replace(/"/g, '""')}"`;
 }
 
 /** Human-friendly labels for RSVP statuses (used in the CSV and the UI). */
@@ -142,7 +138,7 @@ function EventManageContent({ eventId }: { eventId: Id<"events"> }) {
         attendee.checkedInAt ? new Date(attendee.checkedInAt).toLocaleString() : "",
       ]);
       const csv = [header, ...rows]
-        .map((row) => row.map((field) => csvEscape(field)).join(","))
+        .map((row) => row.map((field) => csvField(field)).join(","))
         .join("\r\n");
 
       const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });

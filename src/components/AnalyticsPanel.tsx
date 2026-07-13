@@ -10,6 +10,7 @@ import type { FunctionReturnType } from "convex/server";
 import { api } from "../../convex/_generated/api";
 import type { Id } from "../../convex/_generated/dataModel";
 import { formatMoney } from "@/lib/format-money";
+import { csvField } from "@/lib/csv";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -47,11 +48,6 @@ const ORDER_STATUS_LABEL: Record<string, string> = {
   paid: "Paid",
   cancelled: "Cancelled",
 };
-
-/** CSV-escapes a single field: wraps in double quotes, doubling any embedded quotes. */
-function csvEscape(value: string): string {
-  return `"${value.replace(/"/g, '""')}"`;
-}
 
 /** "YYYY-MM-DD" -> "Jul 10" for chart ticks/tooltips. */
 function formatDayLabel(date: string): string {
@@ -108,7 +104,7 @@ export function AnalyticsPanel({ eventId }: { eventId: Id<"events"> }) {
         new Date(order.createdAt).toLocaleString(),
       ]);
       const csv = [header, ...rows]
-        .map((row) => row.map((field) => csvEscape(String(field))).join(","))
+        .map((row) => row.map((field) => csvField(String(field))).join(","))
         .join("\r\n");
 
       const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
