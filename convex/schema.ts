@@ -80,4 +80,30 @@ export default defineSchema({
   })
     .index("by_organizer", ["organizerId"])
     .index("by_hash", ["keyHash"]),
+
+  webhooks: defineTable({
+    organizerId: v.id("organizers"),
+    url: v.string(),
+    secret: v.string(), // "whsec_" + 40 hex, shown once at creation
+    subscribedEvents: v.array(v.string()), // e.g. ["ticket_type.created", "ticket_type.updated", "ticket_type.deleted"]
+    active: v.boolean(),
+    createdAt: v.number(),
+  }).index("by_organizer", ["organizerId"]),
+
+  webhookDeliveries: defineTable({
+    webhookId: v.id("webhooks"),
+    organizerId: v.id("organizers"),
+    eventType: v.string(),
+    payload: v.string(), // serialized JSON body that was signed
+    status: v.union(
+      v.literal("pending"),
+      v.literal("delivered"),
+      v.literal("failed"),
+    ),
+    attempts: v.number(),
+    lastAttemptAt: v.optional(v.number()),
+    responseStatus: v.optional(v.number()),
+  })
+    .index("by_webhook", ["webhookId"])
+    .index("by_organizer", ["organizerId"]),
 });
