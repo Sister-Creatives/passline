@@ -157,7 +157,11 @@ export const reorder = mutation({
       .withIndex("by_event", (q) => q.eq("eventId", eventId))
       .collect();
     const idSet = new Set(types.map((t) => t._id));
-    if (orderedIds.length !== types.length || !orderedIds.every((id) => idSet.has(id))) {
+    if (
+      orderedIds.length !== types.length ||
+      new Set(orderedIds).size !== orderedIds.length ||
+      !orderedIds.every((id) => idSet.has(id))
+    ) {
       throw new Error("orderedIds must be a permutation of the event's ticket types");
     }
     for (let i = 0; i < orderedIds.length; i++) {

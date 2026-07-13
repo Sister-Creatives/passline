@@ -212,3 +212,13 @@ test("reorder rejects a non-permutation", async () => {
   await as.mutation(api.ticketTypes.create, { eventId, name: "B", kind: "paid", priceCents: 200 });
   await expect(as.mutation(api.ticketTypes.reorder, { eventId, orderedIds: [a] })).rejects.toThrow();
 });
+
+test("reorder rejects duplicate ids", async () => {
+  const t = convexTest(schema, modules);
+  const { as } = await asOrganizer(t, "ada@example.com");
+  await as.mutation(api.organizers.ensureOrganizer, {});
+  const eventId = await makeEvent(as);
+  const a = await as.mutation(api.ticketTypes.create, { eventId, name: "A", kind: "paid", priceCents: 100 });
+  await as.mutation(api.ticketTypes.create, { eventId, name: "B", kind: "paid", priceCents: 200 });
+  await expect(as.mutation(api.ticketTypes.reorder, { eventId, orderedIds: [a, a] })).rejects.toThrow();
+});
