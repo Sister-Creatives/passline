@@ -176,6 +176,17 @@ export default defineSchema({
     .index("by_event", ["eventId"])
     .index("by_event_and_code", ["eventId", "code"]),
 
+  accessCodes: defineTable({
+    eventId: v.id("events"),
+    organizerId: v.id("organizers"),
+    code: v.string(), // UPPERCASE, unique per event
+    ticketTypeIds: v.array(v.id("ticketTypes")), // the hidden types this code unlocks
+    active: v.boolean(),
+    createdAt: v.number(),
+  })
+    .index("by_event", ["eventId"])
+    .index("by_event_and_code", ["eventId", "code"]),
+
   checkoutQuestions: defineTable({
     eventId: v.id("events"),
     organizerId: v.id("organizers"),
