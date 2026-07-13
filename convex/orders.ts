@@ -99,40 +99,44 @@ export const createOrder = mutation({
     const ticketTypesById = new Map(ticketTypes.map((t) => [t._id, t]));
     const alreadySold = ticketTypes.reduce((sum, t) => sum + t.sold, 0);
 
-    // Tracks cumulative quantity reserved per type across this cart (so a
-    // cart that lists the same ticket type more than once still respects its
-    // per-type capacity), seeded from each type's current `sold`.
-    const reservedSoFar = new Map<Id<"ticketTypes">, number>();
-    const lineItems: (OrderLineItem & { ticketTypeId: Id<"ticketTypes"> })[] = [];
-    let totalRequested = 0;
-
+    // Aggregate the cart by ticketTypeId first, so a cart that lists the same
+    // ticket type across multiple line items is validated (min/max/capacity)
+    // against its combined quantity rather than bypassing per-type limits.
+    const quantityByTicketType = new Map<Id<"ticketTypes">, number>();
     for (const item of items) {
       if (!Number.isInteger(item.quantity) || item.quantity < 1) {
         throw new Error("Quantity must be a whole number of at least 1");
       }
-      const ticketType = ticketTypesById.get(item.ticketTypeId);
+      quantityByTicketType.set(
+        item.ticketTypeId,
+        (quantityByTicketType.get(item.ticketTypeId) ?? 0) + item.quantity,
+      );
+    }
+
+    const lineItems: (OrderLineItem & { ticketTypeId: Id<"ticketTypes"> })[] = [];
+    let totalRequested = 0;
+
+    for (const [ticketTypeId, totalQuantity] of quantityByTicketType) {
+      const ticketType = ticketTypesById.get(ticketTypeId);
       if (!ticketType) throw new Error("Ticket type not found");
       if (ticketType.status !== "active" || ticketType.visibility !== "visible") {
         throw new Error(`${ticketType.name} is not available for purchase`);
       }
-      if (ticketType.minPerOrder !== undefined && item.quantity < ticketType.minPerOrder) {
+      if (ticketType.minPerOrder !== undefined && totalQuantity < ticketType.minPerOrder) {
         throw new Error(`Minimum order quantity for ${ticketType.name} is ${ticketType.minPerOrder}`);
       }
-      if (ticketType.maxPerOrder !== undefined && item.quantity > ticketType.maxPerOrder) {
+      if (ticketType.maxPerOrder !== undefined && totalQuantity > ticketType.maxPerOrder) {
         throw new Error(`Maximum order quantity for ${ticketType.name} is ${ticketType.maxPerOrder}`);
       }
-      const reserved = reservedSoFar.get(item.ticketTypeId) ?? ticketType.sold;
-      const nextReserved = reserved + item.quantity;
-      if (ticketType.capacity !== undefined && nextReserved > ticketType.capacity) {
+      if (ticketType.capacity !== undefined && ticketType.sold + totalQuantity > ticketType.capacity) {
         throw new Error(`Not enough remaining capacity for ${ticketType.name}`);
       }
-      reservedSoFar.set(item.ticketTypeId, nextReserved);
 
-      totalRequested += item.quantity;
+      totalRequested += totalQuantity;
       lineItems.push({
-        ticketTypeId: item.ticketTypeId,
+        ticketTypeId,
         unitPriceCents: ticketType.priceCents,
-        quantity: item.quantity,
+        quantity: totalQuantity,
       });
     }
 
@@ -170,9 +174,11 @@ export const createOrder = mutation({
       });
     }
     // Reserve capacity: patch each distinct ticket type once with its final
-    // tally (current `sold` + everything reserved for it in this cart).
-    for (const [ticketTypeId, finalSold] of reservedSoFar) {
-      await ctx.db.patch(ticketTypeId, { sold: finalSold });
+    // tally (current `sold` + the aggregate quantity reserved for it in this cart).
+    for (const item of lineItems) {
+      const ticketType = ticketTypesById.get(item.ticketTypeId);
+      if (!ticketType) throw new Error("Ticket type not found");
+      await ctx.db.patch(item.ticketTypeId, { sold: ticketType.sold + item.quantity });
     }
 
     let status: "pending" | "paid" = "pending";
@@ -191,14 +197,16 @@ export const createOrder = mutation({
  * F3b's payment-confirmation seam: called once a payment processor confirms
  * an order's charge succeeded, to issue tickets and mark the order paid.
  * Idempotent -- a second call against an already-`paid` order is a no-op, so
- * a retried/duplicate webhook delivery never double-issues tickets.
+ * a retried/duplicate webhook delivery never double-issues tickets. Also a
+ * no-op against a `cancelled` order: its reserved capacity was already
+ * released by `cancelOrder`, so resurrecting it here would oversell.
  */
 export const markOrderPaid = internalMutation({
   args: { orderId: v.id("orders") },
   handler: async (ctx, { orderId }) => {
     const order = await ctx.db.get(orderId);
     if (!order) throw new Error("Order not found");
-    if (order.status === "paid") return null;
+    if (order.status !== "pending") return null; // idempotent: paid → no-op; cancelled → no-op (capacity already released)
     await issueTicketsAndMarkPaid(ctx, order);
     return null;
   },

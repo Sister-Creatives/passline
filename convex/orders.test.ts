@@ -283,6 +283,29 @@ test("createOrder rejects a quantity above maxPerOrder", async () => {
   ).rejects.toThrow();
 });
 
+test("createOrder rejects maxPerOrder when the same ticket type is split across line items", async () => {
+  const t = convexTest(schema, modules);
+  const { as } = await asOrganizer(t, "ada@example.com");
+  await as.mutation(api.organizers.ensureOrganizer, {});
+  const eventId = await makePublishedEvent(as, 100);
+  const ticketTypeId = await makePaidTicketType(as, eventId, 1000, { maxPerOrder: 4 });
+
+  await expect(
+    t.mutation(api.orders.createOrder, {
+      eventId,
+      items: [
+        { ticketTypeId, quantity: 3 },
+        { ticketTypeId, quantity: 3 },
+      ],
+      buyerName: "Buyer",
+      buyerEmail: "buyer@example.com",
+    }),
+  ).rejects.toThrow();
+
+  const ticketType = await t.run((ctx) => ctx.db.get(ticketTypeId));
+  expect(ticketType?.sold).toBe(0); // rejected before any capacity was reserved
+});
+
 test("createOrder rejects an empty cart", async () => {
   const t = convexTest(schema, modules);
   const { as } = await asOrganizer(t, "ada@example.com");
@@ -481,6 +504,36 @@ test("cancelOrder rejects a paid order", async () => {
 
   const order = await t.run((ctx) => ctx.db.get(result.orderId));
   expect(order?.status).toBe("paid"); // untouched
+});
+
+test("markOrderPaid does not resurrect a cancelled order", async () => {
+  const t = convexTest(schema, modules);
+  const { as } = await asOrganizer(t, "ada@example.com");
+  await as.mutation(api.organizers.ensureOrganizer, {});
+  const eventId = await makePublishedEvent(as, 100);
+  const ticketTypeId = await makePaidTicketType(as, eventId, 1000, { capacity: 10 });
+
+  const result = await t.mutation(api.orders.createOrder, {
+    eventId,
+    items: [{ ticketTypeId, quantity: 3 }],
+    buyerName: "Buyer",
+    buyerEmail: "buyer@example.com",
+  });
+  expect(result.status).toBe("pending");
+
+  await as.mutation(api.orders.cancelOrder, { orderId: result.orderId });
+  let order = await t.run((ctx) => ctx.db.get(result.orderId));
+  expect(order?.status).toBe("cancelled");
+
+  await t.mutation(internal.orders.markOrderPaid, { orderId: result.orderId });
+
+  order = await t.run((ctx) => ctx.db.get(result.orderId));
+  expect(order?.status).toBe("cancelled"); // not resurrected to paid by a late/duplicate payment call
+
+  const tickets = await t.run((ctx) =>
+    ctx.db.query("tickets").withIndex("by_order", (q) => q.eq("orderId", result.orderId)).collect(),
+  );
+  expect(tickets).toHaveLength(0);
 });
 
 test("getOrder returns the order with its items and tickets by token", async () => {
