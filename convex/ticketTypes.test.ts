@@ -110,3 +110,16 @@ test("create rejects a second organizer and unauthenticated callers", async () =
     t.mutation(api.ticketTypes.create, { eventId, name: "Anon", kind: "paid", priceCents: 100 }),
   ).rejects.toThrow();
 });
+
+test("create rejects a fractional price and a fractional capacity", async () => {
+  const t = convexTest(schema, modules);
+  const { as } = await asOrganizer(t, "ada@example.com");
+  await as.mutation(api.organizers.ensureOrganizer, {});
+  const eventId = await makeEvent(as);
+  await expect(
+    as.mutation(api.ticketTypes.create, { eventId, name: "Frac price", kind: "paid", priceCents: 10.5 }),
+  ).rejects.toThrow();
+  await expect(
+    as.mutation(api.ticketTypes.create, { eventId, name: "Frac cap", kind: "paid", priceCents: 100, capacity: 5.5 }),
+  ).rejects.toThrow();
+});
