@@ -147,3 +147,22 @@ export const remove = mutation({
     return null;
   },
 });
+
+export const reorder = mutation({
+  args: { eventId: v.id("events"), orderedIds: v.array(v.id("ticketTypes")) },
+  handler: async (ctx, { eventId, orderedIds }) => {
+    await requireOwnedEvent(ctx, eventId);
+    const types = await ctx.db
+      .query("ticketTypes")
+      .withIndex("by_event", (q) => q.eq("eventId", eventId))
+      .collect();
+    const idSet = new Set(types.map((t) => t._id));
+    if (orderedIds.length !== types.length || !orderedIds.every((id) => idSet.has(id))) {
+      throw new Error("orderedIds must be a permutation of the event's ticket types");
+    }
+    for (let i = 0; i < orderedIds.length; i++) {
+      await ctx.db.patch(orderedIds[i], { sortOrder: i });
+    }
+    return null;
+  },
+});

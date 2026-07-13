@@ -190,3 +190,25 @@ test("remove deletes the ticket type; non-owner is rejected", async () => {
   const gone = await t.run((ctx) => ctx.db.get(id));
   expect(gone).toBeNull();
 });
+
+test("reorder rewrites sortOrder to the given order", async () => {
+  const t = convexTest(schema, modules);
+  const { as } = await asOrganizer(t, "ada@example.com");
+  await as.mutation(api.organizers.ensureOrganizer, {});
+  const eventId = await makeEvent(as);
+  const a = await as.mutation(api.ticketTypes.create, { eventId, name: "A", kind: "paid", priceCents: 100 });
+  const b = await as.mutation(api.ticketTypes.create, { eventId, name: "B", kind: "paid", priceCents: 200 });
+  await as.mutation(api.ticketTypes.reorder, { eventId, orderedIds: [b, a] });
+  const list = await as.query(api.ticketTypes.listForEvent, { eventId });
+  expect(list.map((t) => t.name)).toEqual(["B", "A"]);
+});
+
+test("reorder rejects a non-permutation", async () => {
+  const t = convexTest(schema, modules);
+  const { as } = await asOrganizer(t, "ada@example.com");
+  await as.mutation(api.organizers.ensureOrganizer, {});
+  const eventId = await makeEvent(as);
+  const a = await as.mutation(api.ticketTypes.create, { eventId, name: "A", kind: "paid", priceCents: 100 });
+  await as.mutation(api.ticketTypes.create, { eventId, name: "B", kind: "paid", priceCents: 200 });
+  await expect(as.mutation(api.ticketTypes.reorder, { eventId, orderedIds: [a] })).rejects.toThrow();
+});
