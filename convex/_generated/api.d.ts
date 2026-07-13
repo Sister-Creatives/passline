@@ -21,6 +21,7 @@ import type * as lib_fees from "../lib/fees.js";
 import type * as lib_slug from "../lib/slug.js";
 import type * as orders from "../orders.js";
 import type * as organizers from "../organizers.js";
+import type * as promoCodes from "../promoCodes.js";
 import type * as rsvps from "../rsvps.js";
 import type * as ticketTypes from "../ticketTypes.js";
 import type * as waitlist from "../waitlist.js";
@@ -47,6 +48,7 @@ declare const fullApi: ApiFromModules<{
   "lib/slug": typeof lib_slug;
   orders: typeof orders;
   organizers: typeof organizers;
+  promoCodes: typeof promoCodes;
   rsvps: typeof rsvps;
   ticketTypes: typeof ticketTypes;
   waitlist: typeof waitlist;
