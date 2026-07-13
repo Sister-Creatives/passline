@@ -1,5 +1,6 @@
-import { mutation } from "./_generated/server";
+import { mutation, query } from "./_generated/server";
 import { getAuthUserId } from "@convex-dev/auth/server";
+import { getAuthOrganizerId } from "./auth";
 
 /**
  * Ensure an `organizers` row exists for the currently authenticated user.
@@ -24,5 +25,14 @@ export const ensureOrganizer = mutation({
       email: user.email,
       image: user.image ?? undefined,
     });
+  },
+});
+
+export const getMe = query({
+  args: {},
+  handler: async (ctx) => {
+    const organizerId = await getAuthOrganizerId(ctx);
+    if (!organizerId) return null;
+    return await ctx.db.get(organizerId);
   },
 });
