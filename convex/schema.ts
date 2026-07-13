@@ -30,6 +30,7 @@ export default defineSchema({
     capacity: v.number(),
     status: v.union(v.literal("draft"), v.literal("published")),
     slug: v.string(),
+    currency: v.optional(v.string()), // ISO 4217; code default "USD"
   })
     .index("by_organizer", ["organizerId"])
     .index("by_slug", ["slug"]),
@@ -51,4 +52,19 @@ export default defineSchema({
     .index("by_event", ["eventId"])
     .index("by_event_and_status", ["eventId", "status"])
     .index("by_token", ["token"]),
+
+  ticketTypes: defineTable({
+    eventId: v.id("events"),
+    name: v.string(),
+    kind: v.union(v.literal("paid"), v.literal("free"), v.literal("donation")),
+    priceCents: v.number(),
+    capacity: v.optional(v.number()),
+    sold: v.number(),
+    badge: v.optional(v.string()),
+    minPerOrder: v.optional(v.number()),
+    maxPerOrder: v.optional(v.number()),
+    visibility: v.union(v.literal("visible"), v.literal("hidden")),
+    sortOrder: v.number(),
+    status: v.union(v.literal("active"), v.literal("archived")),
+  }).index("by_event", ["eventId"]),
 });
