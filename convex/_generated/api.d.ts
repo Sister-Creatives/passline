@@ -19,6 +19,7 @@ import type * as lib_capacity from "../lib/capacity.js";
 import type * as lib_constants from "../lib/constants.js";
 import type * as lib_fees from "../lib/fees.js";
 import type * as lib_slug from "../lib/slug.js";
+import type * as orders from "../orders.js";
 import type * as organizers from "../organizers.js";
 import type * as rsvps from "../rsvps.js";
 import type * as ticketTypes from "../ticketTypes.js";
@@ -44,6 +45,7 @@ declare const fullApi: ApiFromModules<{
   "lib/constants": typeof lib_constants;
   "lib/fees": typeof lib_fees;
   "lib/slug": typeof lib_slug;
+  orders: typeof orders;
   organizers: typeof organizers;
   rsvps: typeof rsvps;
   ticketTypes: typeof ticketTypes;

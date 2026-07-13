@@ -1,0 +1,536 @@
+// @vitest-environment edge-runtime
+import { convexTest, type TestConvex } from "convex-test";
+import { expect, test } from "vitest";
+import schema from "./schema";
+import { api, internal } from "./_generated/api";
+import type { Id } from "./_generated/dataModel";
+
+const modules = import.meta.glob("./**/*.*s");
+
+// Mirrors convex/events.test.ts: insert a real users row + session and hand
+// withIdentity a matching subject so getAuthUserId resolves.
+async function asOrganizer(t: TestConvex<typeof schema>, email: string) {
+  const { userId, sessionId } = await t.run(async (ctx) => {
+    const userId = await ctx.db.insert("users", { email, name: email });
+    const sessionId = await ctx.db.insert("authSessions", {
+      userId,
+      expirationTime: Date.now() + 1000 * 60 * 60,
+    });
+    return { userId, sessionId };
+  });
+  return { as: t.withIdentity({ subject: `${userId}|${sessionId}` }), userId };
+}
+
+async function makePublishedEvent(
+  as: ReturnType<TestConvex<typeof schema>["withIdentity"]>,
+  capacity = 100,
+) {
+  const eventId = await as.mutation(api.events.createEvent, {
+    title: "Ticketed Event",
+    description: "x",
+    startsAt: 1,
+    endsAt: 2,
+    location: "x",
+    capacity,
+  });
+  await as.mutation(api.events.publishEvent, { eventId });
+  return eventId;
+}
+
+type TicketTypeOverrides = {
+  capacity?: number;
+  minPerOrder?: number;
+  maxPerOrder?: number;
+  visibility?: "visible" | "hidden";
+};
+
+async function makePaidTicketType(
+  as: ReturnType<TestConvex<typeof schema>["withIdentity"]>,
+  eventId: Id<"events">,
+  priceCents: number,
+  overrides: TicketTypeOverrides = {},
+) {
+  return as.mutation(api.ticketTypes.create, {
+    eventId,
+    name: "General",
+    kind: "paid",
+    priceCents,
+    ...overrides,
+  });
+}
+
+async function makeFreeTicketType(
+  as: ReturnType<TestConvex<typeof schema>["withIdentity"]>,
+  eventId: Id<"events">,
+  overrides: TicketTypeOverrides = {},
+) {
+  return as.mutation(api.ticketTypes.create, {
+    eventId,
+    name: "Free",
+    kind: "free",
+    priceCents: 0,
+    ...overrides,
+  });
+}
+
+test("createOrder reserves capacity by incrementing sold and returns a pending order for a paid cart", async () => {
+  const t = convexTest(schema, modules);
+  const { as } = await asOrganizer(t, "ada@example.com");
+  await as.mutation(api.organizers.ensureOrganizer, {});
+  const eventId = await makePublishedEvent(as, 100);
+  const ticketTypeId = await makePaidTicketType(as, eventId, 1000, { capacity: 10 });
+
+  const result = await t.mutation(api.orders.createOrder, {
+    eventId,
+    items: [{ ticketTypeId, quantity: 3 }],
+    buyerName: "Buyer One",
+    buyerEmail: "buyer@example.com",
+  });
+
+  expect(result.status).toBe("pending");
+  expect(result.currency).toBe("USD");
+  // subtotal = 3000, fee = 3000 * 300 / 10000 = 90, total = 3090 (feeMode defaults to "pass")
+  expect(result.totalCents).toBe(3090);
+
+  const ticketType = await t.run((ctx) => ctx.db.get(ticketTypeId));
+  expect(ticketType?.sold).toBe(3);
+
+  const order = await t.run((ctx) => ctx.db.get(result.orderId));
+  expect(order?.status).toBe("pending");
+  expect(order?.subtotalCents).toBe(3000);
+  expect(order?.feeCents).toBe(90);
+  expect(order?.totalCents).toBe(3090);
+  expect(order?.payoutCents).toBe(3000);
+  expect(order?.token).toMatch(/^ord_[0-9a-f]{32}$/);
+
+  const items = await t.run((ctx) =>
+    ctx.db.query("orderItems").withIndex("by_order", (q) => q.eq("orderId", result.orderId)).collect(),
+  );
+  expect(items).toHaveLength(1);
+  expect(items[0]).toMatchObject({ ticketTypeId, quantity: 3, unitPriceCents: 1000 });
+
+  const tickets = await t.run((ctx) =>
+    ctx.db.query("tickets").withIndex("by_order", (q) => q.eq("orderId", result.orderId)).collect(),
+  );
+  expect(tickets).toHaveLength(0); // paid cart: no tickets issued yet
+});
+
+test("createOrder rejects overselling a ticket type's own capacity", async () => {
+  const t = convexTest(schema, modules);
+  const { as } = await asOrganizer(t, "ada@example.com");
+  await as.mutation(api.organizers.ensureOrganizer, {});
+  const eventId = await makePublishedEvent(as, 100);
+  const ticketTypeId = await makePaidTicketType(as, eventId, 1000, { capacity: 5 });
+
+  await t.mutation(api.orders.createOrder, {
+    eventId,
+    items: [{ ticketTypeId, quantity: 5 }],
+    buyerName: "Buyer One",
+    buyerEmail: "buyer1@example.com",
+  });
+
+  await expect(
+    t.mutation(api.orders.createOrder, {
+      eventId,
+      items: [{ ticketTypeId, quantity: 1 }],
+      buyerName: "Buyer Two",
+      buyerEmail: "buyer2@example.com",
+    }),
+  ).rejects.toThrow();
+
+  const ticketType = await t.run((ctx) => ctx.db.get(ticketTypeId));
+  expect(ticketType?.sold).toBe(5); // unchanged by the rejected order
+});
+
+test("createOrder rejects overselling the event's overall capacity even when the type has no cap", async () => {
+  const t = convexTest(schema, modules);
+  const { as } = await asOrganizer(t, "ada@example.com");
+  await as.mutation(api.organizers.ensureOrganizer, {});
+  const eventId = await makePublishedEvent(as, 5); // tight event cap, no per-type cap
+  const ticketTypeId = await makePaidTicketType(as, eventId, 1000);
+
+  await expect(
+    t.mutation(api.orders.createOrder, {
+      eventId,
+      items: [{ ticketTypeId, quantity: 6 }],
+      buyerName: "Buyer One",
+      buyerEmail: "buyer1@example.com",
+    }),
+  ).rejects.toThrow();
+
+  const ticketType = await t.run((ctx) => ctx.db.get(ticketTypeId));
+  expect(ticketType?.sold).toBe(0);
+});
+
+test("createOrder rejects an unpublished (draft) event", async () => {
+  const t = convexTest(schema, modules);
+  const { as } = await asOrganizer(t, "ada@example.com");
+  await as.mutation(api.organizers.ensureOrganizer, {});
+  const eventId = await as.mutation(api.events.createEvent, {
+    title: "Draft Event",
+    description: "x",
+    startsAt: 1,
+    endsAt: 2,
+    location: "x",
+    capacity: 100,
+  });
+  const ticketTypeId = await makePaidTicketType(as, eventId, 1000);
+
+  await expect(
+    t.mutation(api.orders.createOrder, {
+      eventId,
+      items: [{ ticketTypeId, quantity: 1 }],
+      buyerName: "Buyer",
+      buyerEmail: "buyer@example.com",
+    }),
+  ).rejects.toThrow();
+});
+
+test("createOrder rejects an archived ticket type", async () => {
+  const t = convexTest(schema, modules);
+  const { as } = await asOrganizer(t, "ada@example.com");
+  await as.mutation(api.organizers.ensureOrganizer, {});
+  const eventId = await makePublishedEvent(as, 100);
+  const ticketTypeId = await t.run((ctx) =>
+    ctx.db.insert("ticketTypes", {
+      eventId,
+      name: "Archived",
+      kind: "paid",
+      priceCents: 1000,
+      sold: 0,
+      sortOrder: 0,
+      visibility: "visible",
+      status: "archived",
+    }),
+  );
+
+  await expect(
+    t.mutation(api.orders.createOrder, {
+      eventId,
+      items: [{ ticketTypeId, quantity: 1 }],
+      buyerName: "Buyer",
+      buyerEmail: "buyer@example.com",
+    }),
+  ).rejects.toThrow();
+});
+
+test("createOrder rejects a hidden ticket type", async () => {
+  const t = convexTest(schema, modules);
+  const { as } = await asOrganizer(t, "ada@example.com");
+  await as.mutation(api.organizers.ensureOrganizer, {});
+  const eventId = await makePublishedEvent(as, 100);
+  const ticketTypeId = await makePaidTicketType(as, eventId, 1000, { visibility: "hidden" });
+
+  await expect(
+    t.mutation(api.orders.createOrder, {
+      eventId,
+      items: [{ ticketTypeId, quantity: 1 }],
+      buyerName: "Buyer",
+      buyerEmail: "buyer@example.com",
+    }),
+  ).rejects.toThrow();
+});
+
+test("createOrder rejects a ticket type that belongs to a different event", async () => {
+  const t = convexTest(schema, modules);
+  const { as } = await asOrganizer(t, "ada@example.com");
+  await as.mutation(api.organizers.ensureOrganizer, {});
+  const eventId = await makePublishedEvent(as, 100);
+  const otherEventId = await makePublishedEvent(as, 100);
+  const foreignTicketTypeId = await makePaidTicketType(as, otherEventId, 1000);
+
+  await expect(
+    t.mutation(api.orders.createOrder, {
+      eventId,
+      items: [{ ticketTypeId: foreignTicketTypeId, quantity: 1 }],
+      buyerName: "Buyer",
+      buyerEmail: "buyer@example.com",
+    }),
+  ).rejects.toThrow();
+});
+
+test("createOrder rejects a quantity below minPerOrder", async () => {
+  const t = convexTest(schema, modules);
+  const { as } = await asOrganizer(t, "ada@example.com");
+  await as.mutation(api.organizers.ensureOrganizer, {});
+  const eventId = await makePublishedEvent(as, 100);
+  const ticketTypeId = await makePaidTicketType(as, eventId, 1000, { minPerOrder: 2 });
+
+  await expect(
+    t.mutation(api.orders.createOrder, {
+      eventId,
+      items: [{ ticketTypeId, quantity: 1 }],
+      buyerName: "Buyer",
+      buyerEmail: "buyer@example.com",
+    }),
+  ).rejects.toThrow();
+});
+
+test("createOrder rejects a quantity above maxPerOrder", async () => {
+  const t = convexTest(schema, modules);
+  const { as } = await asOrganizer(t, "ada@example.com");
+  await as.mutation(api.organizers.ensureOrganizer, {});
+  const eventId = await makePublishedEvent(as, 100);
+  const ticketTypeId = await makePaidTicketType(as, eventId, 1000, { maxPerOrder: 4 });
+
+  await expect(
+    t.mutation(api.orders.createOrder, {
+      eventId,
+      items: [{ ticketTypeId, quantity: 5 }],
+      buyerName: "Buyer",
+      buyerEmail: "buyer@example.com",
+    }),
+  ).rejects.toThrow();
+});
+
+test("createOrder rejects an empty cart", async () => {
+  const t = convexTest(schema, modules);
+  const { as } = await asOrganizer(t, "ada@example.com");
+  await as.mutation(api.organizers.ensureOrganizer, {});
+  const eventId = await makePublishedEvent(as, 100);
+
+  await expect(
+    t.mutation(api.orders.createOrder, {
+      eventId,
+      items: [],
+      buyerName: "Buyer",
+      buyerEmail: "buyer@example.com",
+    }),
+  ).rejects.toThrow();
+});
+
+test("a free cart is paid immediately with one ticket issued per unit", async () => {
+  const t = convexTest(schema, modules);
+  const { as } = await asOrganizer(t, "ada@example.com");
+  await as.mutation(api.organizers.ensureOrganizer, {});
+  const eventId = await makePublishedEvent(as, 100);
+  const ticketTypeId = await makeFreeTicketType(as, eventId);
+
+  const result = await t.mutation(api.orders.createOrder, {
+    eventId,
+    items: [{ ticketTypeId, quantity: 2 }],
+    buyerName: "Buyer",
+    buyerEmail: "buyer@example.com",
+  });
+
+  expect(result.status).toBe("paid");
+  expect(result.totalCents).toBe(0);
+
+  const order = await t.run((ctx) => ctx.db.get(result.orderId));
+  expect(order?.status).toBe("paid");
+  expect(order?.paidAt).toBeTypeOf("number");
+
+  const tickets = await t.run((ctx) =>
+    ctx.db.query("tickets").withIndex("by_order", (q) => q.eq("orderId", result.orderId)).collect(),
+  );
+  expect(tickets).toHaveLength(2);
+  for (const ticket of tickets) {
+    expect(ticket.status).toBe("valid");
+    expect(ticket.code).toMatch(/^tkt_[0-9a-f]{32}$/);
+    expect(ticket.eventId).toBe(eventId);
+    expect(ticket.ticketTypeId).toBe(ticketTypeId);
+  }
+  // Codes are unique.
+  expect(new Set(tickets.map((tk) => tk.code)).size).toBe(2);
+});
+
+test("a paid cart stays pending with no tickets issued", async () => {
+  const t = convexTest(schema, modules);
+  const { as } = await asOrganizer(t, "ada@example.com");
+  await as.mutation(api.organizers.ensureOrganizer, {});
+  const eventId = await makePublishedEvent(as, 100);
+  const ticketTypeId = await makePaidTicketType(as, eventId, 1500);
+
+  const result = await t.mutation(api.orders.createOrder, {
+    eventId,
+    items: [{ ticketTypeId, quantity: 1 }],
+    buyerName: "Buyer",
+    buyerEmail: "buyer@example.com",
+  });
+
+  expect(result.status).toBe("pending");
+  const order = await t.run((ctx) => ctx.db.get(result.orderId));
+  expect(order?.status).toBe("pending");
+  expect(order?.paidAt).toBeUndefined();
+
+  const tickets = await t.run((ctx) =>
+    ctx.db.query("tickets").withIndex("by_order", (q) => q.eq("orderId", result.orderId)).collect(),
+  );
+  expect(tickets).toHaveLength(0);
+});
+
+test("markOrderPaid issues tickets and sets paid", async () => {
+  const t = convexTest(schema, modules);
+  const { as } = await asOrganizer(t, "ada@example.com");
+  await as.mutation(api.organizers.ensureOrganizer, {});
+  const eventId = await makePublishedEvent(as, 100);
+  const ticketTypeId = await makePaidTicketType(as, eventId, 1500);
+
+  const result = await t.mutation(api.orders.createOrder, {
+    eventId,
+    items: [{ ticketTypeId, quantity: 3 }],
+    buyerName: "Buyer",
+    buyerEmail: "buyer@example.com",
+  });
+  expect(result.status).toBe("pending");
+
+  await t.mutation(internal.orders.markOrderPaid, { orderId: result.orderId });
+
+  const order = await t.run((ctx) => ctx.db.get(result.orderId));
+  expect(order?.status).toBe("paid");
+  expect(order?.paidAt).toBeTypeOf("number");
+
+  const tickets = await t.run((ctx) =>
+    ctx.db.query("tickets").withIndex("by_order", (q) => q.eq("orderId", result.orderId)).collect(),
+  );
+  expect(tickets).toHaveLength(3);
+});
+
+test("markOrderPaid is idempotent: a second call does not duplicate tickets", async () => {
+  const t = convexTest(schema, modules);
+  const { as } = await asOrganizer(t, "ada@example.com");
+  await as.mutation(api.organizers.ensureOrganizer, {});
+  const eventId = await makePublishedEvent(as, 100);
+  const ticketTypeId = await makePaidTicketType(as, eventId, 1500);
+
+  const result = await t.mutation(api.orders.createOrder, {
+    eventId,
+    items: [{ ticketTypeId, quantity: 2 }],
+    buyerName: "Buyer",
+    buyerEmail: "buyer@example.com",
+  });
+
+  await t.mutation(internal.orders.markOrderPaid, { orderId: result.orderId });
+  const firstPaidAt = (await t.run((ctx) => ctx.db.get(result.orderId)))?.paidAt;
+
+  await t.mutation(internal.orders.markOrderPaid, { orderId: result.orderId });
+  const order = await t.run((ctx) => ctx.db.get(result.orderId));
+  expect(order?.paidAt).toBe(firstPaidAt); // untouched by the second call
+
+  const tickets = await t.run((ctx) =>
+    ctx.db.query("tickets").withIndex("by_order", (q) => q.eq("orderId", result.orderId)).collect(),
+  );
+  expect(tickets).toHaveLength(2); // still 2, not 4
+});
+
+test("cancelOrder releases capacity and cancels a pending order", async () => {
+  const t = convexTest(schema, modules);
+  const { as } = await asOrganizer(t, "ada@example.com");
+  await as.mutation(api.organizers.ensureOrganizer, {});
+  const eventId = await makePublishedEvent(as, 100);
+  const ticketTypeId = await makePaidTicketType(as, eventId, 1000, { capacity: 10 });
+
+  const result = await t.mutation(api.orders.createOrder, {
+    eventId,
+    items: [{ ticketTypeId, quantity: 4 }],
+    buyerName: "Buyer",
+    buyerEmail: "buyer@example.com",
+  });
+
+  let ticketType = await t.run((ctx) => ctx.db.get(ticketTypeId));
+  expect(ticketType?.sold).toBe(4);
+
+  await as.mutation(api.orders.cancelOrder, { orderId: result.orderId });
+
+  const order = await t.run((ctx) => ctx.db.get(result.orderId));
+  expect(order?.status).toBe("cancelled");
+
+  ticketType = await t.run((ctx) => ctx.db.get(ticketTypeId));
+  expect(ticketType?.sold).toBe(0);
+});
+
+test("cancelOrder is owner-only", async () => {
+  const t = convexTest(schema, modules);
+  const { as: asAda } = await asOrganizer(t, "ada@example.com");
+  await asAda.mutation(api.organizers.ensureOrganizer, {});
+  const { as: asBob } = await asOrganizer(t, "bob@example.com");
+  await asBob.mutation(api.organizers.ensureOrganizer, {});
+
+  const eventId = await makePublishedEvent(asAda, 100);
+  const ticketTypeId = await makePaidTicketType(asAda, eventId, 1000);
+  const result = await t.mutation(api.orders.createOrder, {
+    eventId,
+    items: [{ ticketTypeId, quantity: 1 }],
+    buyerName: "Buyer",
+    buyerEmail: "buyer@example.com",
+  });
+
+  await expect(asBob.mutation(api.orders.cancelOrder, { orderId: result.orderId })).rejects.toThrow();
+  await expect(t.mutation(api.orders.cancelOrder, { orderId: result.orderId })).rejects.toThrow(); // unauthenticated
+
+  const order = await t.run((ctx) => ctx.db.get(result.orderId));
+  expect(order?.status).toBe("pending"); // untouched
+});
+
+test("cancelOrder rejects a paid order", async () => {
+  const t = convexTest(schema, modules);
+  const { as } = await asOrganizer(t, "ada@example.com");
+  await as.mutation(api.organizers.ensureOrganizer, {});
+  const eventId = await makePublishedEvent(as, 100);
+  const ticketTypeId = await makeFreeTicketType(as, eventId);
+
+  const result = await t.mutation(api.orders.createOrder, {
+    eventId,
+    items: [{ ticketTypeId, quantity: 1 }],
+    buyerName: "Buyer",
+    buyerEmail: "buyer@example.com",
+  });
+  expect(result.status).toBe("paid");
+
+  await expect(as.mutation(api.orders.cancelOrder, { orderId: result.orderId })).rejects.toThrow();
+
+  const order = await t.run((ctx) => ctx.db.get(result.orderId));
+  expect(order?.status).toBe("paid"); // untouched
+});
+
+test("getOrder returns the order with its items and tickets by token", async () => {
+  const t = convexTest(schema, modules);
+  const { as } = await asOrganizer(t, "ada@example.com");
+  await as.mutation(api.organizers.ensureOrganizer, {});
+  const eventId = await makePublishedEvent(as, 100);
+  const ticketTypeId = await makeFreeTicketType(as, eventId);
+
+  const result = await t.mutation(api.orders.createOrder, {
+    eventId,
+    items: [{ ticketTypeId, quantity: 2 }],
+    buyerName: "Buyer",
+    buyerEmail: "buyer@example.com",
+  });
+
+  const found = await t.query(api.orders.getOrder, { token: result.token });
+  expect(found?.order._id).toBe(result.orderId);
+  expect(found?.items).toHaveLength(1);
+  expect(found?.tickets).toHaveLength(2);
+
+  const notFound = await t.query(api.orders.getOrder, { token: "ord_doesnotexist" });
+  expect(notFound).toBeNull();
+});
+
+test("listOrdersForEvent returns the event's orders newest first, owner-only", async () => {
+  const t = convexTest(schema, modules);
+  const { as: asAda } = await asOrganizer(t, "ada@example.com");
+  await asAda.mutation(api.organizers.ensureOrganizer, {});
+  const { as: asBob } = await asOrganizer(t, "bob@example.com");
+  await asBob.mutation(api.organizers.ensureOrganizer, {});
+
+  const eventId = await makePublishedEvent(asAda, 100);
+  const ticketTypeId = await makePaidTicketType(asAda, eventId, 1000);
+
+  const first = await t.mutation(api.orders.createOrder, {
+    eventId,
+    items: [{ ticketTypeId, quantity: 1 }],
+    buyerName: "Buyer One",
+    buyerEmail: "buyer1@example.com",
+  });
+  const second = await t.mutation(api.orders.createOrder, {
+    eventId,
+    items: [{ ticketTypeId, quantity: 1 }],
+    buyerName: "Buyer Two",
+    buyerEmail: "buyer2@example.com",
+  });
+
+  const list = await asAda.query(api.orders.listOrdersForEvent, { eventId });
+  expect(list.map((o) => o._id)).toEqual([second.orderId, first.orderId]);
+
+  await expect(asBob.query(api.orders.listOrdersForEvent, { eventId })).rejects.toThrow();
+});
