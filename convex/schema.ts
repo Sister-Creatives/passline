@@ -67,4 +67,17 @@ export default defineSchema({
     sortOrder: v.number(),
     status: v.union(v.literal("active"), v.literal("archived")),
   }).index("by_event", ["eventId"]),
+
+  apiKeys: defineTable({
+    organizerId: v.id("organizers"),
+    name: v.string(), // human label, e.g. "Production storefront"
+    keyHash: v.string(), // lowercase hex SHA-256 of the full secret
+    prefix: v.string(), // "pl_live_" — shown in the UI
+    lastFour: v.string(), // last 4 chars of the secret, for display
+    createdAt: v.number(),
+    lastUsedAt: v.optional(v.number()),
+    revokedAt: v.optional(v.number()),
+  })
+    .index("by_organizer", ["organizerId"])
+    .index("by_hash", ["keyHash"]),
 });
