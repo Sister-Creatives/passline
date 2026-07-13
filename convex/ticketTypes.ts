@@ -2,6 +2,7 @@ import { mutation, query, type QueryCtx, type MutationCtx } from "./_generated/s
 import { v } from "convex/values";
 import type { Id } from "./_generated/dataModel";
 import { getAuthOrganizerId } from "./auth";
+import { emitTicketTypeEvent } from "./webhooks";
 
 const kindValidator = v.union(v.literal("paid"), v.literal("free"), v.literal("donation"));
 const visibilityValidator = v.union(v.literal("visible"), v.literal("hidden"));
@@ -84,7 +85,7 @@ export const create = mutation({
       .withIndex("by_event", (q) => q.eq("eventId", args.eventId))
       .collect();
     const sortOrder = existing.reduce((max, t) => Math.max(max, t.sortOrder), -1) + 1;
-    return await ctx.db.insert("ticketTypes", {
+    const id = await ctx.db.insert("ticketTypes", {
       eventId: args.eventId,
       name: args.name.trim(),
       kind: args.kind,
@@ -98,6 +99,25 @@ export const create = mutation({
       sortOrder,
       status: "active",
     });
+    await emitTicketTypeEvent(
+      ctx,
+      event.organizerId,
+      "ticket_type.created",
+      JSON.stringify({
+        id,
+        eventId: args.eventId,
+        name: args.name.trim(),
+        kind: args.kind,
+        priceCents: args.priceCents,
+        capacity: args.capacity,
+        badge: args.badge,
+        minPerOrder: args.minPerOrder,
+        maxPerOrder: args.maxPerOrder,
+        visibility: args.visibility ?? "visible",
+        sortOrder,
+      }),
+    );
+    return id;
   },
 });
 
@@ -138,6 +158,23 @@ export const update = mutation({
       maxPerOrder: args.maxPerOrder,
       visibility: args.visibility,
     });
+    await emitTicketTypeEvent(
+      ctx,
+      event.organizerId,
+      "ticket_type.updated",
+      JSON.stringify({
+        id: args.ticketTypeId,
+        eventId: event._id,
+        name: args.name.trim(),
+        kind: args.kind,
+        priceCents: args.priceCents,
+        capacity: args.capacity,
+        badge: args.badge,
+        minPerOrder: args.minPerOrder,
+        maxPerOrder: args.maxPerOrder,
+        visibility: args.visibility,
+      }),
+    );
     return null;
   },
 });
@@ -145,8 +182,14 @@ export const update = mutation({
 export const remove = mutation({
   args: { ticketTypeId: v.id("ticketTypes") },
   handler: async (ctx, { ticketTypeId }) => {
-    await requireOwnedTicketType(ctx, ticketTypeId);
+    const { event } = await requireOwnedTicketType(ctx, ticketTypeId);
     await ctx.db.delete(ticketTypeId);
+    await emitTicketTypeEvent(
+      ctx,
+      event.organizerId,
+      "ticket_type.deleted",
+      JSON.stringify({ id: ticketTypeId, eventId: event._id }),
+    );
     return null;
   },
 });

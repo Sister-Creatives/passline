@@ -205,6 +205,6 @@ export const markFailedAttempt = internalMutation({
     if (responseStatus !== undefined) patch.responseStatus = responseStatus;
 
     await ctx.db.patch(deliveryId, patch);
-    return null;
+    return { attempts, status };
   },
 });
