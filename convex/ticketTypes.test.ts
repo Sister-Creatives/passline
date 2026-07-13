@@ -176,3 +176,17 @@ test("update rejects a non-owner", async () => {
     asBob.mutation(api.ticketTypes.update, { ticketTypeId: id, name: "X", kind: "paid", priceCents: 1, visibility: "visible" }),
   ).rejects.toThrow();
 });
+
+test("remove deletes the ticket type; non-owner is rejected", async () => {
+  const t = convexTest(schema, modules);
+  const { as: asAda } = await asOrganizer(t, "ada@example.com");
+  await asAda.mutation(api.organizers.ensureOrganizer, {});
+  const { as: asBob } = await asOrganizer(t, "bob@example.com");
+  await asBob.mutation(api.organizers.ensureOrganizer, {});
+  const eventId = await makeEvent(asAda);
+  const id = await asAda.mutation(api.ticketTypes.create, { eventId, name: "A", kind: "paid", priceCents: 100 });
+  await expect(asBob.mutation(api.ticketTypes.remove, { ticketTypeId: id })).rejects.toThrow();
+  await asAda.mutation(api.ticketTypes.remove, { ticketTypeId: id });
+  const gone = await t.run((ctx) => ctx.db.get(id));
+  expect(gone).toBeNull();
+});

@@ -138,3 +138,12 @@ export const update = mutation({
     return null;
   },
 });
+
+export const remove = mutation({
+  args: { ticketTypeId: v.id("ticketTypes") },
+  handler: async (ctx, { ticketTypeId }) => {
+    await requireOwnedTicketType(ctx, ticketTypeId);
+    await ctx.db.delete(ticketTypeId);
+    return null;
+  },
+});
