@@ -112,7 +112,7 @@ function EventManageContent({ eventId }: { eventId: Id<"events"> }) {
     try {
       await deleteEvent({ eventId });
       toast.success("Event deleted");
-      navigate({ to: "/dashboard" });
+      navigate({ to: "/events" });
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Failed to delete event");
     }

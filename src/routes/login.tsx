@@ -51,7 +51,7 @@ function LoginPage() {
       await signIn("password", { email: values.email, password: values.password, flow });
       // The organizer row is created inside AuthGuard once the session is
       // confirmed authenticated, which avoids racing the auth token here.
-      navigate({ to: "/dashboard" });
+      navigate({ to: "/events" });
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Something went wrong. Try again.");
     }
