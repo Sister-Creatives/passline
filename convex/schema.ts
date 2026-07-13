@@ -31,6 +31,7 @@ export default defineSchema({
     status: v.union(v.literal("draft"), v.literal("published")),
     slug: v.string(),
     currency: v.optional(v.string()), // ISO 4217; code default "USD"
+    feeMode: v.optional(v.union(v.literal("pass"), v.literal("absorb"))),
   })
     .index("by_organizer", ["organizerId"])
     .index("by_slug", ["slug"]),
@@ -106,4 +107,52 @@ export default defineSchema({
   })
     .index("by_webhook", ["webhookId"])
     .index("by_organizer", ["organizerId"]),
+
+  orders: defineTable({
+    eventId: v.id("events"),
+    organizerId: v.id("organizers"), // denormalized from the event for org-scoped queries
+    buyerName: v.string(),
+    buyerEmail: v.string(),
+    status: v.union(
+      v.literal("pending"),
+      v.literal("paid"),
+      v.literal("cancelled"),
+    ),
+    currency: v.string(),
+    feeMode: v.union(v.literal("pass"), v.literal("absorb")),
+    subtotalCents: v.number(),
+    feeCents: v.number(),
+    totalCents: v.number(),
+    payoutCents: v.number(),
+    token: v.string(), // opaque order token for buyer-facing lookup
+    createdAt: v.number(),
+    paidAt: v.optional(v.number()),
+  })
+    .index("by_event", ["eventId"])
+    .index("by_organizer", ["organizerId"])
+    .index("by_token", ["token"]),
+
+  orderItems: defineTable({
+    orderId: v.id("orders"),
+    ticketTypeId: v.id("ticketTypes"),
+    quantity: v.number(),
+    unitPriceCents: v.number(), // snapshot of the price at purchase time
+  }).index("by_order", ["orderId"]),
+
+  tickets: defineTable({
+    orderId: v.id("orders"),
+    eventId: v.id("events"),
+    ticketTypeId: v.id("ticketTypes"),
+    code: v.string(), // unique QR/scan code
+    status: v.union(
+      v.literal("valid"),
+      v.literal("checked_in"),
+      v.literal("cancelled"),
+    ),
+    attendeeName: v.optional(v.string()),
+    createdAt: v.number(),
+  })
+    .index("by_order", ["orderId"])
+    .index("by_event", ["eventId"])
+    .index("by_code", ["code"]),
 });
