@@ -257,15 +257,31 @@ export const getOrder = query({
   },
 });
 
-/** Owner-only: an event's orders, newest first, for the dashboard Orders tab. */
+/**
+ * Owner-only: an event's orders, newest first, for the dashboard Orders tab.
+ * Each order is annotated with `itemCount` (the sum of its order items'
+ * quantities) so the dashboard can show item counts without an N+1 query per
+ * row.
+ */
 export const listOrdersForEvent = query({
   args: { eventId: v.id("events") },
   handler: async (ctx, { eventId }) => {
     await requireOwnedEvent(ctx, eventId);
-    return ctx.db
+    const orders = await ctx.db
       .query("orders")
       .withIndex("by_event", (q) => q.eq("eventId", eventId))
       .order("desc")
       .collect();
+
+    return Promise.all(
+      orders.map(async (order) => {
+        const items = await ctx.db
+          .query("orderItems")
+          .withIndex("by_order", (q) => q.eq("orderId", order._id))
+          .collect();
+        const itemCount = items.reduce((sum, item) => sum + item.quantity, 0);
+        return { ...order, itemCount };
+      }),
+    );
   },
 });

@@ -12,6 +12,7 @@ import { DashboardLayout } from "@/components/DashboardLayout";
 import { AttendeeTable } from "@/components/AttendeeTable";
 import { EventForm } from "@/components/EventForm";
 import { TicketTypesPanel } from "@/components/TicketTypesPanel";
+import { OrdersPanel } from "@/components/OrdersPanel";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
@@ -161,6 +162,7 @@ function EventManageContent({ eventId }: { eventId: Id<"events"> }) {
         <TabsList>
           <TabsTrigger value="details">Details</TabsTrigger>
           <TabsTrigger value="tickets">Ticket types</TabsTrigger>
+          <TabsTrigger value="orders">Orders</TabsTrigger>
         </TabsList>
         <TabsContent value="details">
           <div className="flex flex-wrap items-center justify-between gap-4">
@@ -265,6 +267,9 @@ function EventManageContent({ eventId }: { eventId: Id<"events"> }) {
         </TabsContent>
         <TabsContent value="tickets">
           <TicketTypesPanel eventId={event._id} currency={event.currency ?? "USD"} />
+        </TabsContent>
+        <TabsContent value="orders">
+          <OrdersPanel eventId={event._id} />
         </TabsContent>
       </Tabs>
     </div>
