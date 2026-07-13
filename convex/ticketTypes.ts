@@ -99,24 +99,28 @@ export const create = mutation({
       sortOrder,
       status: "active",
     });
-    await emitTicketTypeEvent(
-      ctx,
-      event.organizerId,
-      "ticket_type.created",
-      JSON.stringify({
-        id,
-        eventId: args.eventId,
-        name: args.name.trim(),
-        kind: args.kind,
-        priceCents: args.priceCents,
-        capacity: args.capacity,
-        badge: args.badge,
-        minPerOrder: args.minPerOrder,
-        maxPerOrder: args.maxPerOrder,
-        visibility: args.visibility ?? "visible",
-        sortOrder,
-      }),
-    );
+    try {
+      await emitTicketTypeEvent(
+        ctx,
+        event.organizerId,
+        "ticket_type.created",
+        JSON.stringify({
+          id,
+          eventId: args.eventId,
+          name: args.name.trim(),
+          kind: args.kind,
+          priceCents: args.priceCents,
+          capacity: args.capacity,
+          badge: args.badge,
+          minPerOrder: args.minPerOrder,
+          maxPerOrder: args.maxPerOrder,
+          visibility: args.visibility ?? "visible",
+          sortOrder,
+        }),
+      );
+    } catch {
+      // Best-effort: webhook emission must not fail the ticket-type mutation (spec §5).
+    }
     return id;
   },
 });
@@ -158,23 +162,27 @@ export const update = mutation({
       maxPerOrder: args.maxPerOrder,
       visibility: args.visibility,
     });
-    await emitTicketTypeEvent(
-      ctx,
-      event.organizerId,
-      "ticket_type.updated",
-      JSON.stringify({
-        id: args.ticketTypeId,
-        eventId: event._id,
-        name: args.name.trim(),
-        kind: args.kind,
-        priceCents: args.priceCents,
-        capacity: args.capacity,
-        badge: args.badge,
-        minPerOrder: args.minPerOrder,
-        maxPerOrder: args.maxPerOrder,
-        visibility: args.visibility,
-      }),
-    );
+    try {
+      await emitTicketTypeEvent(
+        ctx,
+        event.organizerId,
+        "ticket_type.updated",
+        JSON.stringify({
+          id: args.ticketTypeId,
+          eventId: event._id,
+          name: args.name.trim(),
+          kind: args.kind,
+          priceCents: args.priceCents,
+          capacity: args.capacity,
+          badge: args.badge,
+          minPerOrder: args.minPerOrder,
+          maxPerOrder: args.maxPerOrder,
+          visibility: args.visibility,
+        }),
+      );
+    } catch {
+      // Best-effort: webhook emission must not fail the ticket-type mutation (spec §5).
+    }
     return null;
   },
 });
@@ -184,12 +192,16 @@ export const remove = mutation({
   handler: async (ctx, { ticketTypeId }) => {
     const { event } = await requireOwnedTicketType(ctx, ticketTypeId);
     await ctx.db.delete(ticketTypeId);
-    await emitTicketTypeEvent(
-      ctx,
-      event.organizerId,
-      "ticket_type.deleted",
-      JSON.stringify({ id: ticketTypeId, eventId: event._id }),
-    );
+    try {
+      await emitTicketTypeEvent(
+        ctx,
+        event.organizerId,
+        "ticket_type.deleted",
+        JSON.stringify({ id: ticketTypeId, eventId: event._id }),
+      );
+    } catch {
+      // Best-effort: webhook emission must not fail the ticket-type mutation (spec §5).
+    }
     return null;
   },
 });

@@ -62,6 +62,46 @@ test("create validates https + subscribedEvents subset, stores + returns the sec
   expect(row!.active).toBe(true);
 });
 
+test("create rejects http:// and private/internal https hosts, accepts a normal public https url", async () => {
+  const t = convexTest(schema, modules);
+  const { as } = await asOrganizer(t, "ada@example.com");
+  await as.mutation(api.organizers.ensureOrganizer, {});
+
+  await expect(
+    as.mutation(api.webhooks.create, {
+      url: "http://example.com/hook",
+      subscribedEvents: ["ticket_type.created"],
+    }),
+  ).rejects.toThrow();
+
+  await expect(
+    as.mutation(api.webhooks.create, {
+      url: "https://localhost/hook",
+      subscribedEvents: ["ticket_type.created"],
+    }),
+  ).rejects.toThrow();
+
+  await expect(
+    as.mutation(api.webhooks.create, {
+      url: "https://169.254.169.254/hook",
+      subscribedEvents: ["ticket_type.created"],
+    }),
+  ).rejects.toThrow();
+
+  await expect(
+    as.mutation(api.webhooks.create, {
+      url: "https://10.0.0.1/hook",
+      subscribedEvents: ["ticket_type.created"],
+    }),
+  ).rejects.toThrow();
+
+  const { id } = await as.mutation(api.webhooks.create, {
+    url: "https://example.com/hook",
+    subscribedEvents: ["ticket_type.created"],
+  });
+  expect(id).toBeDefined();
+});
+
 test("create rejects unauthenticated callers", async () => {
   const t = convexTest(schema, modules);
   await expect(
@@ -120,6 +160,38 @@ test("remove is owner-only", async () => {
 
   const after = await t.run((ctx) => ctx.db.get(id));
   expect(after).toBeNull();
+});
+
+test("remove cascade-deletes the webhook's webhookDeliveries rows", async () => {
+  const t = convexTest(schema, modules);
+  const { as } = await asOrganizer(t, "ada@example.com");
+  const organizerId = await as.mutation(api.organizers.ensureOrganizer, {});
+
+  const { id: webhookId } = await as.mutation(api.webhooks.create, {
+    url: "https://example.com/hook",
+    subscribedEvents: ["ticket_type.created"],
+  });
+
+  await t.run((ctx) =>
+    ctx.db.insert("webhookDeliveries", {
+      webhookId,
+      organizerId,
+      eventType: "ticket_type.created",
+      payload: JSON.stringify({ id: "tt_123" }),
+      status: "pending",
+      attempts: 0,
+    }),
+  );
+
+  await as.mutation(api.webhooks.remove, { webhookId });
+
+  const remaining = await t.run((ctx) =>
+    ctx.db
+      .query("webhookDeliveries")
+      .withIndex("by_webhook", (q) => q.eq("webhookId", webhookId))
+      .collect(),
+  );
+  expect(remaining).toHaveLength(0);
 });
 
 test("hmacSha256Hex matches a known HMAC-SHA256 test vector", async () => {

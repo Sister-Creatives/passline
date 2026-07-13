@@ -34,6 +34,10 @@ export const deliver = internalAction({
           "X-Passline-Signature": signature,
         },
         body: delivery.payload,
+        // Don't follow redirects: a 3xx response is treated as a failed
+        // (retriable) attempt rather than transparently following an
+        // https -> internal-http redirect (SSRF bypass).
+        redirect: "manual",
       });
       responseStatus = response.status;
       ok = response.status >= 200 && response.status < 300;

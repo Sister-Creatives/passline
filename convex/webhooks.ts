@@ -51,6 +51,35 @@ function generateSecret(): string {
   return `${SECRET_PREFIX}${hex}`;
 }
 
+/**
+ * Reject webhook URLs whose hostname is a known-private/internal target
+ * (localhost, loopback, link-local incl. cloud metadata, RFC1918 ranges).
+ * Residual: a public hostname that resolves to a private IP (DNS
+ * rebinding) is not caught here — a fetch-time IP re-check is a future
+ * hardening step.
+ */
+function isDisallowedWebhookHost(rawUrl: string): boolean {
+  let host: string;
+  try {
+    host = new URL(rawUrl).hostname.toLowerCase().replace(/^\[|\]$/g, "");
+  } catch {
+    return true;
+  }
+  if (host === "localhost" || host.endsWith(".localhost") || host.endsWith(".local") || host.endsWith(".internal")) {
+    return true;
+  }
+  if (host === "::1") return true; // IPv6 loopback
+  const m = host.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
+  if (m) {
+    const a = Number(m[1]), b = Number(m[2]);
+    if (a === 0 || a === 127 || a === 10) return true; // this-host / loopback / private
+    if (a === 192 && b === 168) return true; // private
+    if (a === 172 && b >= 16 && b <= 31) return true; // private
+    if (a === 169 && b === 254) return true; // link-local (incl. cloud metadata)
+  }
+  return false;
+}
+
 /** Load a webhooks row and enforce that it belongs to the authenticated organizer. */
 async function requireOwnedWebhook(
   ctx: QueryCtx | MutationCtx,
@@ -68,8 +97,8 @@ export const create = mutation({
     const organizerId = await getAuthOrganizerId(ctx);
     if (!organizerId) throw new Error("Not authenticated");
 
-    if (!url.startsWith("https://")) {
-      throw new Error("url must start with https://");
+    if (!url.startsWith("https://") || isDisallowedWebhookHost(url)) {
+      throw new Error("Webhook URL must be a public https:// endpoint");
     }
     if (subscribedEvents.length === 0) {
       throw new Error("subscribedEvents must not be empty");
@@ -122,6 +151,11 @@ export const remove = mutation({
     const organizerId = await getAuthOrganizerId(ctx);
     if (!organizerId) throw new Error("Not authenticated");
     await requireOwnedWebhook(ctx, organizerId, webhookId);
+    const deliveries = await ctx.db
+      .query("webhookDeliveries")
+      .withIndex("by_webhook", (q) => q.eq("webhookId", webhookId))
+      .collect();
+    for (const d of deliveries) await ctx.db.delete(d._id);
     await ctx.db.delete(webhookId);
     return null;
   },
