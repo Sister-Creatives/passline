@@ -28,7 +28,7 @@ function OverviewCards() {
         <CardHeader>
           <CardDescription>Your events</CardDescription>
           <CardTitle className="text-3xl tabular-nums">
-            {isPending ? <Skeleton className="h-9 w-12" /> : events!.length}
+            {isPending ? <Skeleton className="h-9 w-12" /> : (events?.length ?? 0)}
           </CardTitle>
         </CardHeader>
         <CardContent>
