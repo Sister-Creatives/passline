@@ -123,3 +123,24 @@ test("create rejects a fractional price and a fractional capacity", async () => 
     as.mutation(api.ticketTypes.create, { eventId, name: "Frac cap", kind: "paid", priceCents: 100, capacity: 5.5 }),
   ).rejects.toThrow();
 });
+
+test("listForEvent returns the owner's ticket types sorted by sortOrder", async () => {
+  const t = convexTest(schema, modules);
+  const { as } = await asOrganizer(t, "ada@example.com");
+  await as.mutation(api.organizers.ensureOrganizer, {});
+  const eventId = await makeEvent(as);
+  await as.mutation(api.ticketTypes.create, { eventId, name: "A", kind: "paid", priceCents: 100 });
+  await as.mutation(api.ticketTypes.create, { eventId, name: "B", kind: "paid", priceCents: 200 });
+  const list = await as.query(api.ticketTypes.listForEvent, { eventId });
+  expect(list.map((t) => t.name)).toEqual(["A", "B"]);
+});
+
+test("listForEvent rejects a non-owner", async () => {
+  const t = convexTest(schema, modules);
+  const { as: asAda } = await asOrganizer(t, "ada@example.com");
+  await asAda.mutation(api.organizers.ensureOrganizer, {});
+  const { as: asBob } = await asOrganizer(t, "bob@example.com");
+  await asBob.mutation(api.organizers.ensureOrganizer, {});
+  const eventId = await makeEvent(asAda);
+  await expect(asBob.query(api.ticketTypes.listForEvent, { eventId })).rejects.toThrow();
+});

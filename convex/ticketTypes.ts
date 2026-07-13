@@ -97,3 +97,15 @@ export const create = mutation({
     });
   },
 });
+
+export const listForEvent = query({
+  args: { eventId: v.id("events") },
+  handler: async (ctx, { eventId }) => {
+    await requireOwnedEvent(ctx, eventId);
+    const types = await ctx.db
+      .query("ticketTypes")
+      .withIndex("by_event", (q) => q.eq("eventId", eventId))
+      .collect();
+    return types.sort((a, b) => a.sortOrder - b.sortOrder);
+  },
+});
