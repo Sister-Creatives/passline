@@ -173,6 +173,13 @@ ticketTypes: defineTable({
   - **Delete:** shadcn `AlertDialog` confirmation.
   - **Reorder:** up/down buttons updating `sortOrder` (drag-and-drop deferred).
 
+> **F1 scope note (post-review, 2026-07-13):** the **visibility** control (form toggle + list
+> column) is deferred to **F4 (access codes)** — a "hidden" ticket type is only meaningful once
+> access codes exist to reveal it, so all F1 types are `"visible"`. The event page uses two tabs
+> (**Details / Ticket types**), with attendees folded into Details. `ticketTypes.update` uses
+> **full-replace semantics** (the caller sends the complete desired state; omitted optionals are
+> cleared) — the F1 form therefore sends every field, including min/max per order.
+
 ---
 
 ## 7. Convex API surface — `convex/ticketTypes.ts`
