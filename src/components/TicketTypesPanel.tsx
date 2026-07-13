@@ -62,6 +62,8 @@ const ticketTypeFormSchema = z
     // capacity field -- avoids the react-hook-form/zod coerce generic mismatch.
     price: z.string(),
     capacity: z.string(),
+    minPerOrder: z.string(),
+    maxPerOrder: z.string(),
     badge: z.string(),
     visibility: z.enum(["visible", "hidden"]),
   })
@@ -73,6 +75,14 @@ const ticketTypeFormSchema = z
       return v.price.trim() === "" || (Number.isFinite(n) && n >= 0);
     },
     { message: "Paid tickets need a price greater than 0", path: ["price"] },
+  )
+  .refine(
+    (v) => {
+      const min = v.minPerOrder.trim(), max = v.maxPerOrder.trim();
+      if (min === "" || max === "") return true;
+      return Number(min) <= Number(max);
+    },
+    { message: "Min per order cannot exceed max per order", path: ["maxPerOrder"] },
   );
 
 type TicketTypeFormValues = z.infer<typeof ticketTypeFormSchema>;
@@ -108,16 +118,29 @@ function TicketTypeEditor({
           kind: ticketType.kind,
           price: (ticketType.priceCents / 100).toFixed(2),
           capacity: ticketType.capacity != null ? String(ticketType.capacity) : "",
+          minPerOrder: ticketType.minPerOrder != null ? String(ticketType.minPerOrder) : "",
+          maxPerOrder: ticketType.maxPerOrder != null ? String(ticketType.maxPerOrder) : "",
           badge: ticketType.badge ?? "",
           visibility: ticketType.visibility,
         }
-      : { name: "", kind: "paid", price: "", capacity: "", badge: "", visibility: "visible" },
+      : {
+          name: "",
+          kind: "paid",
+          price: "",
+          capacity: "",
+          minPerOrder: "",
+          maxPerOrder: "",
+          badge: "",
+          visibility: "visible",
+        },
   });
   const kind = form.watch("kind");
 
   async function onSubmit(values: TicketTypeFormValues) {
     const priceCents = values.kind === "free" ? 0 : toCents(values.price);
     const capacity = values.capacity.trim() === "" ? undefined : Number(values.capacity);
+    const minPerOrder = values.minPerOrder.trim() === "" ? undefined : Number(values.minPerOrder);
+    const maxPerOrder = values.maxPerOrder.trim() === "" ? undefined : Number(values.maxPerOrder);
     const badge = values.badge.trim() === "" ? undefined : values.badge.trim();
     try {
       if (ticketType) {
@@ -127,6 +150,8 @@ function TicketTypeEditor({
           kind: values.kind,
           priceCents,
           capacity,
+          minPerOrder,
+          maxPerOrder,
           badge,
           visibility: values.visibility,
         });
@@ -138,6 +163,8 @@ function TicketTypeEditor({
           kind: values.kind,
           priceCents,
           capacity,
+          minPerOrder,
+          maxPerOrder,
           badge,
           visibility: values.visibility,
         });
@@ -210,6 +237,32 @@ function TicketTypeEditor({
               <FormLabel>Capacity (optional)</FormLabel>
               <FormControl>
                 <Input type="number" min={1} placeholder="Uncapped" {...field} />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+        <FormField
+          control={form.control}
+          name="minPerOrder"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Min per order</FormLabel>
+              <FormControl>
+                <Input type="number" min={1} placeholder="No minimum" {...field} />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+        <FormField
+          control={form.control}
+          name="maxPerOrder"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Max per order</FormLabel>
+              <FormControl>
+                <Input type="number" min={1} placeholder="No maximum" {...field} />
               </FormControl>
               <FormMessage />
             </FormItem>
