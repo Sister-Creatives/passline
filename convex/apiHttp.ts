@@ -131,19 +131,18 @@ export const listEvents = httpAction(async (ctx, request) => {
 });
 
 const TICKET_TYPES_PATH = /^\/v1\/events\/([^/]+)\/ticket-types\/?$/;
+const QUESTIONS_PATH = /^\/v1\/events\/([^/]+)\/questions\/?$/;
 
 /** GET /v1/events/{eventId}/ticket-types — that event's ticket types, if it's the caller's. */
-export const listTicketTypes = httpAction(async (ctx, request) => {
-  const organizerId = await authenticate(ctx, request);
-  if (!organizerId) return unauthorized();
-
-  const match = new URL(request.url).pathname.match(TICKET_TYPES_PATH);
-  if (!match) return notFound();
-
+async function handleListTicketTypes(
+  ctx: ActionCtx,
+  organizerId: Id<"organizers">,
+  eventId: string,
+): Promise<Response> {
   try {
     const ticketTypes = await ctx.runQuery(internal.apiHttp.ticketTypesForOrganizerEvent, {
       organizerId,
-      eventId: match[1] as Id<"events">,
+      eventId: eventId as Id<"events">,
     });
     if (ticketTypes === null) return notFound();
     return jsonResponse({ data: ticketTypes });
@@ -152,6 +151,54 @@ export const listTicketTypes = httpAction(async (ctx, request) => {
     // well-formed id that doesn't resolve to the caller's event.
     return notFound();
   }
+}
+
+/**
+ * GET /v1/events/{eventId}/questions — that event's active checkout
+ * questions (F5), if it's the caller's. Ownership is checked first (via the
+ * same `eventOrganizerId` lookup `createOrder` uses below) so a foreign or
+ * missing event 404s before we ever read questions; the data itself reuses
+ * the public `checkoutQuestions.listForEvent` query, so this endpoint's
+ * shape always matches what a checkout would render.
+ */
+async function handleListQuestions(
+  ctx: ActionCtx,
+  organizerId: Id<"organizers">,
+  eventId: string,
+): Promise<Response> {
+  try {
+    const typedEventId = eventId as Id<"events">;
+    const ownerId = await ctx.runQuery(internal.apiHttp.eventOrganizerId, { eventId: typedEventId });
+    if (ownerId === null || ownerId !== organizerId) return notFound();
+    const questions = await ctx.runQuery(api.checkoutQuestions.listForEvent, { eventId: typedEventId });
+    return jsonResponse({ data: questions });
+  } catch {
+    // Malformed id segment (not a valid Convex id at all) — same 404 as a
+    // well-formed id that doesn't resolve to the caller's event.
+    return notFound();
+  }
+}
+
+/**
+ * GET /v1/events/{eventId}/ticket-types and GET /v1/events/{eventId}/questions
+ * both live under this single httpAction: Convex's httpRouter allows only one
+ * handler per (method, pathPrefix), and both endpoints share the
+ * "/v1/events/" prefix, so they dispatch here by matching the URL's suffix
+ * rather than each registering their own route in convex/http.ts.
+ */
+export const listEventSubResource = httpAction(async (ctx, request) => {
+  const organizerId = await authenticate(ctx, request);
+  if (!organizerId) return unauthorized();
+
+  const pathname = new URL(request.url).pathname;
+
+  const ticketTypesMatch = pathname.match(TICKET_TYPES_PATH);
+  if (ticketTypesMatch) return handleListTicketTypes(ctx, organizerId, ticketTypesMatch[1]);
+
+  const questionsMatch = pathname.match(QUESTIONS_PATH);
+  if (questionsMatch) return handleListQuestions(ctx, organizerId, questionsMatch[1]);
+
+  return notFound();
 });
 
 type CreateOrderBody = {
@@ -160,16 +207,20 @@ type CreateOrderBody = {
   buyerName?: unknown;
   buyerEmail?: unknown;
   promoCode?: unknown;
+  answers?: unknown;
 };
 
 /**
  * POST /v1/orders — headless checkout. Bearer-authenticated; the key's
  * organizer must own `eventId` (404 otherwise — same "not found" a foreign
- * or missing event gets from listTicketTypes, so a bad guess never reveals
- * which case it was). Delegates to the same public `orders.createOrder`
- * mutation the buyer-facing app would call, so HTTP callers get identical
- * validation/fee/capacity behavior; any Error it throws (sold out, bad
- * quantity, unpublished event, ...) is mapped to a 400.
+ * or missing event gets from listEventSubResource, so a bad guess never
+ * reveals which case it was). Delegates to the same public
+ * `orders.createOrder` mutation the buyer-facing app would call, so HTTP
+ * callers get identical validation/fee/capacity behavior; any Error it
+ * throws (sold out, bad quantity, unpublished event, a missing required
+ * checkout-question answer, ...) is mapped to a 400. An optional `answers`
+ * array (F5) is passed through unvalidated here — `orders.createOrder`
+ * itself validates it via `validateAndSnapshotAnswers`.
  */
 export const createOrder = httpAction(async (ctx, request) => {
   const organizerId = await authenticate(ctx, request);
@@ -182,13 +233,16 @@ export const createOrder = httpAction(async (ctx, request) => {
     return badRequest("Invalid JSON body");
   }
 
-  const { eventId, items, buyerName, buyerEmail, promoCode } = body;
+  const { eventId, items, buyerName, buyerEmail, promoCode, answers } = body;
   if (typeof eventId !== "string") return badRequest("eventId is required");
   if (typeof buyerName !== "string") return badRequest("buyerName is required");
   if (typeof buyerEmail !== "string") return badRequest("buyerEmail is required");
   if (!Array.isArray(items)) return badRequest("items must be an array");
   if (promoCode !== undefined && typeof promoCode !== "string") {
     return badRequest("promoCode must be a string");
+  }
+  if (answers !== undefined && !Array.isArray(answers)) {
+    return badRequest("answers must be an array");
   }
 
   let ownerId: Id<"organizers"> | null;
@@ -210,6 +264,7 @@ export const createOrder = httpAction(async (ctx, request) => {
       buyerName,
       buyerEmail,
       promoCode: promoCode as string | undefined,
+      answers: answers as { questionId: Id<"checkoutQuestions">; value: string }[] | undefined,
     });
     return jsonResponse({ data: result }, 201);
   } catch (err) {

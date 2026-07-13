@@ -10,6 +10,7 @@ import type { Doc, Id } from "./_generated/dataModel";
 import { getAuthOrganizerId } from "./auth";
 import { computeOrderAmounts, type OrderLineItem } from "./lib/fees";
 import { resolveAndComputeDiscount } from "./promoCodes";
+import { validateAndSnapshotAnswers } from "./checkoutQuestions";
 
 /** 16 random bytes -> 32 lowercase hex chars, prefixed to form an opaque token/code. */
 function randomToken(prefix: string): string {
@@ -72,6 +73,11 @@ const orderItemInput = v.object({
   quantity: v.number(),
 });
 
+const answerInput = v.object({
+  questionId: v.id("checkoutQuestions"),
+  value: v.string(),
+});
+
 /**
  * Public checkout mutation -- no account required (buyers have no account,
  * mirroring the public RSVP flow in convex/rsvps.ts). Validates every item
@@ -79,7 +85,9 @@ const orderItemInput = v.object({
  * capacity by incrementing each type's `sold`, computes totals/fees, and
  * inserts the order + its items. A $0 total (an all-free cart) is fulfilled
  * inline -- tickets are issued and the order is marked `paid` in the same
- * mutation, so a free "checkout" needs no payment step at all.
+ * mutation, so a free "checkout" needs no payment step at all. Optional
+ * `answers` to the event's checkout questions (F5) are validated via
+ * `validateAndSnapshotAnswers` and stored as `orderResponses` rows.
  */
 export const createOrder = mutation({
   args: {
@@ -88,11 +96,18 @@ export const createOrder = mutation({
     buyerName: v.string(),
     buyerEmail: v.string(),
     promoCode: v.optional(v.string()),
+    answers: v.optional(v.array(answerInput)),
   },
-  handler: async (ctx, { eventId, items, buyerName, buyerEmail, promoCode }) => {
+  handler: async (ctx, { eventId, items, buyerName, buyerEmail, promoCode, answers }) => {
     const event = await ctx.db.get(eventId);
     if (!event || event.status !== "published") throw new Error("Event not found");
     if (items.length === 0) throw new Error("Cart is empty");
+
+    // Validate before any capacity/promo side effects, so a rejected answer
+    // (missing required question, invalid select value) leaves no partial
+    // state behind -- mirrors how min/maxPerOrder checks below run before
+    // any `sold` counters are patched.
+    const answerSnapshots = await validateAndSnapshotAnswers(ctx, eventId, answers ?? []);
 
     const ticketTypes = await ctx.db
       .query("ticketTypes")
@@ -190,6 +205,16 @@ export const createOrder = mutation({
         ticketTypeId: item.ticketTypeId,
         quantity: item.quantity,
         unitPriceCents: item.unitPriceCents,
+      });
+    }
+
+    for (const snapshot of answerSnapshots) {
+      await ctx.db.insert("orderResponses", {
+        orderId,
+        eventId,
+        questionId: snapshot.questionId,
+        label: snapshot.label,
+        value: snapshot.value,
       });
     }
 
@@ -295,7 +320,9 @@ export const cancelOrder = mutation({
  * Mirrors rsvps.getRsvpByToken: the token is an unguessable secret minted by
  * `createOrder` and handed only to the buyer who owns it, so an
  * unauthenticated lookup-by-token is the intended design. Returns null (not
- * a throw) when no order has that token.
+ * a throw) when no order has that token. Also returns the order's
+ * `orderResponses` (F5 checkout question answers), so a confirmation page
+ * can show what the buyer submitted.
  */
 export const getOrder = query({
   args: { token: v.string() },
@@ -313,7 +340,11 @@ export const getOrder = query({
       .query("tickets")
       .withIndex("by_order", (q) => q.eq("orderId", order._id))
       .collect();
-    return { order, items, tickets };
+    const orderResponses = await ctx.db
+      .query("orderResponses")
+      .withIndex("by_order", (q) => q.eq("orderId", order._id))
+      .collect();
+    return { order, items, tickets, orderResponses };
   },
 });
 

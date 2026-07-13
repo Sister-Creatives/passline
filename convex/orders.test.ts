@@ -614,6 +614,7 @@ test("getOrder returns the order with its items and tickets by token", async () 
   expect(found?.order._id).toBe(result.orderId);
   expect(found?.items).toHaveLength(1);
   expect(found?.tickets).toHaveLength(2);
+  expect(found?.orderResponses).toEqual([]); // no checkout questions on this event
 
   const notFound = await t.query(api.orders.getOrder, { token: "ord_doesnotexist" });
   expect(notFound).toBeNull();
@@ -712,6 +713,86 @@ test("createOrder with a fixed promo code larger than the subtotal clamps to $0 
 
   const promoCode = await t.run((ctx) => ctx.db.get(promoCodeId));
   expect(promoCode?.timesRedeemed).toBe(1);
+});
+
+// --- checkout questions / answers (F5.3) -------------------------------
+
+test("createOrder rejects a cart missing an answer to a required question", async () => {
+  const t = convexTest(schema, modules);
+  const { as } = await asOrganizer(t, "ada@example.com");
+  await as.mutation(api.organizers.ensureOrganizer, {});
+  const eventId = await makePublishedEvent(as, 100);
+  const ticketTypeId = await makeFreeTicketType(as, eventId);
+  await as.mutation(api.checkoutQuestions.create, {
+    eventId,
+    label: "Company name",
+    kind: "text",
+    required: true,
+  });
+
+  await expect(
+    t.mutation(api.orders.createOrder, {
+      eventId,
+      items: [{ ticketTypeId, quantity: 1 }],
+      buyerName: "Buyer",
+      buyerEmail: "buyer@example.com",
+    }),
+  ).rejects.toThrow();
+
+  const ticketType = await t.run((ctx) => ctx.db.get(ticketTypeId));
+  expect(ticketType?.sold).toBe(0); // rejected before any capacity was reserved
+});
+
+test("createOrder with valid answers stores orderResponses and getOrder returns them", async () => {
+  const t = convexTest(schema, modules);
+  const { as } = await asOrganizer(t, "ada@example.com");
+  await as.mutation(api.organizers.ensureOrganizer, {});
+  const eventId = await makePublishedEvent(as, 100);
+  const ticketTypeId = await makeFreeTicketType(as, eventId);
+  const companyQuestionId = await as.mutation(api.checkoutQuestions.create, {
+    eventId,
+    label: "Company name",
+    kind: "text",
+    required: true,
+  });
+  const dietaryQuestionId = await as.mutation(api.checkoutQuestions.create, {
+    eventId,
+    label: "Dietary needs",
+    kind: "select",
+    options: ["None", "Vegetarian", "Vegan"],
+    required: false,
+  });
+
+  const result = await t.mutation(api.orders.createOrder, {
+    eventId,
+    items: [{ ticketTypeId, quantity: 1 }],
+    buyerName: "Buyer",
+    buyerEmail: "buyer@example.com",
+    answers: [
+      { questionId: companyQuestionId, value: "Acme Inc" },
+      { questionId: dietaryQuestionId, value: "Vegan" },
+    ],
+  });
+
+  const responses = await t.run((ctx) =>
+    ctx.db.query("orderResponses").withIndex("by_order", (q) => q.eq("orderId", result.orderId)).collect(),
+  );
+  expect(responses).toHaveLength(2);
+  expect(responses).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({ questionId: companyQuestionId, label: "Company name", value: "Acme Inc" }),
+      expect.objectContaining({ questionId: dietaryQuestionId, label: "Dietary needs", value: "Vegan" }),
+    ]),
+  );
+
+  const found = await t.query(api.orders.getOrder, { token: result.token });
+  expect(found?.orderResponses).toHaveLength(2);
+  expect(found?.orderResponses).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({ questionId: companyQuestionId, label: "Company name", value: "Acme Inc" }),
+      expect.objectContaining({ questionId: dietaryQuestionId, label: "Dietary needs", value: "Vegan" }),
+    ]),
+  );
 });
 
 test("listOrdersForEvent returns the event's orders newest first, owner-only", async () => {
