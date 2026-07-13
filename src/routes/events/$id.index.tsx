@@ -8,11 +8,13 @@ import { toast } from "sonner";
 
 import { api } from "../../../convex/_generated/api";
 import type { Id } from "../../../convex/_generated/dataModel";
-import { AuthGuard } from "@/components/AuthGuard";
+import { DashboardLayout } from "@/components/DashboardLayout";
 import { AttendeeTable } from "@/components/AttendeeTable";
 import { EventForm } from "@/components/EventForm";
+import { TicketTypesPanel } from "@/components/TicketTypesPanel";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Dialog,
   DialogContent,
@@ -40,13 +42,13 @@ function EventManagePage() {
   const eventId = id as Id<"events">;
 
   return (
-    <AuthGuard>
+    <DashboardLayout>
       <Suspense
         fallback={<div className="p-8 text-sm text-muted-foreground">Loading event…</div>}
       >
         <EventManageContent eventId={eventId} />
       </Suspense>
-    </AuthGuard>
+    </DashboardLayout>
   );
 }
 
@@ -148,105 +150,116 @@ function EventManageContent({ eventId }: { eventId: Id<"events"> }) {
 
   return (
     <div className="mx-auto max-w-4xl p-4 sm:p-8">
-      <div className="flex flex-wrap items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-semibold">{event.title}</h1>
-          <Badge variant={isPublished ? "default" : "secondary"} className="mt-2">
-            {event.status}
-          </Badge>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <Button asChild variant="outline">
-            <Link to="/events/$id/door" params={{ id: eventId }}>
-              <ScanLine /> Door check-in
-            </Link>
-          </Button>
-          <Button variant="outline" onClick={handleExportCsv}>
-            <Download /> Export CSV
-          </Button>
-          <Dialog open={editOpen} onOpenChange={setEditOpen}>
-            <DialogTrigger asChild>
-              <Button variant="outline">
-                <Pencil /> Edit
+      <Tabs defaultValue="details">
+        <TabsList>
+          <TabsTrigger value="details">Details</TabsTrigger>
+          <TabsTrigger value="tickets">Ticket types</TabsTrigger>
+        </TabsList>
+        <TabsContent value="details">
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <div>
+              <h1 className="text-2xl font-semibold">{event.title}</h1>
+              <Badge variant={isPublished ? "default" : "secondary"} className="mt-2">
+                {event.status}
+              </Badge>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <Button asChild variant="outline">
+                <Link to="/events/$id/door" params={{ id: eventId }}>
+                  <ScanLine /> Door check-in
+                </Link>
               </Button>
-            </DialogTrigger>
-            <DialogContent className="sm:max-w-lg">
-              <DialogHeader>
-                <DialogTitle>Edit event</DialogTitle>
-                <DialogDescription>Update the details guests will see.</DialogDescription>
-              </DialogHeader>
-              <EventForm event={event} onDone={() => setEditOpen(false)} />
-            </DialogContent>
-          </Dialog>
-          <AlertDialog>
-            <AlertDialogTrigger asChild>
-              <Button variant="destructive">
-                <Trash2 /> Delete event
+              <Button variant="outline" onClick={handleExportCsv}>
+                <Download /> Export CSV
               </Button>
-            </AlertDialogTrigger>
-            <AlertDialogContent>
-              <AlertDialogHeader>
-                <AlertDialogTitle>Delete this event?</AlertDialogTitle>
-                <AlertDialogDescription>
-                  This permanently deletes the event and all RSVPs. This cannot be undone.
-                </AlertDialogDescription>
-              </AlertDialogHeader>
-              <AlertDialogFooter>
-                <AlertDialogCancel>Cancel</AlertDialogCancel>
-                <AlertDialogAction variant="destructive" onClick={handleDelete}>
-                  Delete
-                </AlertDialogAction>
-              </AlertDialogFooter>
-            </AlertDialogContent>
-          </AlertDialog>
-          <Button onClick={handleTogglePublish} variant={isPublished ? "outline" : "default"}>
-            {isPublished ? "Unpublish" : "Publish"}
-          </Button>
-        </div>
-      </div>
+              <Dialog open={editOpen} onOpenChange={setEditOpen}>
+                <DialogTrigger asChild>
+                  <Button variant="outline">
+                    <Pencil /> Edit
+                  </Button>
+                </DialogTrigger>
+                <DialogContent className="sm:max-w-lg">
+                  <DialogHeader>
+                    <DialogTitle>Edit event</DialogTitle>
+                    <DialogDescription>Update the details guests will see.</DialogDescription>
+                  </DialogHeader>
+                  <EventForm event={event} onDone={() => setEditOpen(false)} />
+                </DialogContent>
+              </Dialog>
+              <AlertDialog>
+                <AlertDialogTrigger asChild>
+                  <Button variant="destructive">
+                    <Trash2 /> Delete event
+                  </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>Delete this event?</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      This permanently deletes the event and all RSVPs. This cannot be undone.
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>Cancel</AlertDialogCancel>
+                    <AlertDialogAction variant="destructive" onClick={handleDelete}>
+                      Delete
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
+              <Button onClick={handleTogglePublish} variant={isPublished ? "outline" : "default"}>
+                {isPublished ? "Unpublish" : "Publish"}
+              </Button>
+            </div>
+          </div>
 
-      <div className="mt-6">
-        <div className="flex items-center justify-between text-sm">
-          <span className="font-medium">Capacity</span>
-          <span className="text-muted-foreground">
-            {seatsTaken} / {event.capacity} seats taken
-          </span>
-        </div>
-        <div className="mt-2 h-2 w-full overflow-hidden rounded-full bg-muted">
-          <div
-            className="h-full rounded-full bg-primary transition-all"
-            style={{ width: `${capacityPercent}%` }}
-          />
-        </div>
-      </div>
+          <div className="mt-6">
+            <div className="flex items-center justify-between text-sm">
+              <span className="font-medium">Capacity</span>
+              <span className="text-muted-foreground">
+                {seatsTaken} / {event.capacity} seats taken
+              </span>
+            </div>
+            <div className="mt-2 h-2 w-full overflow-hidden rounded-full bg-muted">
+              <div
+                className="h-full rounded-full bg-primary transition-all"
+                style={{ width: `${capacityPercent}%` }}
+              />
+            </div>
+          </div>
 
-      <div className="mt-8 grid gap-8">
-        <AttendeeTable
-          title={`Confirmed (${confirmed.length})`}
-          attendees={confirmed}
-          emptyMessage="No confirmed attendees yet."
-          renderAction={(attendee) => (
-            <Button variant="outline" size="sm" onClick={() => handleCancel(attendee.token)}>
-              Cancel
-            </Button>
-          )}
-        />
-        <AttendeeTable
-          title={`Pending claim (${pendingClaim.length})`}
-          attendees={pendingClaim}
-          emptyMessage="No one is currently claiming a seat."
-        />
-        <AttendeeTable
-          title={`Waitlist (${waitlisted.length})`}
-          attendees={waitlisted}
-          emptyMessage="The waitlist is empty."
-        />
-        <AttendeeTable
-          title={`Checked in (${checkedIn.length})`}
-          attendees={checkedIn}
-          emptyMessage="No one has checked in yet."
-        />
-      </div>
+          <div className="mt-8 grid gap-8">
+            <AttendeeTable
+              title={`Confirmed (${confirmed.length})`}
+              attendees={confirmed}
+              emptyMessage="No confirmed attendees yet."
+              renderAction={(attendee) => (
+                <Button variant="outline" size="sm" onClick={() => handleCancel(attendee.token)}>
+                  Cancel
+                </Button>
+              )}
+            />
+            <AttendeeTable
+              title={`Pending claim (${pendingClaim.length})`}
+              attendees={pendingClaim}
+              emptyMessage="No one is currently claiming a seat."
+            />
+            <AttendeeTable
+              title={`Waitlist (${waitlisted.length})`}
+              attendees={waitlisted}
+              emptyMessage="The waitlist is empty."
+            />
+            <AttendeeTable
+              title={`Checked in (${checkedIn.length})`}
+              attendees={checkedIn}
+              emptyMessage="No one has checked in yet."
+            />
+          </div>
+        </TabsContent>
+        <TabsContent value="tickets">
+          <TicketTypesPanel eventId={event._id} currency={event.currency ?? "USD"} />
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }
