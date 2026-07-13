@@ -141,8 +141,12 @@ export const reorder = mutation({
  * Convex function) shared by the checkout path (convex/orders.ts
  * createOrder, F5.3), mirroring promoCodes.resolveAndComputeDiscount.
  *
- * - Every active `required` question must have a non-empty (post-trim)
- *   answer among `answers`.
+ * - Answers are de-duped by questionId first (last value wins), so a client
+ *   sending two answers for the same question yields one snapshot row.
+ * - Every active `required` question must be satisfied: for a `checkbox`
+ *   question the value must be exactly "true" (checked); for any other kind
+ *   the value must be non-empty after trim.
+ * - Every `checkbox` answer's value must be exactly "true" or "false".
  * - Every answer must reference a question that belongs to this event and is
  *   active -- an answer to an unknown, foreign, or inactive question throws.
  * - For a `select` question, the answered value must be one of its options.
@@ -161,21 +165,31 @@ export async function validateAndSnapshotAnswers(
   const activeQuestions = questions.filter((q) => q.active);
   const activeById = new Map(activeQuestions.map((q) => [q._id, q]));
 
+  // De-dupe by questionId -- last value wins -- so a client sending two
+  // answers for the same question yields one snapshot row.
   const valueByQuestionId = new Map(answers.map((a) => [a.questionId, a.value]));
+
   for (const question of activeQuestions) {
-    if (!question.required) continue;
     const value = valueByQuestionId.get(question._id);
-    if (value === undefined || value.trim().length === 0) {
+    if (question.kind === "checkbox" && value !== undefined && value !== "true" && value !== "false") {
+      throw new Error(`Invalid answer for "${question.label}"`);
+    }
+    if (!question.required) continue;
+    if (question.kind === "checkbox") {
+      if (value !== "true") {
+        throw new Error(`"${question.label}" must be checked`);
+      }
+    } else if (value === undefined || value.trim().length === 0) {
       throw new Error(`"${question.label}" is required`);
     }
   }
 
-  return answers.map((answer) => {
-    const question = activeById.get(answer.questionId);
+  return Array.from(valueByQuestionId.entries()).map(([questionId, value]) => {
+    const question = activeById.get(questionId);
     if (!question) throw new Error("Answer given for an unknown question");
-    if (question.kind === "select" && !(question.options ?? []).includes(answer.value)) {
-      throw new Error(`"${answer.value}" is not a valid option for "${question.label}"`);
+    if (question.kind === "select" && !(question.options ?? []).includes(value)) {
+      throw new Error(`"${value}" is not a valid option for "${question.label}"`);
     }
-    return { questionId: question._id, label: question.label, value: answer.value };
+    return { questionId: question._id, label: question.label, value };
   });
 }

@@ -371,3 +371,66 @@ test("validateAndSnapshotAnswers returns snapshot rows for valid answers", async
   );
   expect(snapshots).toHaveLength(2);
 });
+
+test("validateAndSnapshotAnswers requires a required checkbox to be checked", async () => {
+  const t = convexTest(schema, modules);
+  const { as } = await asOrganizer(t, "ada@example.com");
+  await as.mutation(api.organizers.ensureOrganizer, {});
+  const eventId = await makeEvent(as);
+  const qId = await as.mutation(api.checkoutQuestions.create, {
+    eventId,
+    label: "I agree to the waiver",
+    kind: "checkbox",
+    required: true,
+  });
+
+  // Missing answer.
+  await expect(t.run((ctx) => validateAndSnapshotAnswers(ctx, eventId, []))).rejects.toThrow();
+  // Unchecked.
+  await expect(
+    t.run((ctx) => validateAndSnapshotAnswers(ctx, eventId, [{ questionId: qId, value: "false" }])),
+  ).rejects.toThrow();
+  // Checked passes and snapshots.
+  const snapshots = await t.run((ctx) =>
+    validateAndSnapshotAnswers(ctx, eventId, [{ questionId: qId, value: "true" }]),
+  );
+  expect(snapshots).toEqual([{ questionId: qId, label: "I agree to the waiver", value: "true" }]);
+});
+
+test("validateAndSnapshotAnswers rejects a non-boolean checkbox value", async () => {
+  const t = convexTest(schema, modules);
+  const { as } = await asOrganizer(t, "ada@example.com");
+  await as.mutation(api.organizers.ensureOrganizer, {});
+  const eventId = await makeEvent(as);
+  const qId = await as.mutation(api.checkoutQuestions.create, {
+    eventId,
+    label: "Newsletter opt-in",
+    kind: "checkbox",
+    required: false,
+  });
+
+  await expect(
+    t.run((ctx) => validateAndSnapshotAnswers(ctx, eventId, [{ questionId: qId, value: "yes" }])),
+  ).rejects.toThrow();
+});
+
+test("validateAndSnapshotAnswers de-dupes duplicate answers for the same question, last value wins", async () => {
+  const t = convexTest(schema, modules);
+  const { as } = await asOrganizer(t, "ada@example.com");
+  await as.mutation(api.organizers.ensureOrganizer, {});
+  const eventId = await makeEvent(as);
+  const qId = await as.mutation(api.checkoutQuestions.create, {
+    eventId,
+    label: "Dietary needs",
+    kind: "text",
+    required: false,
+  });
+
+  const snapshots = await t.run((ctx) =>
+    validateAndSnapshotAnswers(ctx, eventId, [
+      { questionId: qId, value: "Vegetarian" },
+      { questionId: qId, value: "Vegan" },
+    ]),
+  );
+  expect(snapshots).toEqual([{ questionId: qId, label: "Dietary needs", value: "Vegan" }]);
+});
