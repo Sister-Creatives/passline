@@ -14,6 +14,7 @@ import { EventForm } from "@/components/EventForm";
 import { TicketTypesPanel } from "@/components/TicketTypesPanel";
 import { OrdersPanel } from "@/components/OrdersPanel";
 import { PromoCodesPanel } from "@/components/PromoCodesPanel";
+import { CheckoutQuestionsPanel } from "@/components/CheckoutQuestionsPanel";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
@@ -164,6 +165,7 @@ function EventManageContent({ eventId }: { eventId: Id<"events"> }) {
           <TabsTrigger value="details">Details</TabsTrigger>
           <TabsTrigger value="tickets">Ticket types</TabsTrigger>
           <TabsTrigger value="promo">Promo codes</TabsTrigger>
+          <TabsTrigger value="questions">Questions</TabsTrigger>
           <TabsTrigger value="orders">Orders</TabsTrigger>
         </TabsList>
         <TabsContent value="details">
@@ -277,6 +279,9 @@ function EventManageContent({ eventId }: { eventId: Id<"events"> }) {
         </TabsContent>
         <TabsContent value="promo">
           <PromoCodesPanel eventId={event._id} currency={event.currency ?? "USD"} />
+        </TabsContent>
+        <TabsContent value="questions">
+          <CheckoutQuestionsPanel eventId={event._id} />
         </TabsContent>
         <TabsContent value="orders">
           <OrdersPanel eventId={event._id} />
