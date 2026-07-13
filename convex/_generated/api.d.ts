@@ -18,6 +18,7 @@ import type * as lib_constants from "../lib/constants.js";
 import type * as lib_slug from "../lib/slug.js";
 import type * as organizers from "../organizers.js";
 import type * as rsvps from "../rsvps.js";
+import type * as ticketTypes from "../ticketTypes.js";
 import type * as waitlist from "../waitlist.js";
 
 import type {
@@ -37,6 +38,7 @@ declare const fullApi: ApiFromModules<{
   "lib/slug": typeof lib_slug;
   organizers: typeof organizers;
   rsvps: typeof rsvps;
+  ticketTypes: typeof ticketTypes;
   waitlist: typeof waitlist;
 }>;
 
