@@ -9,6 +9,7 @@ import { v } from "convex/values";
 import type { Doc, Id } from "./_generated/dataModel";
 import { getAuthOrganizerId } from "./auth";
 import { computeOrderAmounts, type OrderLineItem } from "./lib/fees";
+import { resolveAndComputeDiscount } from "./promoCodes";
 
 /** 16 random bytes -> 32 lowercase hex chars, prefixed to form an opaque token/code. */
 function randomToken(prefix: string): string {
@@ -86,8 +87,9 @@ export const createOrder = mutation({
     items: v.array(orderItemInput),
     buyerName: v.string(),
     buyerEmail: v.string(),
+    promoCode: v.optional(v.string()),
   },
-  handler: async (ctx, { eventId, items, buyerName, buyerEmail }) => {
+  handler: async (ctx, { eventId, items, buyerName, buyerEmail, promoCode }) => {
     const event = await ctx.db.get(eventId);
     if (!event || event.status !== "published") throw new Error("Event not found");
     if (items.length === 0) throw new Error("Cart is empty");
@@ -144,8 +146,22 @@ export const createOrder = mutation({
       throw new Error("Not enough remaining event capacity");
     }
 
+    const grossSubtotalCents = lineItems.reduce(
+      (sum, item) => sum + item.unitPriceCents * item.quantity,
+      0,
+    );
+
+    let promoCodeId: Id<"promoCodes"> | undefined;
+    let discountCents = 0;
+    const normalizedPromoCode = promoCode?.trim().toUpperCase();
+    if (normalizedPromoCode) {
+      const resolved = await resolveAndComputeDiscount(ctx, eventId, normalizedPromoCode, grossSubtotalCents);
+      promoCodeId = resolved.promoCodeId;
+      discountCents = resolved.discountCents;
+    }
+
     const feeMode = event.feeMode ?? "pass";
-    const amounts = computeOrderAmounts(lineItems, feeMode);
+    const amounts = computeOrderAmounts(lineItems, feeMode, discountCents);
     const currency = event.currency ?? "USD";
     const token = randomToken("ord_");
 
@@ -161,6 +177,9 @@ export const createOrder = mutation({
       feeCents: amounts.feeCents,
       totalCents: amounts.totalCents,
       payoutCents: amounts.payoutCents,
+      grossSubtotalCents: amounts.grossSubtotalCents,
+      discountCents: amounts.discountCents,
+      promoCode: normalizedPromoCode,
       token,
       createdAt: Date.now(),
     });
@@ -173,6 +192,26 @@ export const createOrder = mutation({
         unitPriceCents: item.unitPriceCents,
       });
     }
+
+    // Atomically record the redemption: re-read the promo row in this same
+    // mutation (rather than trusting the count from resolveAndComputeDiscount
+    // above) and reject if incrementing would exceed maxRedemptions. Because
+    // the resolve-check and this increment both read+write the same row
+    // within one mutation, Convex's OCC serializes concurrent redemptions of
+    // the same code -- a losing concurrent mutation retries, re-reads the
+    // now-updated count, and throws here instead of overselling the cap.
+    if (promoCodeId) {
+      const promoCodeRow = await ctx.db.get(promoCodeId);
+      if (!promoCodeRow) throw new Error("Invalid promo code");
+      if (
+        promoCodeRow.maxRedemptions !== undefined &&
+        promoCodeRow.timesRedeemed >= promoCodeRow.maxRedemptions
+      ) {
+        throw new Error("Promo code has been fully redeemed");
+      }
+      await ctx.db.patch(promoCodeId, { timesRedeemed: promoCodeRow.timesRedeemed + 1 });
+    }
+
     // Reserve capacity: patch each distinct ticket type once with its final
     // tally (current `sold` + the aggregate quantity reserved for it in this cart).
     for (const item of lineItems) {

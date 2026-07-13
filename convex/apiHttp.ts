@@ -159,6 +159,7 @@ type CreateOrderBody = {
   items?: unknown;
   buyerName?: unknown;
   buyerEmail?: unknown;
+  promoCode?: unknown;
 };
 
 /**
@@ -181,11 +182,14 @@ export const createOrder = httpAction(async (ctx, request) => {
     return badRequest("Invalid JSON body");
   }
 
-  const { eventId, items, buyerName, buyerEmail } = body;
+  const { eventId, items, buyerName, buyerEmail, promoCode } = body;
   if (typeof eventId !== "string") return badRequest("eventId is required");
   if (typeof buyerName !== "string") return badRequest("buyerName is required");
   if (typeof buyerEmail !== "string") return badRequest("buyerEmail is required");
   if (!Array.isArray(items)) return badRequest("items must be an array");
+  if (promoCode !== undefined && typeof promoCode !== "string") {
+    return badRequest("promoCode must be a string");
+  }
 
   let ownerId: Id<"organizers"> | null;
   try {
@@ -205,6 +209,7 @@ export const createOrder = httpAction(async (ctx, request) => {
       items: items as { ticketTypeId: Id<"ticketTypes">; quantity: number }[],
       buyerName,
       buyerEmail,
+      promoCode: promoCode as string | undefined,
     });
     return jsonResponse({ data: result }, 201);
   } catch (err) {

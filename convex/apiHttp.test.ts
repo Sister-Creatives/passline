@@ -309,6 +309,33 @@ test("POST /v1/orders returns 400 on oversell", async () => {
   expect(body.error).toEqual(expect.any(String));
 });
 
+test("POST /v1/orders with a bad promo code returns 400", async () => {
+  const t = convexTest(schema, modules);
+  const { as } = await asOrganizer(t, "ada@example.com");
+  await as.mutation(api.organizers.ensureOrganizer, {});
+  const { eventId, ticketTypeId } = await seedPublishedEventWithFreeTicketType(as);
+  const { secret } = await as.mutation(api.apiKeys.create, { name: "Prod" });
+
+  const res = await t.fetch("/v1/orders", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${secret}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      eventId,
+      items: [{ ticketTypeId, quantity: 1 }],
+      buyerName: "Buyer One",
+      buyerEmail: "buyer@example.com",
+      promoCode: "DOESNOTEXIST",
+    }),
+  });
+
+  expect(res.status).toBe(400);
+  const body = await res.json();
+  expect(body.error).toEqual(expect.any(String));
+});
+
 test("POST /v1/orders 404s for another organizer's event", async () => {
   const t = convexTest(schema, modules);
   const { as: asAda } = await asOrganizer(t, "ada@example.com");

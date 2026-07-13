@@ -73,6 +73,38 @@ async function makeFreeTicketType(
   });
 }
 
+async function makePercentPromoCode(
+  as: ReturnType<TestConvex<typeof schema>["withIdentity"]>,
+  eventId: Id<"events">,
+  code: string,
+  percentBps: number,
+  maxRedemptions?: number,
+) {
+  return as.mutation(api.promoCodes.create, {
+    eventId,
+    code,
+    discountKind: "percent",
+    percentBps,
+    maxRedemptions,
+  });
+}
+
+async function makeFixedPromoCode(
+  as: ReturnType<TestConvex<typeof schema>["withIdentity"]>,
+  eventId: Id<"events">,
+  code: string,
+  fixedCents: number,
+  maxRedemptions?: number,
+) {
+  return as.mutation(api.promoCodes.create, {
+    eventId,
+    code,
+    discountKind: "fixed",
+    fixedCents,
+    maxRedemptions,
+  });
+}
+
 test("createOrder reserves capacity by incrementing sold and returns a pending order for a paid cart", async () => {
   const t = convexTest(schema, modules);
   const { as } = await asOrganizer(t, "ada@example.com");
@@ -557,6 +589,101 @@ test("getOrder returns the order with its items and tickets by token", async () 
 
   const notFound = await t.query(api.orders.getOrder, { token: "ord_doesnotexist" });
   expect(notFound).toBeNull();
+});
+
+test("createOrder with a valid percent promo code discounts the total and increments timesRedeemed", async () => {
+  const t = convexTest(schema, modules);
+  const { as } = await asOrganizer(t, "ada@example.com");
+  await as.mutation(api.organizers.ensureOrganizer, {});
+  const eventId = await makePublishedEvent(as, 100);
+  const ticketTypeId = await makePaidTicketType(as, eventId, 1000, { capacity: 10 });
+  const promoCodeId = await makePercentPromoCode(as, eventId, "SAVE10", 1000); // 10% off
+
+  const result = await t.mutation(api.orders.createOrder, {
+    eventId,
+    items: [{ ticketTypeId, quantity: 3 }],
+    buyerName: "Buyer",
+    buyerEmail: "buyer@example.com",
+    promoCode: "save10", // lowercase input, matched case-insensitively
+  });
+
+  // gross = 3000, discount = 300 (10%), subtotal = 2700, fee = 2700*300/10000 = 81, total = 2781
+  expect(result.status).toBe("pending");
+  expect(result.totalCents).toBe(2781);
+
+  const order = await t.run((ctx) => ctx.db.get(result.orderId));
+  expect(order?.grossSubtotalCents).toBe(3000);
+  expect(order?.discountCents).toBe(300);
+  expect(order?.subtotalCents).toBe(2700);
+  expect(order?.feeCents).toBe(81);
+  expect(order?.totalCents).toBe(2781);
+  expect(order?.promoCode).toBe("SAVE10");
+
+  const promoCode = await t.run((ctx) => ctx.db.get(promoCodeId));
+  expect(promoCode?.timesRedeemed).toBe(1);
+});
+
+test("createOrder rejects an exhausted promo code and leaves state untouched", async () => {
+  const t = convexTest(schema, modules);
+  const { as } = await asOrganizer(t, "ada@example.com");
+  await as.mutation(api.organizers.ensureOrganizer, {});
+  const eventId = await makePublishedEvent(as, 100);
+  const ticketTypeId = await makePaidTicketType(as, eventId, 1000, { capacity: 10 });
+  const promoCodeId = await makePercentPromoCode(as, eventId, "ONECODE", 1000, 1);
+  // Exhaust the code directly (equivalent to one prior redemption).
+  await t.run((ctx) => ctx.db.patch(promoCodeId, { timesRedeemed: 1 }));
+
+  await expect(
+    t.mutation(api.orders.createOrder, {
+      eventId,
+      items: [{ ticketTypeId, quantity: 1 }],
+      buyerName: "Buyer",
+      buyerEmail: "buyer@example.com",
+      promoCode: "ONECODE",
+    }),
+  ).rejects.toThrow();
+
+  const promoCode = await t.run((ctx) => ctx.db.get(promoCodeId));
+  expect(promoCode?.timesRedeemed).toBe(1); // unchanged by the rejected order
+
+  const ticketType = await t.run((ctx) => ctx.db.get(ticketTypeId));
+  expect(ticketType?.sold).toBe(0); // no capacity reserved by the rejected order
+});
+
+test("createOrder with a fixed promo code larger than the subtotal clamps to $0 and fulfills as free", async () => {
+  const t = convexTest(schema, modules);
+  const { as } = await asOrganizer(t, "ada@example.com");
+  await as.mutation(api.organizers.ensureOrganizer, {});
+  const eventId = await makePublishedEvent(as, 100);
+  const ticketTypeId = await makePaidTicketType(as, eventId, 500, { capacity: 10 });
+  const promoCodeId = await makeFixedPromoCode(as, eventId, "BIGDISCOUNT", 1000); // more than the 500 subtotal
+
+  const result = await t.mutation(api.orders.createOrder, {
+    eventId,
+    items: [{ ticketTypeId, quantity: 1 }],
+    buyerName: "Buyer",
+    buyerEmail: "buyer@example.com",
+    promoCode: "BIGDISCOUNT",
+  });
+
+  expect(result.status).toBe("paid");
+  expect(result.totalCents).toBe(0);
+
+  const order = await t.run((ctx) => ctx.db.get(result.orderId));
+  expect(order?.grossSubtotalCents).toBe(500);
+  expect(order?.discountCents).toBe(500); // clamped to the gross subtotal, not the full 1000
+  expect(order?.subtotalCents).toBe(0);
+  expect(order?.feeCents).toBe(0);
+  expect(order?.totalCents).toBe(0);
+  expect(order?.status).toBe("paid");
+
+  const tickets = await t.run((ctx) =>
+    ctx.db.query("tickets").withIndex("by_order", (q) => q.eq("orderId", result.orderId)).collect(),
+  );
+  expect(tickets).toHaveLength(1);
+
+  const promoCode = await t.run((ctx) => ctx.db.get(promoCodeId));
+  expect(promoCode?.timesRedeemed).toBe(1);
 });
 
 test("listOrdersForEvent returns the event's orders newest first, owner-only", async () => {
