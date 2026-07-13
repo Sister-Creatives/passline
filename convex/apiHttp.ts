@@ -49,7 +49,8 @@ export const ticketTypesForOrganizerEvent = internalQuery({
       .collect();
 
     return ticketTypes
-      .slice()
+      .filter((t) => t.status === "active")
+      // F4 will additionally filter visibility === "visible".
       .sort((a, b) => a.sortOrder - b.sortOrder)
       .map((ticketType) => ({
         id: ticketType._id,
@@ -75,12 +76,18 @@ function jsonResponse(data: unknown, status = 200): Response {
 const unauthorized = () => jsonResponse({ error: "unauthorized" }, 401);
 const notFound = () => jsonResponse({ error: "not found" }, 404);
 
+const TOUCH_INTERVAL_MS = 5 * 60 * 1000;
+
 /**
  * Parse `Authorization: Bearer <secret>`, resolve it to an organizer via
  * `internalResolve`, and touch the key's `lastUsedAt` on success. Returns
  * `null` for a missing header, malformed header, or an unknown/revoked key —
  * callers respond 401 in every one of those cases without distinguishing
  * why, so a bad guess never reveals anything about real keys.
+ *
+ * The touch write is throttled to once per `TOUCH_INTERVAL_MS` per key, so a
+ * hot key under load doesn't OCC-contend on its own `apiKeys` row every
+ * request.
  */
 async function authenticate(ctx: ActionCtx, request: Request): Promise<Id<"organizers"> | null> {
   const header = request.headers.get("Authorization");
@@ -92,7 +99,9 @@ async function authenticate(ctx: ActionCtx, request: Request): Promise<Id<"organ
   const resolved = await ctx.runQuery(internal.apiKeys.internalResolve, { keyHash });
   if (!resolved) return null;
 
-  await ctx.runMutation(internal.apiKeys.internalTouch, { keyId: resolved.keyId });
+  if (Date.now() - (resolved.lastUsedAt ?? 0) > TOUCH_INTERVAL_MS) {
+    await ctx.runMutation(internal.apiKeys.internalTouch, { keyId: resolved.keyId });
+  }
   return resolved.organizerId;
 }
 

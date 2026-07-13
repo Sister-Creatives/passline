@@ -107,7 +107,7 @@ export const internalResolve = internalQuery({
       .withIndex("by_hash", (q) => q.eq("keyHash", keyHash))
       .unique();
     if (!key || key.revokedAt !== undefined) return null;
-    return { organizerId: key.organizerId, keyId: key._id };
+    return { organizerId: key.organizerId, keyId: key._id, lastUsedAt: key.lastUsedAt };
   },
 });
 

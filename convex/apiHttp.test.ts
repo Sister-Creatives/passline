@@ -169,6 +169,35 @@ test("GET /v1/events/{eventId}/ticket-types returns the event's ticket types sor
   expect(body.data[1]).toMatchObject({ name: "VIP", priceCents: 5000, sortOrder: 1 });
 });
 
+test("GET /v1/events/{eventId}/ticket-types excludes archived ticket types", async () => {
+  const t = convexTest(schema, modules);
+  const { as } = await asOrganizer(t, "ada@example.com");
+  await as.mutation(api.organizers.ensureOrganizer, {});
+  const { eventId, ticketTypeId } = await seedEventWithTicketType(as);
+  await t.run((ctx) =>
+    ctx.db.insert("ticketTypes", {
+      eventId,
+      name: "Archived",
+      kind: "paid",
+      priceCents: 2000,
+      sold: 0,
+      sortOrder: 1,
+      visibility: "visible",
+      status: "archived",
+    }),
+  );
+  const { secret } = await as.mutation(api.apiKeys.create, { name: "Prod" });
+
+  const res = await t.fetch(`/v1/events/${eventId}/ticket-types`, {
+    headers: { Authorization: `Bearer ${secret}` },
+  });
+
+  expect(res.status).toBe(200);
+  const body = await res.json();
+  expect(body.data).toHaveLength(1);
+  expect(body.data[0]).toMatchObject({ id: ticketTypeId, name: "General" });
+});
+
 test("GET /v1/events/{eventId}/ticket-types without a key returns 401", async () => {
   const t = convexTest(schema, modules);
   const { as } = await asOrganizer(t, "ada@example.com");
