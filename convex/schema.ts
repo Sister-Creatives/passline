@@ -127,6 +127,9 @@ export default defineSchema({
     token: v.string(), // opaque order token for buyer-facing lookup
     createdAt: v.number(),
     paidAt: v.optional(v.number()),
+    discountCents: v.optional(v.number()),
+    grossSubtotalCents: v.optional(v.number()),
+    promoCode: v.optional(v.string()),
   })
     .index("by_event", ["eventId"])
     .index("by_organizer", ["organizerId"])
@@ -155,4 +158,19 @@ export default defineSchema({
     .index("by_order", ["orderId"])
     .index("by_event", ["eventId"])
     .index("by_code", ["code"]),
+
+  promoCodes: defineTable({
+    eventId: v.id("events"),
+    organizerId: v.id("organizers"),
+    code: v.string(), // stored UPPERCASE; matched case-insensitively
+    discountKind: v.union(v.literal("percent"), v.literal("fixed")),
+    percentBps: v.optional(v.number()), // when kind "percent": 1000 = 10%
+    fixedCents: v.optional(v.number()), // when kind "fixed": flat cents off the subtotal
+    maxRedemptions: v.optional(v.number()), // undefined = unlimited
+    timesRedeemed: v.number(),
+    active: v.boolean(),
+    createdAt: v.number(),
+  })
+    .index("by_event", ["eventId"])
+    .index("by_event_and_code", ["eventId", "code"]),
 });
