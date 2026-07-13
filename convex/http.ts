@@ -1,5 +1,6 @@
 import { httpRouter } from "convex/server";
 import { auth } from "./auth";
+import { listEvents, listTicketTypes } from "./apiHttp";
 
 const http = httpRouter();
 
@@ -8,5 +9,11 @@ const http = httpRouter();
 // - /.well-known/jwks.json
 // - /api/auth/* (only when an OAuth provider is configured)
 auth.addHttpRoutes(http);
+
+// Versioned, API-key-authenticated read API (see convex/apiHttp.ts).
+http.route({ path: "/v1/events", method: "GET", handler: listEvents });
+// No path params in Convex's router, so the {eventId} segment is parsed out
+// of the URL inside listTicketTypes.
+http.route({ pathPrefix: "/v1/events/", method: "GET", handler: listTicketTypes });
 
 export default http;
