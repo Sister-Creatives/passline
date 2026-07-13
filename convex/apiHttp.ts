@@ -1,7 +1,7 @@
 import { v } from "convex/values";
 import { httpAction, internalQuery, type ActionCtx } from "./_generated/server";
 import type { Id } from "./_generated/dataModel";
-import { internal } from "./_generated/api";
+import { api, internal } from "./_generated/api";
 import { sha256Hex } from "./apiKeys";
 
 /**
@@ -66,6 +66,21 @@ export const ticketTypesForOrganizerEvent = internalQuery({
   },
 });
 
+/**
+ * Org-scoped ownership check for the checkout endpoint: returns the event's
+ * `organizerId`, or `null` if the event doesn't exist. The httpAction
+ * compares this against the authenticated key's organizer itself (rather
+ * than taking `organizerId` as an arg here) so a caller can't spoof
+ * ownership through the query's arguments.
+ */
+export const eventOrganizerId = internalQuery({
+  args: { eventId: v.id("events") },
+  handler: async (ctx, { eventId }) => {
+    const event = await ctx.db.get(eventId);
+    return event ? event.organizerId : null;
+  },
+});
+
 function jsonResponse(data: unknown, status = 200): Response {
   return new Response(JSON.stringify(data), {
     status,
@@ -75,6 +90,7 @@ function jsonResponse(data: unknown, status = 200): Response {
 
 const unauthorized = () => jsonResponse({ error: "unauthorized" }, 401);
 const notFound = () => jsonResponse({ error: "not found" }, 404);
+const badRequest = (message: string) => jsonResponse({ error: message }, 400);
 
 const TOUCH_INTERVAL_MS = 5 * 60 * 1000;
 
@@ -135,5 +151,64 @@ export const listTicketTypes = httpAction(async (ctx, request) => {
     // Malformed id segment (not a valid Convex id at all) — same 404 as a
     // well-formed id that doesn't resolve to the caller's event.
     return notFound();
+  }
+});
+
+type CreateOrderBody = {
+  eventId?: unknown;
+  items?: unknown;
+  buyerName?: unknown;
+  buyerEmail?: unknown;
+};
+
+/**
+ * POST /v1/orders — headless checkout. Bearer-authenticated; the key's
+ * organizer must own `eventId` (404 otherwise — same "not found" a foreign
+ * or missing event gets from listTicketTypes, so a bad guess never reveals
+ * which case it was). Delegates to the same public `orders.createOrder`
+ * mutation the buyer-facing app would call, so HTTP callers get identical
+ * validation/fee/capacity behavior; any Error it throws (sold out, bad
+ * quantity, unpublished event, ...) is mapped to a 400.
+ */
+export const createOrder = httpAction(async (ctx, request) => {
+  const organizerId = await authenticate(ctx, request);
+  if (!organizerId) return unauthorized();
+
+  let body: CreateOrderBody;
+  try {
+    body = (await request.json()) as CreateOrderBody;
+  } catch {
+    return badRequest("Invalid JSON body");
+  }
+
+  const { eventId, items, buyerName, buyerEmail } = body;
+  if (typeof eventId !== "string") return badRequest("eventId is required");
+  if (typeof buyerName !== "string") return badRequest("buyerName is required");
+  if (typeof buyerEmail !== "string") return badRequest("buyerEmail is required");
+  if (!Array.isArray(items)) return badRequest("items must be an array");
+
+  let ownerId: Id<"organizers"> | null;
+  try {
+    ownerId = await ctx.runQuery(internal.apiHttp.eventOrganizerId, {
+      eventId: eventId as Id<"events">,
+    });
+  } catch {
+    // Malformed id (not a valid Convex id at all) — same 404 as a
+    // well-formed id that doesn't resolve to the caller's event.
+    return notFound();
+  }
+  if (ownerId === null || ownerId !== organizerId) return notFound();
+
+  try {
+    const result = await ctx.runMutation(api.orders.createOrder, {
+      eventId: eventId as Id<"events">,
+      items: items as { ticketTypeId: Id<"ticketTypes">; quantity: number }[],
+      buyerName,
+      buyerEmail,
+    });
+    return jsonResponse({ data: result }, 201);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Invalid request";
+    return badRequest(message);
   }
 });

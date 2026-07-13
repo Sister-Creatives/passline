@@ -226,3 +226,134 @@ test("GET /v1/events/{eventId}/ticket-types 404s for another organizer's event",
   expect(res.status).toBe(404);
   expect(await res.json()).toEqual({ error: "not found" });
 });
+
+async function seedPublishedEventWithFreeTicketType(
+  as: ReturnType<TestConvex<typeof schema>["withIdentity"]>,
+  capacity = 10,
+) {
+  const eventId = await as.mutation(api.events.createEvent, {
+    title: "Free Test Event",
+    description: "desc",
+    startsAt: 1000,
+    endsAt: 2000,
+    location: "Somewhere",
+    capacity: 100,
+  });
+  await as.mutation(api.events.publishEvent, { eventId });
+  const ticketTypeId = await as.mutation(api.ticketTypes.create, {
+    eventId,
+    name: "Free",
+    kind: "free",
+    priceCents: 0,
+    capacity,
+  });
+  return { eventId, ticketTypeId };
+}
+
+test("POST /v1/orders returns 201 for a valid free order", async () => {
+  const t = convexTest(schema, modules);
+  const { as } = await asOrganizer(t, "ada@example.com");
+  await as.mutation(api.organizers.ensureOrganizer, {});
+  const { eventId, ticketTypeId } = await seedPublishedEventWithFreeTicketType(as);
+  const { secret } = await as.mutation(api.apiKeys.create, { name: "Prod" });
+
+  const res = await t.fetch("/v1/orders", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${secret}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      eventId,
+      items: [{ ticketTypeId, quantity: 2 }],
+      buyerName: "Buyer One",
+      buyerEmail: "buyer@example.com",
+    }),
+  });
+
+  expect(res.status).toBe(201);
+  expect(res.headers.get("content-type")).toMatch(/application\/json/);
+  const body = await res.json();
+  expect(body.data).toMatchObject({
+    totalCents: 0,
+    currency: "USD",
+    status: "paid",
+  });
+  expect(body.data.orderId).toEqual(expect.any(String));
+  expect(body.data.token).toEqual(expect.any(String));
+});
+
+test("POST /v1/orders returns 400 on oversell", async () => {
+  const t = convexTest(schema, modules);
+  const { as } = await asOrganizer(t, "ada@example.com");
+  await as.mutation(api.organizers.ensureOrganizer, {});
+  const { eventId, ticketTypeId } = await seedPublishedEventWithFreeTicketType(as, 1);
+  const { secret } = await as.mutation(api.apiKeys.create, { name: "Prod" });
+
+  const res = await t.fetch("/v1/orders", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${secret}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      eventId,
+      items: [{ ticketTypeId, quantity: 2 }],
+      buyerName: "Buyer One",
+      buyerEmail: "buyer@example.com",
+    }),
+  });
+
+  expect(res.status).toBe(400);
+  const body = await res.json();
+  expect(body.error).toEqual(expect.any(String));
+});
+
+test("POST /v1/orders 404s for another organizer's event", async () => {
+  const t = convexTest(schema, modules);
+  const { as: asAda } = await asOrganizer(t, "ada@example.com");
+  await asAda.mutation(api.organizers.ensureOrganizer, {});
+  const { eventId, ticketTypeId } = await seedPublishedEventWithFreeTicketType(asAda);
+
+  const { as: asBob } = await asOrganizer(t, "bob@example.com");
+  await asBob.mutation(api.organizers.ensureOrganizer, {});
+  const { secret } = await asBob.mutation(api.apiKeys.create, { name: "Bob's key" });
+
+  const res = await t.fetch("/v1/orders", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${secret}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      eventId,
+      items: [{ ticketTypeId, quantity: 1 }],
+      buyerName: "Buyer One",
+      buyerEmail: "buyer@example.com",
+    }),
+  });
+
+  expect(res.status).toBe(404);
+  expect(await res.json()).toEqual({ error: "not found" });
+});
+
+test("POST /v1/orders without a key returns 401", async () => {
+  const t = convexTest(schema, modules);
+  const { as } = await asOrganizer(t, "ada@example.com");
+  await as.mutation(api.organizers.ensureOrganizer, {});
+  const { eventId, ticketTypeId } = await seedPublishedEventWithFreeTicketType(as);
+
+  const res = await t.fetch("/v1/orders", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      eventId,
+      items: [{ ticketTypeId, quantity: 1 }],
+      buyerName: "Buyer One",
+      buyerEmail: "buyer@example.com",
+    }),
+  });
+
+  expect(res.status).toBe(401);
+  expect(await res.json()).toEqual({ error: "unauthorized" });
+});
