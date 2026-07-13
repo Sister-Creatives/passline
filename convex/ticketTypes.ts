@@ -76,6 +76,7 @@ export const create = mutation({
     minPerOrder: v.optional(v.number()),
     maxPerOrder: v.optional(v.number()),
     visibility: v.optional(visibilityValidator),
+    gateAlert: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const event = await requireOwnedEvent(ctx, args.eventId);
@@ -98,6 +99,7 @@ export const create = mutation({
       visibility: args.visibility ?? "visible",
       sortOrder,
       status: "active",
+      gateAlert: args.gateAlert,
     });
     try {
       await emitTicketTypeEvent(
@@ -148,6 +150,7 @@ export const update = mutation({
     minPerOrder: v.optional(v.number()),
     maxPerOrder: v.optional(v.number()),
     visibility: visibilityValidator,
+    gateAlert: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const { event } = await requireOwnedTicketType(ctx, args.ticketTypeId);
@@ -161,6 +164,7 @@ export const update = mutation({
       minPerOrder: args.minPerOrder,
       maxPerOrder: args.maxPerOrder,
       visibility: args.visibility,
+      gateAlert: args.gateAlert,
     });
     try {
       await emitTicketTypeEvent(

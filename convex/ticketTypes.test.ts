@@ -174,6 +174,32 @@ test("update changes fields and re-validates", async () => {
   ).rejects.toThrow(); // free must be 0
 });
 
+test("gateAlert round-trips through create and update, and clears when omitted", async () => {
+  const t = convexTest(schema, modules);
+  const { as } = await asOrganizer(t, "ada@example.com");
+  await as.mutation(api.organizers.ensureOrganizer, {});
+  const eventId = await makeEvent(as);
+
+  const id = await as.mutation(api.ticketTypes.create, {
+    eventId, name: "A", kind: "paid", priceCents: 100, gateAlert: "Check 18+ ID",
+  });
+  const created = await t.run((ctx) => ctx.db.get(id));
+  expect(created?.gateAlert).toBe("Check 18+ ID");
+
+  await as.mutation(api.ticketTypes.update, {
+    ticketTypeId: id, name: "A", kind: "paid", priceCents: 100, visibility: "visible",
+    gateAlert: "VIP entrance only",
+  });
+  const updated = await t.run((ctx) => ctx.db.get(id));
+  expect(updated?.gateAlert).toBe("VIP entrance only");
+
+  await as.mutation(api.ticketTypes.update, {
+    ticketTypeId: id, name: "A", kind: "paid", priceCents: 100, visibility: "visible",
+  });
+  const cleared = await t.run((ctx) => ctx.db.get(id));
+  expect(cleared?.gateAlert).toBeUndefined();
+});
+
 test("update rejects a non-owner", async () => {
   const t = convexTest(schema, modules);
   const { as: asAda } = await asOrganizer(t, "ada@example.com");

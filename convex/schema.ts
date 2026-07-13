@@ -67,6 +67,7 @@ export default defineSchema({
     visibility: v.union(v.literal("visible"), v.literal("hidden")),
     sortOrder: v.number(),
     status: v.union(v.literal("active"), v.literal("archived")),
+    gateAlert: v.optional(v.string()),
   }).index("by_event", ["eventId"]),
 
   apiKeys: defineTable({
@@ -154,6 +155,7 @@ export default defineSchema({
     ),
     attendeeName: v.optional(v.string()),
     createdAt: v.number(),
+    checkedInAt: v.optional(v.number()),
   })
     .index("by_order", ["orderId"])
     .index("by_event", ["eventId"])
