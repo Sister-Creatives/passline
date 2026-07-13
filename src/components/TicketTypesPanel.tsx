@@ -66,6 +66,7 @@ const ticketTypeFormSchema = z
     maxPerOrder: z.string(),
     badge: z.string(),
     visibility: z.enum(["visible", "hidden"]),
+    gateAlert: z.string(),
   })
   .refine(
     (v) => {
@@ -122,6 +123,7 @@ function TicketTypeEditor({
           maxPerOrder: ticketType.maxPerOrder != null ? String(ticketType.maxPerOrder) : "",
           badge: ticketType.badge ?? "",
           visibility: ticketType.visibility,
+          gateAlert: ticketType.gateAlert ?? "",
         }
       : {
           name: "",
@@ -132,6 +134,7 @@ function TicketTypeEditor({
           maxPerOrder: "",
           badge: "",
           visibility: "visible",
+          gateAlert: "",
         },
   });
   const kind = form.watch("kind");
@@ -142,6 +145,7 @@ function TicketTypeEditor({
     const minPerOrder = values.minPerOrder.trim() === "" ? undefined : Number(values.minPerOrder);
     const maxPerOrder = values.maxPerOrder.trim() === "" ? undefined : Number(values.maxPerOrder);
     const badge = values.badge.trim() === "" ? undefined : values.badge.trim();
+    const gateAlert = values.gateAlert.trim() === "" ? undefined : values.gateAlert.trim();
     try {
       if (ticketType) {
         await update({
@@ -154,6 +158,7 @@ function TicketTypeEditor({
           maxPerOrder,
           badge,
           visibility: values.visibility,
+          gateAlert,
         });
         toast.success("Ticket type updated");
       } else {
@@ -167,6 +172,7 @@ function TicketTypeEditor({
           maxPerOrder,
           badge,
           visibility: values.visibility,
+          gateAlert,
         });
         toast.success("Ticket type created");
       }
@@ -276,6 +282,19 @@ function TicketTypeEditor({
               <FormLabel>Badge (optional)</FormLabel>
               <FormControl>
                 <Input placeholder="Early Bird" {...field} />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+        <FormField
+          control={form.control}
+          name="gateAlert"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Gate alert (optional)</FormLabel>
+              <FormControl>
+                <Input placeholder="Check 18+ ID" {...field} />
               </FormControl>
               <FormMessage />
             </FormItem>

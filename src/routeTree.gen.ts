@@ -23,6 +23,7 @@ import { Route as EventsIdRouteImport } from './routes/events/$id'
 import { Route as ESlugRouteImport } from './routes/e/$slug'
 import { Route as ClaimTokenRouteImport } from './routes/claim/$token'
 import { Route as EventsIdIndexRouteImport } from './routes/events/$id.index'
+import { Route as EventsIdScanRouteImport } from './routes/events/$id.scan'
 import { Route as EventsIdDoorRouteImport } from './routes/events/$id.door'
 
 const LoginRoute = LoginRouteImport.update({
@@ -95,6 +96,11 @@ const EventsIdIndexRoute = EventsIdIndexRouteImport.update({
   path: '/',
   getParentRoute: () => EventsIdRoute,
 } as any)
+const EventsIdScanRoute = EventsIdScanRouteImport.update({
+  id: '/scan',
+  path: '/scan',
+  getParentRoute: () => EventsIdRoute,
+} as any)
 const EventsIdDoorRoute = EventsIdDoorRouteImport.update({
   id: '/door',
   path: '/door',
@@ -116,6 +122,7 @@ export interface FileRoutesByFullPath {
   '/settings/team': typeof SettingsTeamRoute
   '/events/': typeof EventsIndexRoute
   '/events/$id/door': typeof EventsIdDoorRoute
+  '/events/$id/scan': typeof EventsIdScanRoute
   '/events/$id/': typeof EventsIdIndexRoute
 }
 export interface FileRoutesByTo {
@@ -132,6 +139,7 @@ export interface FileRoutesByTo {
   '/settings/team': typeof SettingsTeamRoute
   '/events': typeof EventsIndexRoute
   '/events/$id/door': typeof EventsIdDoorRoute
+  '/events/$id/scan': typeof EventsIdScanRoute
   '/events/$id': typeof EventsIdIndexRoute
 }
 export interface FileRoutesById {
@@ -150,6 +158,7 @@ export interface FileRoutesById {
   '/settings/team': typeof SettingsTeamRoute
   '/events/': typeof EventsIndexRoute
   '/events/$id/door': typeof EventsIdDoorRoute
+  '/events/$id/scan': typeof EventsIdScanRoute
   '/events/$id/': typeof EventsIdIndexRoute
 }
 export interface FileRouteTypes {
@@ -169,6 +178,7 @@ export interface FileRouteTypes {
     | '/settings/team'
     | '/events/'
     | '/events/$id/door'
+    | '/events/$id/scan'
     | '/events/$id/'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -185,6 +195,7 @@ export interface FileRouteTypes {
     | '/settings/team'
     | '/events'
     | '/events/$id/door'
+    | '/events/$id/scan'
     | '/events/$id'
   id:
     | '__root__'
@@ -202,6 +213,7 @@ export interface FileRouteTypes {
     | '/settings/team'
     | '/events/'
     | '/events/$id/door'
+    | '/events/$id/scan'
     | '/events/$id/'
   fileRoutesById: FileRoutesById
 }
@@ -321,6 +333,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof EventsIdIndexRouteImport
       parentRoute: typeof EventsIdRoute
     }
+    '/events/$id/scan': {
+      id: '/events/$id/scan'
+      path: '/scan'
+      fullPath: '/events/$id/scan'
+      preLoaderRoute: typeof EventsIdScanRouteImport
+      parentRoute: typeof EventsIdRoute
+    }
     '/events/$id/door': {
       id: '/events/$id/door'
       path: '/door'
@@ -333,11 +352,13 @@ declare module '@tanstack/react-router' {
 
 interface EventsIdRouteChildren {
   EventsIdDoorRoute: typeof EventsIdDoorRoute
+  EventsIdScanRoute: typeof EventsIdScanRoute
   EventsIdIndexRoute: typeof EventsIdIndexRoute
 }
 
 const EventsIdRouteChildren: EventsIdRouteChildren = {
   EventsIdDoorRoute: EventsIdDoorRoute,
+  EventsIdScanRoute: EventsIdScanRoute,
   EventsIdIndexRoute: EventsIdIndexRoute,
 }
 
