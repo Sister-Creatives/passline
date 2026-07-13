@@ -263,6 +263,69 @@ test("createOrder rejects a hidden ticket type", async () => {
   ).rejects.toThrow();
 });
 
+test("createOrder rejects a hidden ticket type when the accessCode is wrong", async () => {
+  const t = convexTest(schema, modules);
+  const { as } = await asOrganizer(t, "ada@example.com");
+  await as.mutation(api.organizers.ensureOrganizer, {});
+  const eventId = await makePublishedEvent(as, 100);
+  const ticketTypeId = await makePaidTicketType(as, eventId, 1000, { visibility: "hidden" });
+  await as.mutation(api.accessCodes.create, { eventId, code: "VIP", ticketTypeIds: [ticketTypeId] });
+
+  await expect(
+    t.mutation(api.orders.createOrder, {
+      eventId,
+      items: [{ ticketTypeId, quantity: 1 }],
+      buyerName: "Buyer",
+      buyerEmail: "buyer@example.com",
+      accessCode: "NOTVIP",
+    }),
+  ).rejects.toThrow("This ticket requires a valid access code");
+
+  const ticketType = await t.run((ctx) => ctx.db.get(ticketTypeId));
+  expect(ticketType?.sold).toBe(0);
+});
+
+test("createOrder succeeds for a hidden ticket type when the accessCode unlocks it", async () => {
+  const t = convexTest(schema, modules);
+  const { as } = await asOrganizer(t, "ada@example.com");
+  await as.mutation(api.organizers.ensureOrganizer, {});
+  const eventId = await makePublishedEvent(as, 100);
+  const ticketTypeId = await makePaidTicketType(as, eventId, 1000, { visibility: "hidden" });
+  await as.mutation(api.accessCodes.create, { eventId, code: "VIP", ticketTypeIds: [ticketTypeId] });
+
+  const result = await t.mutation(api.orders.createOrder, {
+    eventId,
+    items: [{ ticketTypeId, quantity: 1 }],
+    buyerName: "Buyer",
+    buyerEmail: "buyer@example.com",
+    accessCode: "vip", // lowercase -- resolution is case-insensitive, mirroring accessCodes.create
+  });
+
+  expect(result.status).toBe("pending");
+  const ticketType = await t.run((ctx) => ctx.db.get(ticketTypeId));
+  expect(ticketType?.sold).toBe(1);
+});
+
+test("createOrder leaves a visible ticket type unaffected by an accessCode (present, absent, or wrong)", async () => {
+  const t = convexTest(schema, modules);
+  const { as } = await asOrganizer(t, "ada@example.com");
+  await as.mutation(api.organizers.ensureOrganizer, {});
+  const eventId = await makePublishedEvent(as, 100);
+  const ticketTypeId = await makePaidTicketType(as, eventId, 1000); // default visibility: "visible"
+
+  const result = await t.mutation(api.orders.createOrder, {
+    eventId,
+    items: [{ ticketTypeId, quantity: 1 }],
+    buyerName: "Buyer",
+    buyerEmail: "buyer@example.com",
+    accessCode: "BOGUS", // no such code exists -- must not block a visible type
+  });
+
+  expect(result.status).toBe("pending");
+  const ticketType = await t.run((ctx) => ctx.db.get(ticketTypeId));
+  expect(ticketType?.sold).toBe(1);
+});
+
 test("createOrder rejects a ticket type that belongs to a different event", async () => {
   const t = convexTest(schema, modules);
   const { as } = await asOrganizer(t, "ada@example.com");

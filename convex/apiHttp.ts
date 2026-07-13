@@ -207,6 +207,7 @@ type CreateOrderBody = {
   buyerEmail?: unknown;
   promoCode?: unknown;
   answers?: unknown;
+  accessCode?: unknown;
 };
 
 /**
@@ -219,7 +220,9 @@ type CreateOrderBody = {
  * throws (sold out, bad quantity, unpublished event, a missing required
  * checkout-question answer, ...) is mapped to a 400. An optional `answers`
  * array (F5) is passed through unvalidated here — `orders.createOrder`
- * itself validates it via `validateAndSnapshotAnswers`.
+ * itself validates it via `validateAndSnapshotAnswers`. An optional
+ * `accessCode` (F4b) is likewise passed through unvalidated — `createOrder`
+ * resolves it and enforces it against any `hidden` ticket types in the cart.
  */
 export const createOrder = httpAction(async (ctx, request) => {
   const organizerId = await authenticate(ctx, request);
@@ -232,7 +235,7 @@ export const createOrder = httpAction(async (ctx, request) => {
     return badRequest("Invalid JSON body");
   }
 
-  const { eventId, items, buyerName, buyerEmail, promoCode, answers } = body;
+  const { eventId, items, buyerName, buyerEmail, promoCode, answers, accessCode } = body;
   if (typeof eventId !== "string") return badRequest("eventId is required");
   if (typeof buyerName !== "string") return badRequest("buyerName is required");
   if (typeof buyerEmail !== "string") return badRequest("buyerEmail is required");
@@ -242,6 +245,9 @@ export const createOrder = httpAction(async (ctx, request) => {
   }
   if (answers !== undefined && !Array.isArray(answers)) {
     return badRequest("answers must be an array");
+  }
+  if (accessCode !== undefined && typeof accessCode !== "string") {
+    return badRequest("accessCode must be a string");
   }
 
   let ownerId: Id<"organizers"> | null;
@@ -264,6 +270,7 @@ export const createOrder = httpAction(async (ctx, request) => {
       buyerEmail,
       promoCode: promoCode as string | undefined,
       answers: answers as { questionId: Id<"checkoutQuestions">; value: string }[] | undefined,
+      accessCode: accessCode as string | undefined,
     });
     return jsonResponse({ data: result }, 201);
   } catch (err) {

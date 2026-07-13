@@ -360,6 +360,91 @@ test("POST /v1/orders with a bad promo code returns 400", async () => {
   expect(body.error).toEqual(expect.any(String));
 });
 
+test("POST /v1/orders with a hidden ticket type and a valid accessCode returns 201", async () => {
+  const t = convexTest(schema, modules);
+  const { as } = await asOrganizer(t, "ada@example.com");
+  await as.mutation(api.organizers.ensureOrganizer, {});
+  const eventId = await as.mutation(api.events.createEvent, {
+    title: "Free Test Event",
+    description: "desc",
+    startsAt: 1000,
+    endsAt: 2000,
+    location: "Somewhere",
+    capacity: 100,
+  });
+  await as.mutation(api.events.publishEvent, { eventId });
+  const ticketTypeId = await as.mutation(api.ticketTypes.create, {
+    eventId,
+    name: "VIP",
+    kind: "free",
+    priceCents: 0,
+    visibility: "hidden",
+  });
+  await as.mutation(api.accessCodes.create, { eventId, code: "VIP", ticketTypeIds: [ticketTypeId] });
+  const { secret } = await as.mutation(api.apiKeys.create, { name: "Prod" });
+
+  const res = await t.fetch("/v1/orders", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${secret}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      eventId,
+      items: [{ ticketTypeId, quantity: 1 }],
+      buyerName: "Buyer One",
+      buyerEmail: "buyer@example.com",
+      accessCode: "VIP",
+    }),
+  });
+
+  expect(res.status).toBe(201);
+  const body = await res.json();
+  expect(body.data.orderId).toEqual(expect.any(String));
+});
+
+test("POST /v1/orders with a hidden ticket type and no accessCode returns 400", async () => {
+  const t = convexTest(schema, modules);
+  const { as } = await asOrganizer(t, "ada@example.com");
+  await as.mutation(api.organizers.ensureOrganizer, {});
+  const eventId = await as.mutation(api.events.createEvent, {
+    title: "Free Test Event",
+    description: "desc",
+    startsAt: 1000,
+    endsAt: 2000,
+    location: "Somewhere",
+    capacity: 100,
+  });
+  await as.mutation(api.events.publishEvent, { eventId });
+  const ticketTypeId = await as.mutation(api.ticketTypes.create, {
+    eventId,
+    name: "VIP",
+    kind: "free",
+    priceCents: 0,
+    visibility: "hidden",
+  });
+  await as.mutation(api.accessCodes.create, { eventId, code: "VIP", ticketTypeIds: [ticketTypeId] });
+  const { secret } = await as.mutation(api.apiKeys.create, { name: "Prod" });
+
+  const res = await t.fetch("/v1/orders", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${secret}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      eventId,
+      items: [{ ticketTypeId, quantity: 1 }],
+      buyerName: "Buyer One",
+      buyerEmail: "buyer@example.com",
+    }),
+  });
+
+  expect(res.status).toBe(400);
+  const body = await res.json();
+  expect(body.error).toEqual(expect.any(String));
+});
+
 test("POST /v1/orders 404s for another organizer's event", async () => {
   const t = convexTest(schema, modules);
   const { as: asAda } = await asOrganizer(t, "ada@example.com");

@@ -11,6 +11,7 @@ import { getAuthOrganizerId } from "./auth";
 import { computeOrderAmounts, type OrderLineItem } from "./lib/fees";
 import { resolveAndComputeDiscount } from "./promoCodes";
 import { validateAndSnapshotAnswers } from "./checkoutQuestions";
+import { unlockedTicketTypeIds } from "./accessCodes";
 
 /** 16 random bytes -> 32 lowercase hex chars, prefixed to form an opaque token/code. */
 function randomToken(prefix: string): string {
@@ -87,7 +88,10 @@ const answerInput = v.object({
  * inline -- tickets are issued and the order is marked `paid` in the same
  * mutation, so a free "checkout" needs no payment step at all. Optional
  * `answers` to the event's checkout questions (F5) are validated via
- * `validateAndSnapshotAnswers` and stored as `orderResponses` rows.
+ * `validateAndSnapshotAnswers` and stored as `orderResponses` rows. Optional
+ * `accessCode` (F4b) unlocks `hidden` ticket types for this checkout only --
+ * this is the real gate, since a hidden type can never be bought without its
+ * code even via the raw HTTP API.
  */
 export const createOrder = mutation({
   args: {
@@ -97,11 +101,16 @@ export const createOrder = mutation({
     buyerEmail: v.string(),
     promoCode: v.optional(v.string()),
     answers: v.optional(v.array(answerInput)),
+    accessCode: v.optional(v.string()),
   },
-  handler: async (ctx, { eventId, items, buyerName, buyerEmail, promoCode, answers }) => {
+  handler: async (ctx, { eventId, items, buyerName, buyerEmail, promoCode, answers, accessCode }) => {
     const event = await ctx.db.get(eventId);
     if (!event || event.status !== "published") throw new Error("Event not found");
     if (items.length === 0) throw new Error("Cart is empty");
+
+    const unlocked = accessCode
+      ? await unlockedTicketTypeIds(ctx, eventId, accessCode)
+      : new Set<Id<"ticketTypes">>();
 
     // Validate before any capacity/promo side effects, so a rejected answer
     // (missing required question, invalid select value) leaves no partial
@@ -136,8 +145,13 @@ export const createOrder = mutation({
     for (const [ticketTypeId, totalQuantity] of quantityByTicketType) {
       const ticketType = ticketTypesById.get(ticketTypeId);
       if (!ticketType) throw new Error("Ticket type not found");
-      if (ticketType.status !== "active" || ticketType.visibility !== "visible") {
+      if (ticketType.status !== "active") {
         throw new Error(`${ticketType.name} is not available for purchase`);
+      }
+      // `visible` types are always allowed; a `hidden` type requires its id
+      // to be among those unlocked by a valid, active accessCode.
+      if (ticketType.visibility === "hidden" && !unlocked.has(ticketTypeId)) {
+        throw new Error("This ticket requires a valid access code");
       }
       if (ticketType.minPerOrder !== undefined && totalQuantity < ticketType.minPerOrder) {
         throw new Error(`Minimum order quantity for ${ticketType.name} is ${ticketType.minPerOrder}`);
