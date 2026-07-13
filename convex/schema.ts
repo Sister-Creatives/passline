@@ -175,4 +175,24 @@ export default defineSchema({
   })
     .index("by_event", ["eventId"])
     .index("by_event_and_code", ["eventId", "code"]),
+
+  checkoutQuestions: defineTable({
+    eventId: v.id("events"),
+    organizerId: v.id("organizers"),
+    label: v.string(),
+    kind: v.union(v.literal("text"), v.literal("select"), v.literal("checkbox")),
+    options: v.optional(v.array(v.string())), // required + non-empty when kind === "select"
+    required: v.boolean(),
+    sortOrder: v.number(),
+    active: v.boolean(),
+    createdAt: v.number(),
+  }).index("by_event", ["eventId"]),
+
+  orderResponses: defineTable({
+    orderId: v.id("orders"),
+    eventId: v.id("events"),
+    questionId: v.id("checkoutQuestions"),
+    label: v.string(), // snapshot of the question label at purchase time
+    value: v.string(), // text; for checkbox "true"/"false"; for select the chosen option
+  }).index("by_order", ["orderId"]),
 });
