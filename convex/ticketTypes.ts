@@ -109,3 +109,32 @@ export const listForEvent = query({
     return types.sort((a, b) => a.sortOrder - b.sortOrder);
   },
 });
+
+export const update = mutation({
+  args: {
+    ticketTypeId: v.id("ticketTypes"),
+    name: v.string(),
+    kind: kindValidator,
+    priceCents: v.number(),
+    capacity: v.optional(v.number()),
+    badge: v.optional(v.string()),
+    minPerOrder: v.optional(v.number()),
+    maxPerOrder: v.optional(v.number()),
+    visibility: visibilityValidator,
+  },
+  handler: async (ctx, args) => {
+    const { event } = await requireOwnedTicketType(ctx, args.ticketTypeId);
+    validateTicketTypeInput(args, event.capacity);
+    await ctx.db.patch(args.ticketTypeId, {
+      name: args.name.trim(),
+      kind: args.kind,
+      priceCents: args.priceCents,
+      capacity: args.capacity,
+      badge: args.badge,
+      minPerOrder: args.minPerOrder,
+      maxPerOrder: args.maxPerOrder,
+      visibility: args.visibility,
+    });
+    return null;
+  },
+});

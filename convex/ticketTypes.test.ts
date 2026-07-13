@@ -144,3 +144,35 @@ test("listForEvent rejects a non-owner", async () => {
   const eventId = await makeEvent(asAda);
   await expect(asBob.query(api.ticketTypes.listForEvent, { eventId })).rejects.toThrow();
 });
+
+test("update changes fields and re-validates", async () => {
+  const t = convexTest(schema, modules);
+  const { as } = await asOrganizer(t, "ada@example.com");
+  await as.mutation(api.organizers.ensureOrganizer, {});
+  const eventId = await makeEvent(as);
+  const id = await as.mutation(api.ticketTypes.create, { eventId, name: "A", kind: "paid", priceCents: 100, capacity: 10 });
+  await as.mutation(api.ticketTypes.update, {
+    ticketTypeId: id, name: "A2", kind: "paid", priceCents: 250, visibility: "hidden",
+  });
+  const row = await t.run((ctx) => ctx.db.get(id));
+  expect(row?.name).toBe("A2");
+  expect(row?.priceCents).toBe(250);
+  expect(row?.visibility).toBe("hidden");
+  expect(row?.capacity).toBeUndefined(); // omitted → cleared
+  await expect(
+    as.mutation(api.ticketTypes.update, { ticketTypeId: id, name: "A2", kind: "free", priceCents: 250, visibility: "visible" }),
+  ).rejects.toThrow(); // free must be 0
+});
+
+test("update rejects a non-owner", async () => {
+  const t = convexTest(schema, modules);
+  const { as: asAda } = await asOrganizer(t, "ada@example.com");
+  await asAda.mutation(api.organizers.ensureOrganizer, {});
+  const { as: asBob } = await asOrganizer(t, "bob@example.com");
+  await asBob.mutation(api.organizers.ensureOrganizer, {});
+  const eventId = await makeEvent(asAda);
+  const id = await asAda.mutation(api.ticketTypes.create, { eventId, name: "A", kind: "paid", priceCents: 100 });
+  await expect(
+    asBob.mutation(api.ticketTypes.update, { ticketTypeId: id, name: "X", kind: "paid", priceCents: 1, visibility: "visible" }),
+  ).rejects.toThrow();
+});
