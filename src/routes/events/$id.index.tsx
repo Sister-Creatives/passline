@@ -3,7 +3,7 @@ import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useSuspenseQuery } from "@tanstack/react-query";
 import { convexQuery } from "@convex-dev/react-query";
 import { useMutation } from "convex/react";
-import { Download, Pencil, ScanLine, Trash2 } from "lucide-react";
+import { Download, Pencil, QrCode, ScanLine, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { api } from "../../../convex/_generated/api";
@@ -178,6 +178,11 @@ function EventManageContent({ eventId }: { eventId: Id<"events"> }) {
               <Button asChild variant="outline">
                 <Link to="/events/$id/door" params={{ id: eventId }}>
                   <ScanLine /> Door check-in
+                </Link>
+              </Button>
+              <Button asChild variant="outline">
+                <Link to="/events/$id/scan" params={{ id: eventId }}>
+                  <QrCode /> Scan tickets
                 </Link>
               </Button>
               <Button variant="outline" onClick={handleExportCsv}>
