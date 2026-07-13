@@ -22,6 +22,8 @@ import type * as organizers from "../organizers.js";
 import type * as rsvps from "../rsvps.js";
 import type * as ticketTypes from "../ticketTypes.js";
 import type * as waitlist from "../waitlist.js";
+import type * as webhookDelivery from "../webhookDelivery.js";
+import type * as webhooks from "../webhooks.js";
 
 import type {
   ApiFromModules,
@@ -44,6 +46,8 @@ declare const fullApi: ApiFromModules<{
   rsvps: typeof rsvps;
   ticketTypes: typeof ticketTypes;
   waitlist: typeof waitlist;
+  webhookDelivery: typeof webhookDelivery;
+  webhooks: typeof webhooks;
 }>;
 
 /**
