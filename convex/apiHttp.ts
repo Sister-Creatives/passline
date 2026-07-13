@@ -49,8 +49,7 @@ export const ticketTypesForOrganizerEvent = internalQuery({
       .collect();
 
     return ticketTypes
-      .filter((t) => t.status === "active")
-      // F4 will additionally filter visibility === "visible".
+      .filter((t) => t.status === "active" && t.visibility === "visible")
       .sort((a, b) => a.sortOrder - b.sortOrder)
       .map((ticketType) => ({
         id: ticketType._id,
