@@ -13,6 +13,7 @@ import { AttendeeTable } from "@/components/AttendeeTable";
 import { EventForm } from "@/components/EventForm";
 import { TicketTypesPanel } from "@/components/TicketTypesPanel";
 import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
@@ -44,7 +45,13 @@ function EventManagePage() {
   return (
     <DashboardLayout>
       <Suspense
-        fallback={<div className="p-8 text-sm text-muted-foreground">Loading event…</div>}
+        fallback={
+          <div className="mx-auto flex max-w-4xl flex-col gap-3 p-4 sm:p-8">
+            <Skeleton className="h-8 w-64" />
+            <Skeleton className="h-9 w-full" />
+            <Skeleton className="h-64 w-full" />
+          </div>
+        }
       >
         <EventManageContent eventId={eventId} />
       </Suspense>

@@ -44,6 +44,9 @@ function validateTicketTypeInput(input: TicketTypeInput, eventCapacity: number) 
   if (input.kind === "free" && input.priceCents !== 0) {
     throw new Error("Free ticket types must have a price of 0");
   }
+  if (input.kind === "paid" && input.priceCents <= 0) {
+    throw new Error("Paid ticket types must have a price greater than 0");
+  }
   if (input.capacity !== undefined) {
     if (!Number.isInteger(input.capacity) || input.capacity < 1) {
       throw new Error("Capacity must be a whole number of at least 1");

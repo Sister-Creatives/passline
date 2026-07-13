@@ -65,10 +65,15 @@ const ticketTypeFormSchema = z
     badge: z.string(),
     visibility: z.enum(["visible", "hidden"]),
   })
-  .refine((v) => v.kind === "free" || v.price.trim() === "" || Number(v.price) >= 0, {
-    message: "Price must be 0 or more",
-    path: ["price"],
-  });
+  .refine(
+    (v) => {
+      if (v.kind === "free") return true;
+      const n = Number(v.price);
+      if (v.kind === "paid") return v.price.trim() !== "" && Number.isFinite(n) && n > 0;
+      return v.price.trim() === "" || (Number.isFinite(n) && n >= 0);
+    },
+    { message: "Paid tickets need a price greater than 0", path: ["price"] },
+  );
 
 type TicketTypeFormValues = z.infer<typeof ticketTypeFormSchema>;
 
@@ -247,7 +252,7 @@ export function TicketTypesPanel({
   const [creating, setCreating] = useState(false);
 
   async function move(index: number, direction: -1 | 1) {
-    const ids = types!.map((t) => t._id);
+    const ids = rows.map((t) => t._id);
     const target = index + direction;
     if (target < 0 || target >= ids.length) return;
     [ids[index], ids[target]] = [ids[target], ids[index]];
@@ -277,6 +282,8 @@ export function TicketTypesPanel({
     );
   }
 
+  const rows = types ?? [];
+
   // Rendered above both the table and the empty state so "New ticket type"
   // is always reachable, even with zero ticket types.
   const header = (
@@ -298,7 +305,7 @@ export function TicketTypesPanel({
     </div>
   );
 
-  if (types!.length === 0) {
+  if (rows.length === 0) {
     return (
       <div>
         {header}
@@ -327,7 +334,7 @@ export function TicketTypesPanel({
           </TableRow>
         </TableHeader>
         <TableBody>
-          {types!.map((tt, index) => (
+          {rows.map((tt, index) => (
             <TableRow key={tt._id}>
               <TableCell className="font-medium">
                 {tt.name}
@@ -360,7 +367,7 @@ export function TicketTypesPanel({
                     variant="ghost"
                     size="icon-sm"
                     onClick={() => move(index, 1)}
-                    disabled={index === types!.length - 1}
+                    disabled={index === rows.length - 1}
                     aria-label="Move down"
                   >
                     <ChevronDown />

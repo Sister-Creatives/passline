@@ -73,6 +73,16 @@ test("create rejects a free ticket with a nonzero price", async () => {
   ).rejects.toThrow();
 });
 
+test("create rejects a paid ticket priced at zero", async () => {
+  const t = convexTest(schema, modules);
+  const { as } = await asOrganizer(t, "ada@example.com");
+  await as.mutation(api.organizers.ensureOrganizer, {});
+  const eventId = await makeEvent(as);
+  await expect(
+    as.mutation(api.ticketTypes.create, { eventId, name: "Zero paid", kind: "paid", priceCents: 0 }),
+  ).rejects.toThrow();
+});
+
 test("create rejects a per-type capacity above the event capacity", async () => {
   const t = convexTest(schema, modules);
   const { as } = await asOrganizer(t, "ada@example.com");
