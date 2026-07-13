@@ -289,6 +289,27 @@ function TicketTypeEditor({
         />
         <FormField
           control={form.control}
+          name="visibility"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Visibility</FormLabel>
+              <FormControl>
+                <ToggleGroup
+                  type="single"
+                  value={field.value}
+                  onValueChange={(value) => value && field.onChange(value)}
+                  variant="outline"
+                >
+                  <ToggleGroupItem value="visible">Visible</ToggleGroupItem>
+                  <ToggleGroupItem value="hidden">Hidden</ToggleGroupItem>
+                </ToggleGroup>
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+        <FormField
+          control={form.control}
           name="gateAlert"
           render={({ field }) => (
             <FormItem>
@@ -399,6 +420,7 @@ export function TicketTypesPanel({
           <TableRow>
             <TableHead>Name</TableHead>
             <TableHead>Kind</TableHead>
+            <TableHead>Visibility</TableHead>
             <TableHead className="text-right">Price</TableHead>
             <TableHead className="text-right">Cap</TableHead>
             <TableHead className="text-right">Sold</TableHead>
@@ -418,6 +440,11 @@ export function TicketTypesPanel({
               </TableCell>
               <TableCell>
                 <Badge variant="outline">{KIND_LABEL[tt.kind]}</Badge>
+              </TableCell>
+              <TableCell>
+                <Badge variant={tt.visibility === "hidden" ? "secondary" : "outline"}>
+                  {tt.visibility === "hidden" ? "Hidden" : "Visible"}
+                </Badge>
               </TableCell>
               <TableCell className="text-right tabular-nums">
                 {tt.kind === "free" ? "Free" : formatMoney(tt.priceCents, currency)}

@@ -15,6 +15,7 @@ import { TicketTypesPanel } from "@/components/TicketTypesPanel";
 import { OrdersPanel } from "@/components/OrdersPanel";
 import { AnalyticsPanel } from "@/components/AnalyticsPanel";
 import { PromoCodesPanel } from "@/components/PromoCodesPanel";
+import { AccessCodesPanel } from "@/components/AccessCodesPanel";
 import { csvField } from "@/lib/csv";
 import { CheckoutQuestionsPanel } from "@/components/CheckoutQuestionsPanel";
 import { Button } from "@/components/ui/button";
@@ -162,6 +163,7 @@ function EventManageContent({ eventId }: { eventId: Id<"events"> }) {
           <TabsTrigger value="details">Details</TabsTrigger>
           <TabsTrigger value="tickets">Ticket types</TabsTrigger>
           <TabsTrigger value="promo">Promo codes</TabsTrigger>
+          <TabsTrigger value="access">Access codes</TabsTrigger>
           <TabsTrigger value="questions">Questions</TabsTrigger>
           <TabsTrigger value="orders">Orders</TabsTrigger>
           <TabsTrigger value="analytics">Analytics</TabsTrigger>
@@ -277,6 +279,9 @@ function EventManageContent({ eventId }: { eventId: Id<"events"> }) {
         </TabsContent>
         <TabsContent value="promo">
           <PromoCodesPanel eventId={event._id} currency={event.currency ?? "USD"} />
+        </TabsContent>
+        <TabsContent value="access">
+          <AccessCodesPanel eventId={event._id} />
         </TabsContent>
         <TabsContent value="questions">
           <CheckoutQuestionsPanel eventId={event._id} />
