@@ -13,6 +13,10 @@ import { Route as LoginRouteImport } from './routes/login'
 import { Route as DashboardRouteImport } from './routes/dashboard'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as EventsIndexRouteImport } from './routes/events/index'
+import { Route as SettingsTeamRouteImport } from './routes/settings/team'
+import { Route as SettingsProfileRouteImport } from './routes/settings/profile'
+import { Route as SettingsPaymentsRouteImport } from './routes/settings/payments'
+import { Route as SettingsApiWebhooksRouteImport } from './routes/settings/api-webhooks'
 import { Route as RsvpTokenRouteImport } from './routes/rsvp/$token'
 import { Route as EventsNewRouteImport } from './routes/events/new'
 import { Route as EventsIdRouteImport } from './routes/events/$id'
@@ -39,6 +43,26 @@ const IndexRoute = IndexRouteImport.update({
 const EventsIndexRoute = EventsIndexRouteImport.update({
   id: '/events/',
   path: '/events/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SettingsTeamRoute = SettingsTeamRouteImport.update({
+  id: '/settings/team',
+  path: '/settings/team',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SettingsProfileRoute = SettingsProfileRouteImport.update({
+  id: '/settings/profile',
+  path: '/settings/profile',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SettingsPaymentsRoute = SettingsPaymentsRouteImport.update({
+  id: '/settings/payments',
+  path: '/settings/payments',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SettingsApiWebhooksRoute = SettingsApiWebhooksRouteImport.update({
+  id: '/settings/api-webhooks',
+  path: '/settings/api-webhooks',
   getParentRoute: () => rootRouteImport,
 } as any)
 const RsvpTokenRoute = RsvpTokenRouteImport.update({
@@ -86,6 +110,10 @@ export interface FileRoutesByFullPath {
   '/events/$id': typeof EventsIdRouteWithChildren
   '/events/new': typeof EventsNewRoute
   '/rsvp/$token': typeof RsvpTokenRoute
+  '/settings/api-webhooks': typeof SettingsApiWebhooksRoute
+  '/settings/payments': typeof SettingsPaymentsRoute
+  '/settings/profile': typeof SettingsProfileRoute
+  '/settings/team': typeof SettingsTeamRoute
   '/events/': typeof EventsIndexRoute
   '/events/$id/door': typeof EventsIdDoorRoute
   '/events/$id/': typeof EventsIdIndexRoute
@@ -98,6 +126,10 @@ export interface FileRoutesByTo {
   '/e/$slug': typeof ESlugRoute
   '/events/new': typeof EventsNewRoute
   '/rsvp/$token': typeof RsvpTokenRoute
+  '/settings/api-webhooks': typeof SettingsApiWebhooksRoute
+  '/settings/payments': typeof SettingsPaymentsRoute
+  '/settings/profile': typeof SettingsProfileRoute
+  '/settings/team': typeof SettingsTeamRoute
   '/events': typeof EventsIndexRoute
   '/events/$id/door': typeof EventsIdDoorRoute
   '/events/$id': typeof EventsIdIndexRoute
@@ -112,6 +144,10 @@ export interface FileRoutesById {
   '/events/$id': typeof EventsIdRouteWithChildren
   '/events/new': typeof EventsNewRoute
   '/rsvp/$token': typeof RsvpTokenRoute
+  '/settings/api-webhooks': typeof SettingsApiWebhooksRoute
+  '/settings/payments': typeof SettingsPaymentsRoute
+  '/settings/profile': typeof SettingsProfileRoute
+  '/settings/team': typeof SettingsTeamRoute
   '/events/': typeof EventsIndexRoute
   '/events/$id/door': typeof EventsIdDoorRoute
   '/events/$id/': typeof EventsIdIndexRoute
@@ -127,6 +163,10 @@ export interface FileRouteTypes {
     | '/events/$id'
     | '/events/new'
     | '/rsvp/$token'
+    | '/settings/api-webhooks'
+    | '/settings/payments'
+    | '/settings/profile'
+    | '/settings/team'
     | '/events/'
     | '/events/$id/door'
     | '/events/$id/'
@@ -139,6 +179,10 @@ export interface FileRouteTypes {
     | '/e/$slug'
     | '/events/new'
     | '/rsvp/$token'
+    | '/settings/api-webhooks'
+    | '/settings/payments'
+    | '/settings/profile'
+    | '/settings/team'
     | '/events'
     | '/events/$id/door'
     | '/events/$id'
@@ -152,6 +196,10 @@ export interface FileRouteTypes {
     | '/events/$id'
     | '/events/new'
     | '/rsvp/$token'
+    | '/settings/api-webhooks'
+    | '/settings/payments'
+    | '/settings/profile'
+    | '/settings/team'
     | '/events/'
     | '/events/$id/door'
     | '/events/$id/'
@@ -166,6 +214,10 @@ export interface RootRouteChildren {
   EventsIdRoute: typeof EventsIdRouteWithChildren
   EventsNewRoute: typeof EventsNewRoute
   RsvpTokenRoute: typeof RsvpTokenRoute
+  SettingsApiWebhooksRoute: typeof SettingsApiWebhooksRoute
+  SettingsPaymentsRoute: typeof SettingsPaymentsRoute
+  SettingsProfileRoute: typeof SettingsProfileRoute
+  SettingsTeamRoute: typeof SettingsTeamRoute
   EventsIndexRoute: typeof EventsIndexRoute
 }
 
@@ -197,6 +249,34 @@ declare module '@tanstack/react-router' {
       path: '/events'
       fullPath: '/events/'
       preLoaderRoute: typeof EventsIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/settings/team': {
+      id: '/settings/team'
+      path: '/settings/team'
+      fullPath: '/settings/team'
+      preLoaderRoute: typeof SettingsTeamRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/settings/profile': {
+      id: '/settings/profile'
+      path: '/settings/profile'
+      fullPath: '/settings/profile'
+      preLoaderRoute: typeof SettingsProfileRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/settings/payments': {
+      id: '/settings/payments'
+      path: '/settings/payments'
+      fullPath: '/settings/payments'
+      preLoaderRoute: typeof SettingsPaymentsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/settings/api-webhooks': {
+      id: '/settings/api-webhooks'
+      path: '/settings/api-webhooks'
+      fullPath: '/settings/api-webhooks'
+      preLoaderRoute: typeof SettingsApiWebhooksRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/rsvp/$token': {
@@ -274,6 +354,10 @@ const rootRouteChildren: RootRouteChildren = {
   EventsIdRoute: EventsIdRouteWithChildren,
   EventsNewRoute: EventsNewRoute,
   RsvpTokenRoute: RsvpTokenRoute,
+  SettingsApiWebhooksRoute: SettingsApiWebhooksRoute,
+  SettingsPaymentsRoute: SettingsPaymentsRoute,
+  SettingsProfileRoute: SettingsProfileRoute,
+  SettingsTeamRoute: SettingsTeamRoute,
   EventsIndexRoute: EventsIndexRoute,
 }
 export const routeTree = rootRouteImport

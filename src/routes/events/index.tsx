@@ -6,9 +6,10 @@ import { useAuthActions } from "@convex-dev/auth/react";
 import { LogOut, Plus } from "lucide-react";
 
 import { api } from "../../../convex/_generated/api";
-import { AuthGuard } from "@/components/AuthGuard";
+import { DashboardLayout } from "@/components/DashboardLayout";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   Table,
   TableBody,
@@ -23,11 +24,22 @@ export const Route = createFileRoute("/events/")({ component: EventsIndexPage })
 
 function EventsIndexPage() {
   return (
-    <AuthGuard>
-      <Suspense fallback={<div className="p-8 text-sm text-muted-foreground">Loading events…</div>}>
+    <DashboardLayout>
+      <Suspense fallback={<TableSkeleton />}>
         <EventsListContent />
       </Suspense>
-    </AuthGuard>
+    </DashboardLayout>
+  );
+}
+
+function TableSkeleton() {
+  return (
+    <div className="mx-auto flex max-w-4xl flex-col gap-3 p-4 sm:p-8">
+      <Skeleton className="h-8 w-48" />
+      <Skeleton className="h-10 w-full" />
+      <Skeleton className="h-10 w-full" />
+      <Skeleton className="h-10 w-full" />
+    </div>
   );
 }
 
