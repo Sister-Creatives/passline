@@ -568,6 +568,34 @@ test("markOrderPaid does not resurrect a cancelled order", async () => {
   expect(tickets).toHaveLength(0);
 });
 
+test("cancelOrder restores the promo code's redemption count", async () => {
+  const t = convexTest(schema, modules);
+  const { as } = await asOrganizer(t, "ada@example.com");
+  await as.mutation(api.organizers.ensureOrganizer, {});
+  const eventId = await makePublishedEvent(as, 100);
+  const ticketTypeId = await makePaidTicketType(as, eventId, 1000, { capacity: 10 });
+  const promoCodeId = await makePercentPromoCode(as, eventId, "SAVE10", 1000, 2);
+
+  const result = await t.mutation(api.orders.createOrder, {
+    eventId,
+    items: [{ ticketTypeId, quantity: 1 }],
+    buyerName: "Buyer",
+    buyerEmail: "buyer@example.com",
+    promoCode: "save10",
+  });
+
+  let promo = await t.run((ctx) => ctx.db.get(promoCodeId));
+  expect(promo?.timesRedeemed).toBe(1);
+
+  await as.mutation(api.orders.cancelOrder, { orderId: result.orderId });
+
+  const order = await t.run((ctx) => ctx.db.get(result.orderId));
+  expect(order?.status).toBe("cancelled");
+
+  promo = await t.run((ctx) => ctx.db.get(promoCodeId));
+  expect(promo?.timesRedeemed).toBe(0);
+});
+
 test("getOrder returns the order with its items and tickets by token", async () => {
   const t = convexTest(schema, modules);
   const { as } = await asOrganizer(t, "ada@example.com");

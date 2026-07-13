@@ -272,6 +272,19 @@ export const cancelOrder = mutation({
         await ctx.db.patch(item.ticketTypeId, { sold: Math.max(0, ticketType.sold - item.quantity) });
       }
     }
+
+    // Restore the promo redemption consumed at createOrder, so a cancelled
+    // pending order doesn't permanently burn a limited-use code without a sale.
+    if (order.promoCode) {
+      const promo = await ctx.db
+        .query("promoCodes")
+        .withIndex("by_event_and_code", (q) => q.eq("eventId", order.eventId).eq("code", order.promoCode!))
+        .unique();
+      if (promo && promo.timesRedeemed > 0) {
+        await ctx.db.patch(promo._id, { timesRedeemed: promo.timesRedeemed - 1 });
+      }
+    }
+
     await ctx.db.patch(orderId, { status: "cancelled" });
     return null;
   },
