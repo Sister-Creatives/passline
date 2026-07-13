@@ -55,9 +55,71 @@ test("rounds the fee to the nearest cent", () => {
 test("an empty cart is all zeros", () => {
   const amounts = computeOrderAmounts([], "pass");
   expect(amounts).toEqual({
+    grossSubtotalCents: 0,
+    discountCents: 0,
     subtotalCents: 0,
     feeCents: 0,
     totalCents: 0,
     payoutCents: 0,
   });
+});
+
+test("no discount: grossSubtotalCents equals subtotalCents and discountCents is 0 (unchanged path)", () => {
+  const amounts = computeOrderAmounts([{ unitPriceCents: 2000, quantity: 3 }], "pass");
+  expect(amounts.grossSubtotalCents).toBe(6000);
+  expect(amounts.discountCents).toBe(0);
+  expect(amounts.subtotalCents).toBe(6000);
+  expect(amounts.feeCents).toBe(180);
+  expect(amounts.totalCents).toBe(6180);
+  expect(amounts.payoutCents).toBe(6000);
+});
+
+test("a percent discount reduces the subtotal and the fee is charged on the discounted amount", () => {
+  // gross = 6000, 10% discount ($10 off per... ) here a flat 1000 discountCents (percent already resolved by caller)
+  const amounts = computeOrderAmounts([{ unitPriceCents: 2000, quantity: 3 }], "pass", 600);
+  // gross = 6000, discount = 600 (10%), subtotal = 5400, fee = 5400 * 300/10000 = 162
+  expect(amounts.grossSubtotalCents).toBe(6000);
+  expect(amounts.discountCents).toBe(600);
+  expect(amounts.subtotalCents).toBe(5400);
+  expect(amounts.feeCents).toBe(162);
+  expect(amounts.totalCents).toBe(5562);
+  expect(amounts.payoutCents).toBe(5400);
+});
+
+test("a fixed discount reduces the subtotal and the fee is charged on the discounted amount ('absorb' mode)", () => {
+  const amounts = computeOrderAmounts([{ unitPriceCents: 2000, quantity: 3 }], "absorb", 1000);
+  // gross = 6000, discount = 1000 (fixed), subtotal = 5000, fee = 5000 * 300/10000 = 150
+  expect(amounts.grossSubtotalCents).toBe(6000);
+  expect(amounts.discountCents).toBe(1000);
+  expect(amounts.subtotalCents).toBe(5000);
+  expect(amounts.feeCents).toBe(150);
+  expect(amounts.totalCents).toBe(5000);
+  expect(amounts.payoutCents).toBe(4850);
+});
+
+test("a discount larger than the gross subtotal is clamped to the gross (never a negative subtotal)", () => {
+  const amounts = computeOrderAmounts([{ unitPriceCents: 2000, quantity: 3 }], "pass", 9999);
+  expect(amounts.grossSubtotalCents).toBe(6000);
+  expect(amounts.discountCents).toBe(6000);
+  expect(amounts.subtotalCents).toBe(0);
+  expect(amounts.feeCents).toBe(0);
+  expect(amounts.totalCents).toBe(0);
+  expect(amounts.payoutCents).toBe(0);
+});
+
+test("a negative discount is clamped to 0 (defensive floor)", () => {
+  const amounts = computeOrderAmounts([{ unitPriceCents: 2000, quantity: 3 }], "pass", -500);
+  expect(amounts.grossSubtotalCents).toBe(6000);
+  expect(amounts.discountCents).toBe(0);
+  expect(amounts.subtotalCents).toBe(6000);
+  expect(amounts.feeCents).toBe(180);
+  expect(amounts.totalCents).toBe(6180);
+});
+
+test("a discount that makes the subtotal free ($0) still fulfills the 'free is free' fee rule", () => {
+  const amounts = computeOrderAmounts([{ unitPriceCents: 2000, quantity: 3 }], "pass", 6000);
+  expect(amounts.subtotalCents).toBe(0);
+  expect(amounts.feeCents).toBe(0);
+  expect(amounts.totalCents).toBe(0);
+  expect(amounts.payoutCents).toBe(0);
 });
