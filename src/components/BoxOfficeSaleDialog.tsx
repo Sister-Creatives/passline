@@ -22,6 +22,14 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { Empty, EmptyHeader, EmptyTitle, EmptyDescription } from "@/components/ui/empty";
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 type PaymentMethod = "cash" | "card";
 
@@ -94,15 +102,23 @@ function BoxOfficeForm({
   const { data: addOns, isPending: addOnsPending } = useQuery(
     convexQuery(api.addOns.listForEvent, { eventId }),
   );
+  // F13: multi-session events require a sessionId on every order. Only a
+  // published event with >= 1 session returns any rows here, so the picker
+  // (below) stays hidden for single-session events -- the default, unchanged
+  // door-sale flow.
+  const { data: sessions, isPending: sessionsPending } = useQuery(
+    convexQuery(api.eventSessions.listForEvent, { eventId }),
+  );
   const createBoxOfficeOrder = useMutation(api.orders.createBoxOfficeOrder);
 
   const [ticketQuantities, setTicketQuantities] = useState<Record<string, number>>({});
   const [addOnQuantities, setAddOnQuantities] = useState<Record<string, number>>({});
   const [buyerName, setBuyerName] = useState("");
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("cash");
+  const [sessionId, setSessionId] = useState<Id<"eventSessions"> | "">("");
   const [submitting, setSubmitting] = useState(false);
 
-  if (typesPending || addOnsPending) {
+  if (typesPending || addOnsPending || sessionsPending) {
     return (
       <div className="flex flex-col gap-3">
         <Skeleton className="h-10 w-full" />
@@ -119,6 +135,8 @@ function BoxOfficeForm({
     (tt) => tt.status === "active" && tt.visibility === "visible",
   );
   const activeAddOns = (addOns ?? []).filter((a) => a.active);
+  const eventSessions = sessions ?? [];
+  const hasSessions = eventSessions.length > 0;
 
   const items = Object.entries(ticketQuantities)
     .filter(([, quantity]) => quantity > 0)
@@ -133,7 +151,10 @@ function BoxOfficeForm({
       0,
     ) + activeAddOns.reduce((sum, a) => sum + a.priceCents * (addOnQuantities[a._id] ?? 0), 0);
 
-  const canSubmit = buyerName.trim().length > 0 && (items.length > 0 || addOnItems.length > 0);
+  const canSubmit =
+    buyerName.trim().length > 0 &&
+    (items.length > 0 || addOnItems.length > 0) &&
+    (!hasSessions || sessionId !== "");
 
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
@@ -146,6 +167,7 @@ function BoxOfficeForm({
         addOnItems: addOnItems.length > 0 ? addOnItems : undefined,
         buyerName: buyerName.trim(),
         paymentMethod,
+        sessionId: hasSessions && sessionId !== "" ? sessionId : undefined,
       });
       const total = formatMoney(result.totalCents, currency);
       toast.success(
@@ -265,6 +287,30 @@ function BoxOfficeForm({
               </div>
             );
           })}
+        </div>
+      )}
+
+      {hasSessions && (
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="box-office-session">Session</Label>
+          <Select
+            value={sessionId}
+            onValueChange={(value) => setSessionId(value as Id<"eventSessions">)}
+          >
+            <SelectTrigger id="box-office-session" className="w-full">
+              <SelectValue placeholder="Choose a session" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectGroup>
+                {eventSessions.map((session) => (
+                  <SelectItem key={session._id} value={session._id}>
+                    {new Date(session.startsAt).toLocaleString()}
+                    {session.label ? ` · ${session.label}` : ""} · {session.remaining} left
+                  </SelectItem>
+                ))}
+              </SelectGroup>
+            </SelectContent>
+          </Select>
         </div>
       )}
 
