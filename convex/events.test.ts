@@ -3,6 +3,7 @@ import { convexTest, type TestConvex } from "convex-test";
 import { expect, test } from "vitest";
 import schema from "./schema";
 import { api } from "./_generated/api";
+import { computeReadiness } from "./lib/readiness";
 
 // Passed explicitly for the same pnpm module-resolution reason documented in
 // schema.test.ts.
@@ -705,6 +706,60 @@ test("listPublishedByOrganizer returns only that organizer's published events, s
   });
   expect(listed.some((e) => e.id === draft)).toBe(false);
   expect(listed.some((e) => e.id === bobEvent)).toBe(false);
+});
+
+// Future window so the recommended `date` rule passes in these tests.
+async function makeFutureEvent(as: Awaited<ReturnType<typeof asOrganizer>>["as"]) {
+  return as.mutation(api.events.createEvent, {
+    title: "Gala", description: "x", location: "Hall",
+    startsAt: Date.now() + 3_600_000, endsAt: Date.now() + 7_200_000, capacity: 100,
+  });
+}
+
+test("getEventReadiness is owner-only and reflects state", async () => {
+  const t = convexTest(schema, modules);
+  const { as: asAda } = await asOrganizer(t, "ada@example.com");
+  await asAda.mutation(api.organizers.ensureOrganizer, {});
+  const { as: asBob } = await asOrganizer(t, "bob@example.com");
+  await asBob.mutation(api.organizers.ensureOrganizer, {});
+  const eventId = await makeFutureEvent(asAda);
+
+  // No ticket types -> publishable as free RSVP.
+  const r1 = await asAda.query(api.events.getEventReadiness, { eventId });
+  expect(r1.canPublish).toBe(true);
+
+  await expect(asBob.query(api.events.getEventReadiness, { eventId })).rejects.toThrow();
+});
+
+test("publishEvent rejects an unreachable ticketed event, then succeeds when a type is visible", async () => {
+  const t = convexTest(schema, modules);
+  const { as } = await asOrganizer(t, "ada@example.com");
+  await as.mutation(api.organizers.ensureOrganizer, {});
+  const eventId = await makeFutureEvent(as);
+
+  const hiddenId = await as.mutation(api.ticketTypes.create, {
+    eventId, name: "VIP", kind: "paid", priceCents: 5000, visibility: "hidden",
+  });
+  await expect(as.mutation(api.events.publishEvent, { eventId })).rejects.toThrow(/Cannot publish/);
+
+  await as.mutation(api.ticketTypes.update, {
+    ticketTypeId: hiddenId, name: "VIP", kind: "paid", priceCents: 5000, visibility: "visible",
+  });
+  await as.mutation(api.events.publishEvent, { eventId });
+  const ev = await t.run((ctx) => ctx.db.get(eventId));
+  expect(ev?.status).toBe("published");
+});
+
+test("a zero-ticket RSVP draft still publishes (past dates allowed)", async () => {
+  const t = convexTest(schema, modules);
+  const { as } = await asOrganizer(t, "ada@example.com");
+  await as.mutation(api.organizers.ensureOrganizer, {});
+  const eventId = await as.mutation(api.events.createEvent, {
+    title: "Meetup", description: "x", location: "y", startsAt: 100, endsAt: 200, capacity: 10,
+  });
+  await as.mutation(api.events.publishEvent, { eventId });
+  const ev = await t.run((ctx) => ctx.db.get(eventId));
+  expect(ev?.status).toBe("published");
 });
 
 test("getPublicProfile returns an organizer's name/image, or null when not found", async () => {

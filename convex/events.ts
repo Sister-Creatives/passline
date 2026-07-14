@@ -6,6 +6,7 @@ import { slugify } from "./lib/slug";
 import { countSeatsTaken } from "./lib/capacity";
 import { promoteNext } from "./waitlist";
 import { recordAudit } from "./audit";
+import { computeReadiness } from "./lib/readiness";
 
 /**
  * Load an event and verify it belongs to the currently authenticated
@@ -19,6 +20,22 @@ async function requireOwnedEvent(ctx: QueryCtx | MutationCtx, eventId: Id<"event
   const event = await ctx.db.get(eventId);
   if (!event || event.organizerId !== organizerId) throw new Error("Not found");
   return event;
+}
+
+/**
+ * Load the child docs `computeReadiness` needs for an event. Sequential reads
+ * (no Date.now()/randomness) keep the mutation transaction deterministic.
+ */
+async function loadReadinessInputs(ctx: QueryCtx | MutationCtx, eventId: Id<"events">) {
+  const ticketTypes = await ctx.db
+    .query("ticketTypes").withIndex("by_event", (q) => q.eq("eventId", eventId)).collect();
+  const seats = await ctx.db
+    .query("seats").withIndex("by_event", (q) => q.eq("eventId", eventId)).collect();
+  const accessCodes = await ctx.db
+    .query("accessCodes").withIndex("by_event", (q) => q.eq("eventId", eventId)).collect();
+  const eventContent = await ctx.db
+    .query("eventContent").withIndex("by_event", (q) => q.eq("eventId", eventId)).unique();
+  return { ticketTypes, seats, accessCodes, eventContent };
 }
 
 export const createEvent = mutation({
@@ -48,6 +65,14 @@ export const publishEvent = mutation({
   args: { eventId: v.id("events") },
   handler: async (ctx, { eventId }) => {
     const event = await requireOwnedEvent(ctx, eventId);
+    const { ticketTypes, seats, accessCodes, eventContent } = await loadReadinessInputs(ctx, eventId);
+    const readiness = computeReadiness({
+      event, ticketTypes, seats, accessCodes, eventContent, now: Date.now(),
+    });
+    if (!readiness.canPublish) {
+      const blocker = readiness.rules.find((r) => r.severity === "required" && r.status === "fail");
+      throw new Error(`Cannot publish: ${blocker?.label ?? "the event is not ready"}`);
+    }
     await ctx.db.patch(eventId, { status: "published" });
     await recordAudit(ctx, {
       organizerId: event.organizerId,
@@ -203,6 +228,16 @@ export const getMyEventWithRsvps = query({
       .sort((a, b) => (a.waitlistPosition ?? 0) - (b.waitlistPosition ?? 0));
 
     return { event, confirmed, pendingClaim, waitlisted, checkedIn };
+  },
+});
+
+/** Owner-only publish-readiness report, reactive so the builder rail updates live. */
+export const getEventReadiness = query({
+  args: { eventId: v.id("events") },
+  handler: async (ctx, { eventId }) => {
+    const event = await requireOwnedEvent(ctx, eventId);
+    const { ticketTypes, seats, accessCodes, eventContent } = await loadReadinessInputs(ctx, eventId);
+    return computeReadiness({ event, ticketTypes, seats, accessCodes, eventContent, now: Date.now() });
   },
 });
 
