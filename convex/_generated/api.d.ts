@@ -19,6 +19,7 @@ import type * as checkoutQuestions from "../checkoutQuestions.js";
 import type * as crons from "../crons.js";
 import type * as email from "../email.js";
 import type * as eventContent from "../eventContent.js";
+import type * as eventSessions from "../eventSessions.js";
 import type * as events from "../events.js";
 import type * as http from "../http.js";
 import type * as lib_capacity from "../lib/capacity.js";
@@ -57,6 +58,7 @@ declare const fullApi: ApiFromModules<{
   crons: typeof crons;
   email: typeof email;
   eventContent: typeof eventContent;
+  eventSessions: typeof eventSessions;
   events: typeof events;
   http: typeof http;
   "lib/capacity": typeof lib_capacity;
