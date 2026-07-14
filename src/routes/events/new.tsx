@@ -19,7 +19,7 @@ function NewEventPage() {
         <Card className="mt-6">
           <CardHeader>
             <CardDescription>
-              Events start as drafts. You can publish once you&apos;re ready for guests to RSVP.
+              Add the basics to start a draft &mdash; tickets and design come next.
             </CardDescription>
           </CardHeader>
           <CardContent>

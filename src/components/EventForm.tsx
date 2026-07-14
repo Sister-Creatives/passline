@@ -127,7 +127,7 @@ export function EventForm({ event, onDone }: EventFormProps) {
           endsAt: new Date(values.endsAt).getTime(),
         });
         toast.success("Event created");
-        navigate({ to: "/events/$id", params: { id: eventId } });
+        navigate({ to: "/events/$id", params: { id: eventId }, search: { section: "tickets" } });
       }
     } catch (error) {
       const fallback = event ? "Failed to update event" : "Failed to create event";
