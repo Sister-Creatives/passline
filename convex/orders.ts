@@ -560,22 +560,22 @@ export const cancelOrder = mutation({
       .withIndex("by_order", (q) => q.eq("orderId", orderId))
       .collect();
 
-    // F13: a multi-session order reserved its capacity on the session (its
-    // ticket-type capacity check was skipped at creation), so release the
-    // session instead of the per-type `sold` here. A single (session-less)
-    // order releases the ticket types exactly as before.
+    // F13: `buildOrder` always increments each order item's `ticketType.sold`
+    // (issued-ticket count), and additionally increments `session.sold` (the
+    // capacity gate) for a multi-session order -- so release must mirror both
+    // unconditionally: always release the ticket types, and additionally
+    // release the session when the order targeted one.
+    for (const item of items) {
+      const ticketType = await ctx.db.get(item.ticketTypeId);
+      if (ticketType) {
+        await ctx.db.patch(item.ticketTypeId, { sold: Math.max(0, ticketType.sold - item.quantity) });
+      }
+    }
     if (order.sessionId) {
       const totalQuantity = items.reduce((sum, item) => sum + item.quantity, 0);
       const session = await ctx.db.get(order.sessionId);
       if (session) {
         await ctx.db.patch(order.sessionId, { sold: Math.max(0, session.sold - totalQuantity) });
-      }
-    } else {
-      for (const item of items) {
-        const ticketType = await ctx.db.get(item.ticketTypeId);
-        if (ticketType) {
-          await ctx.db.patch(item.ticketTypeId, { sold: Math.max(0, ticketType.sold - item.quantity) });
-        }
       }
     }
 
@@ -700,20 +700,20 @@ export const refundOrder = mutation({
       .withIndex("by_order", (q) => q.eq("orderId", orderId))
       .collect();
 
-    // F13: release the session instead of the per-type `sold` for a
-    // multi-session order, mirroring cancelOrder.
+    // F13: mirrors cancelOrder -- always release the ticket types, and
+    // additionally release the session when the order targeted one, since
+    // `buildOrder` increments both for a multi-session order.
+    for (const item of items) {
+      const ticketType = await ctx.db.get(item.ticketTypeId);
+      if (ticketType) {
+        await ctx.db.patch(item.ticketTypeId, { sold: Math.max(0, ticketType.sold - item.quantity) });
+      }
+    }
     if (order.sessionId) {
       const totalQuantity = items.reduce((sum, item) => sum + item.quantity, 0);
       const session = await ctx.db.get(order.sessionId);
       if (session) {
         await ctx.db.patch(order.sessionId, { sold: Math.max(0, session.sold - totalQuantity) });
-      }
-    } else {
-      for (const item of items) {
-        const ticketType = await ctx.db.get(item.ticketTypeId);
-        if (ticketType) {
-          await ctx.db.patch(item.ticketTypeId, { sold: Math.max(0, ticketType.sold - item.quantity) });
-        }
       }
     }
 

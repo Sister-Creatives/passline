@@ -1645,7 +1645,7 @@ test("createOrder rejects an order that would oversell the session's capacity", 
   expect(ticketType?.sold).toBe(0);
 });
 
-test("cancelOrder releases session.sold (not the ticket type's sold) for a multi-session order", async () => {
+test("cancelOrder releases both session.sold and the ticket type's sold for a multi-session order", async () => {
   const t = convexTest(schema, modules);
   const { as } = await asOrganizer(t, "ada@example.com");
   await as.mutation(api.organizers.ensureOrganizer, {});
@@ -1664,17 +1664,21 @@ test("cancelOrder releases session.sold (not the ticket type's sold) for a multi
 
   let session = await t.run((ctx) => ctx.db.get(sessionId));
   expect(session?.sold).toBe(3);
+  let ticketType = await t.run((ctx) => ctx.db.get(ticketTypeId));
+  expect(ticketType?.sold).toBe(3);
 
   await as.mutation(api.orders.cancelOrder, { orderId: result.orderId });
 
   session = await t.run((ctx) => ctx.db.get(sessionId));
   expect(session?.sold).toBe(0);
+  ticketType = await t.run((ctx) => ctx.db.get(ticketTypeId));
+  expect(ticketType?.sold).toBe(0);
 
   const order = await t.run((ctx) => ctx.db.get(result.orderId));
   expect(order?.status).toBe("cancelled");
 });
 
-test("refundOrder releases session.sold for a multi-session order", async () => {
+test("refundOrder releases both session.sold and the ticket type's sold for a multi-session order", async () => {
   const t = convexTest(schema, modules);
   const { as } = await asOrganizer(t, "ada@example.com");
   await as.mutation(api.organizers.ensureOrganizer, {});
@@ -1693,11 +1697,15 @@ test("refundOrder releases session.sold for a multi-session order", async () => 
 
   let session = await t.run((ctx) => ctx.db.get(sessionId));
   expect(session?.sold).toBe(2);
+  let ticketType = await t.run((ctx) => ctx.db.get(ticketTypeId));
+  expect(ticketType?.sold).toBe(2);
 
   await as.mutation(api.orders.refundOrder, { orderId: result.orderId });
 
   session = await t.run((ctx) => ctx.db.get(sessionId));
   expect(session?.sold).toBe(0);
+  ticketType = await t.run((ctx) => ctx.db.get(ticketTypeId));
+  expect(ticketType?.sold).toBe(0);
 
   const order = await t.run((ctx) => ctx.db.get(result.orderId));
   expect(order?.status).toBe("refunded");
