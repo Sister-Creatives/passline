@@ -132,6 +132,7 @@ export const listEvents = httpAction(async (ctx, request) => {
 const TICKET_TYPES_PATH = /^\/v1\/events\/([^/]+)\/ticket-types\/?$/;
 const QUESTIONS_PATH = /^\/v1\/events\/([^/]+)\/questions\/?$/;
 const ADD_ONS_PATH = /^\/v1\/events\/([^/]+)\/add-ons\/?$/;
+const SESSIONS_PATH = /^\/v1\/events\/([^/]+)\/sessions\/?$/;
 
 /** GET /v1/events/{eventId}/ticket-types — that event's ticket types, if it's the caller's. */
 async function handleListTicketTypes(
@@ -205,12 +206,38 @@ async function handleListAddOns(
 }
 
 /**
+ * GET /v1/events/{eventId}/sessions — that event's sessions (F13), if it's
+ * the caller's. Ownership is checked first (mirrors `handleListQuestions` /
+ * `handleListAddOns`); the data itself reuses the public
+ * `eventSessions.listForEvent` query, so this endpoint's shape always matches
+ * what a checkout's session picker would render (sessions of a *published*
+ * event, sorted by `startsAt`, each with `remaining = capacity - sold`).
+ */
+async function handleListSessions(
+  ctx: ActionCtx,
+  organizerId: Id<"organizers">,
+  eventId: string,
+): Promise<Response> {
+  try {
+    const typedEventId = eventId as Id<"events">;
+    const ownerId = await ctx.runQuery(internal.apiHttp.eventOrganizerId, { eventId: typedEventId });
+    if (ownerId === null || ownerId !== organizerId) return notFound();
+    const sessions = await ctx.runQuery(api.eventSessions.listForEvent, { eventId: typedEventId });
+    return jsonResponse({ data: sessions });
+  } catch {
+    // Malformed id segment (not a valid Convex id at all) — same 404 as a
+    // well-formed id that doesn't resolve to the caller's event.
+    return notFound();
+  }
+}
+
+/**
  * GET /v1/events/{eventId}/ticket-types, GET /v1/events/{eventId}/questions,
- * and GET /v1/events/{eventId}/add-ons all live under this single httpAction:
- * Convex's httpRouter allows only one handler per (method, pathPrefix), and
- * all three endpoints share the "/v1/events/" prefix, so they dispatch here
- * by matching the URL's suffix rather than each registering their own route
- * in convex/http.ts.
+ * GET /v1/events/{eventId}/add-ons, and GET /v1/events/{eventId}/sessions all
+ * live under this single httpAction: Convex's httpRouter allows only one
+ * handler per (method, pathPrefix), and all four endpoints share the
+ * "/v1/events/" prefix, so they dispatch here by matching the URL's suffix
+ * rather than each registering their own route in convex/http.ts.
  */
 export const listEventSubResource = httpAction(async (ctx, request) => {
   const organizerId = await authenticate(ctx, request);
@@ -227,6 +254,9 @@ export const listEventSubResource = httpAction(async (ctx, request) => {
   const addOnsMatch = pathname.match(ADD_ONS_PATH);
   if (addOnsMatch) return handleListAddOns(ctx, organizerId, addOnsMatch[1]);
 
+  const sessionsMatch = pathname.match(SESSIONS_PATH);
+  if (sessionsMatch) return handleListSessions(ctx, organizerId, sessionsMatch[1]);
+
   return notFound();
 });
 
@@ -239,6 +269,7 @@ type CreateOrderBody = {
   answers?: unknown;
   accessCode?: unknown;
   addOnItems?: unknown;
+  sessionId?: unknown;
 };
 
 /**
@@ -255,7 +286,10 @@ type CreateOrderBody = {
  * `accessCode` (F4b) is likewise passed through unvalidated — `createOrder`
  * resolves it and enforces it against any `hidden` ticket types in the cart.
  * An optional `addOnItems` (F11.3) is likewise passed through unvalidated —
- * `createOrder` itself validates each add-on's ownership/active/capacity.
+ * `createOrder` itself validates each add-on's ownership/active/capacity. An
+ * optional `sessionId` (F13) is likewise passed through unvalidated —
+ * `createOrder` itself requires/rejects it depending on whether the event has
+ * sessions and validates it belongs to the event.
  */
 export const createOrder = httpAction(async (ctx, request) => {
   const organizerId = await authenticate(ctx, request);
@@ -268,7 +302,8 @@ export const createOrder = httpAction(async (ctx, request) => {
     return badRequest("Invalid JSON body");
   }
 
-  const { eventId, items, buyerName, buyerEmail, promoCode, answers, accessCode, addOnItems } = body;
+  const { eventId, items, buyerName, buyerEmail, promoCode, answers, accessCode, addOnItems, sessionId } =
+    body;
   if (typeof eventId !== "string") return badRequest("eventId is required");
   if (typeof buyerName !== "string") return badRequest("buyerName is required");
   if (typeof buyerEmail !== "string") return badRequest("buyerEmail is required");
@@ -284,6 +319,9 @@ export const createOrder = httpAction(async (ctx, request) => {
   }
   if (addOnItems !== undefined && !Array.isArray(addOnItems)) {
     return badRequest("addOnItems must be an array");
+  }
+  if (sessionId !== undefined && typeof sessionId !== "string") {
+    return badRequest("sessionId must be a string");
   }
 
   let ownerId: Id<"organizers"> | null;
@@ -308,6 +346,7 @@ export const createOrder = httpAction(async (ctx, request) => {
       answers: answers as { questionId: Id<"checkoutQuestions">; value: string }[] | undefined,
       accessCode: accessCode as string | undefined,
       addOnItems: addOnItems as { addOnId: Id<"addOns">; quantity: number }[] | undefined,
+      sessionId: sessionId as Id<"eventSessions"> | undefined,
     });
     return jsonResponse({ data: result }, 201);
   } catch (err) {

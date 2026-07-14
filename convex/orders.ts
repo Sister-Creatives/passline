@@ -64,6 +64,10 @@ async function issueTicketsAndMarkPaid(ctx: MutationCtx, order: Doc<"orders">) {
         code: randomToken("tkt_"),
         status: "valid",
         createdAt: Date.now(),
+        // F13: stamp the order's session (undefined for a single event) onto
+        // every ticket it issues, so a ticket's session is always derivable
+        // without a join back through its order.
+        sessionId: order.sessionId,
       });
     }
   }
@@ -94,6 +98,12 @@ type BuildOrderArgs = {
   promoCode?: string;
   accessCode?: string;
   answers?: { questionId: Id<"checkoutQuestions">; value: string }[];
+  /**
+   * F13: which of the event's `eventSessions` this order is for. Required
+   * (and validated) when the event has ≥ 1 session; rejected when it has
+   * none -- see the session-loading block at the top of `buildOrder`.
+   */
+  sessionId?: Id<"eventSessions">;
   /**
    * When true, the stored order carries zero platform fee regardless of the
    * event's `feeMode` -- `feeCents` is forced to 0 and `totalCents` down to
@@ -138,6 +148,7 @@ async function buildOrder(
     promoCode,
     accessCode,
     answers,
+    sessionId,
     feeOverrideZero,
   }: BuildOrderArgs,
 ): Promise<{ orderId: Id<"orders">; order: Doc<"orders"> }> {
@@ -147,6 +158,27 @@ async function buildOrder(
   // (neither) is rejected.
   if (items.length === 0 && (addOnItems === undefined || addOnItems.length === 0)) {
     throw new Error("Cart is empty");
+  }
+
+  // F13: multi-session events. An event is multi-session iff it has >= 1
+  // `eventSessions` row -- when it does, every order MUST target one of
+  // them (capacity is enforced there instead, below), and a session-less
+  // event rejects a sessionId outright so it can never accidentally start
+  // tracking session-scoped state. This is the only branch point in
+  // `buildOrder` -- for a single (session-less) event, `session` stays
+  // `undefined` throughout and every check below runs byte-identically to
+  // before.
+  const sessions = await ctx.db
+    .query("eventSessions")
+    .withIndex("by_event", (q) => q.eq("eventId", eventId))
+    .collect();
+  let session: Doc<"eventSessions"> | undefined;
+  if (sessions.length > 0) {
+    if (!sessionId) throw new Error("This event requires a session");
+    session = sessions.find((s) => s._id === sessionId);
+    if (!session) throw new Error("Session not found for this event");
+  } else if (sessionId) {
+    throw new Error("This event has no sessions");
   }
 
   const unlocked = accessCode
@@ -200,7 +232,14 @@ async function buildOrder(
     if (ticketType.maxPerOrder !== undefined && totalQuantity > ticketType.maxPerOrder) {
       throw new Error(`Maximum order quantity for ${ticketType.name} is ${ticketType.maxPerOrder}`);
     }
-    if (ticketType.capacity !== undefined && ticketType.sold + totalQuantity > ticketType.capacity) {
+    // A multi-session event's ticket types are pure pricing tiers across
+    // sessions -- their own `capacity` (if any) is not enforced; only the
+    // session's is, below. A single event enforces it exactly as before.
+    if (
+      !session &&
+      ticketType.capacity !== undefined &&
+      ticketType.sold + totalQuantity > ticketType.capacity
+    ) {
       throw new Error(`Not enough remaining capacity for ${ticketType.name}`);
     }
 
@@ -212,7 +251,14 @@ async function buildOrder(
     });
   }
 
-  if (alreadySold + totalRequested > event.capacity) {
+  // Capacity gate: a multi-session event enforces only its session's
+  // capacity (its own event.capacity is unused for it); a single event
+  // enforces the event-wide capacity exactly as before.
+  if (session) {
+    if (session.sold + totalRequested > session.capacity) {
+      throw new Error("Not enough remaining capacity for this session");
+    }
+  } else if (alreadySold + totalRequested > event.capacity) {
     throw new Error("Not enough remaining event capacity");
   }
 
@@ -298,6 +344,7 @@ async function buildOrder(
     promoCode: normalizedPromoCode,
     token,
     createdAt: Date.now(),
+    sessionId: session?._id,
   });
 
   for (const item of lineItems) {
@@ -355,6 +402,13 @@ async function buildOrder(
     await ctx.db.patch(item.ticketTypeId, { sold: ticketType.sold + item.quantity });
   }
 
+  // Reserve session capacity (multi-session events only): the session, not
+  // the ticket types, is the inventory unit here -- their capacity check was
+  // skipped above, but `sold` is still tallied per type for reporting.
+  if (session) {
+    await ctx.db.patch(session._id, { sold: session.sold + totalRequested });
+  }
+
   // Reserve add-on capacity, mirroring the ticket-type reservation above.
   for (const item of addOnLineItems) {
     const addOn = addOnsById.get(item.addOnId);
@@ -387,10 +441,11 @@ export const createOrder = mutation({
     answers: v.optional(v.array(answerInput)),
     accessCode: v.optional(v.string()),
     addOnItems: v.optional(v.array(addOnItemInput)),
+    sessionId: v.optional(v.id("eventSessions")), // F13: required iff the event has sessions
   },
   handler: async (
     ctx,
-    { eventId, items, buyerName, buyerEmail, promoCode, answers, accessCode, addOnItems },
+    { eventId, items, buyerName, buyerEmail, promoCode, answers, accessCode, addOnItems, sessionId },
   ) => {
     const { orderId, order } = await buildOrder(ctx, {
       eventId,
@@ -401,6 +456,7 @@ export const createOrder = mutation({
       promoCode,
       accessCode,
       answers,
+      sessionId,
       feeOverrideZero: false,
     });
 
@@ -435,8 +491,12 @@ export const createBoxOfficeOrder = mutation({
     buyerName: v.string(),
     buyerEmail: v.optional(v.string()),
     paymentMethod: v.union(v.literal("cash"), v.literal("card")),
+    sessionId: v.optional(v.id("eventSessions")), // F13: required iff the event has sessions
   },
-  handler: async (ctx, { eventId, items, addOnItems, buyerName, buyerEmail, paymentMethod }) => {
+  handler: async (
+    ctx,
+    { eventId, items, addOnItems, buyerName, buyerEmail, paymentMethod, sessionId },
+  ) => {
     const event = await requireOwnedEvent(ctx, eventId);
 
     const { orderId, order } = await buildOrder(ctx, {
@@ -445,6 +505,7 @@ export const createBoxOfficeOrder = mutation({
       addOnItems,
       buyerName,
       buyerEmail: buyerEmail ?? "",
+      sessionId,
       feeOverrideZero: paymentMethod === "cash",
     });
 
@@ -498,10 +559,23 @@ export const cancelOrder = mutation({
       .query("orderItems")
       .withIndex("by_order", (q) => q.eq("orderId", orderId))
       .collect();
-    for (const item of items) {
-      const ticketType = await ctx.db.get(item.ticketTypeId);
-      if (ticketType) {
-        await ctx.db.patch(item.ticketTypeId, { sold: Math.max(0, ticketType.sold - item.quantity) });
+
+    // F13: a multi-session order reserved its capacity on the session (its
+    // ticket-type capacity check was skipped at creation), so release the
+    // session instead of the per-type `sold` here. A single (session-less)
+    // order releases the ticket types exactly as before.
+    if (order.sessionId) {
+      const totalQuantity = items.reduce((sum, item) => sum + item.quantity, 0);
+      const session = await ctx.db.get(order.sessionId);
+      if (session) {
+        await ctx.db.patch(order.sessionId, { sold: Math.max(0, session.sold - totalQuantity) });
+      }
+    } else {
+      for (const item of items) {
+        const ticketType = await ctx.db.get(item.ticketTypeId);
+        if (ticketType) {
+          await ctx.db.patch(item.ticketTypeId, { sold: Math.max(0, ticketType.sold - item.quantity) });
+        }
       }
     }
 
@@ -579,7 +653,15 @@ export const getOrder = query({
         return { ...row, name: addOn?.name ?? "Unknown add-on" };
       }),
     );
-    return { order, event, items, tickets, orderResponses, addOns };
+    // F13: the order already carries `sessionId`; also resolve its session's
+    // date/label (just those fields, not the raw `sold`/`capacity` counters)
+    // so a self-service order page can show which session was booked without
+    // a second round trip.
+    const eventSession = order.sessionId ? await ctx.db.get(order.sessionId) : null;
+    const session = eventSession
+      ? { startsAt: eventSession.startsAt, endsAt: eventSession.endsAt, label: eventSession.label }
+      : null;
+    return { order, event, items, tickets, orderResponses, addOns, session };
   },
 });
 
@@ -617,10 +699,21 @@ export const refundOrder = mutation({
       .query("orderItems")
       .withIndex("by_order", (q) => q.eq("orderId", orderId))
       .collect();
-    for (const item of items) {
-      const ticketType = await ctx.db.get(item.ticketTypeId);
-      if (ticketType) {
-        await ctx.db.patch(item.ticketTypeId, { sold: Math.max(0, ticketType.sold - item.quantity) });
+
+    // F13: release the session instead of the per-type `sold` for a
+    // multi-session order, mirroring cancelOrder.
+    if (order.sessionId) {
+      const totalQuantity = items.reduce((sum, item) => sum + item.quantity, 0);
+      const session = await ctx.db.get(order.sessionId);
+      if (session) {
+        await ctx.db.patch(order.sessionId, { sold: Math.max(0, session.sold - totalQuantity) });
+      }
+    } else {
+      for (const item of items) {
+        const ticketType = await ctx.db.get(item.ticketTypeId);
+        if (ticketType) {
+          await ctx.db.patch(item.ticketTypeId, { sold: Math.max(0, ticketType.sold - item.quantity) });
+        }
       }
     }
 
