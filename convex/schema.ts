@@ -239,4 +239,29 @@ export default defineSchema({
     quantity: v.number(),
     unitPriceCents: v.number(), // snapshot at purchase
   }).index("by_order", ["orderId"]),
+
+  eventContent: defineTable({
+    eventId: v.id("events"),
+    organizerId: v.id("organizers"),
+    coverImageUrl: v.optional(v.string()),
+    brandColor: v.optional(v.string()), // "#RRGGBB", validated via lib/eventContent.isValidHexColor
+    ctaLabel: v.optional(v.string()), // e.g. "Register", "Donate", "RSVP" — replaces the default button text
+    videoUrl: v.optional(v.string()), // a YouTube/Vimeo watch URL
+    agenda: v.array(
+      v.object({
+        time: v.string(),
+        title: v.string(),
+        description: v.optional(v.string()),
+      }),
+    ),
+    speakers: v.array(
+      v.object({
+        name: v.string(),
+        title: v.optional(v.string()),
+        bio: v.optional(v.string()),
+        imageUrl: v.optional(v.string()),
+      }),
+    ),
+    faqs: v.array(v.object({ question: v.string(), answer: v.string() })),
+  }).index("by_event", ["eventId"]),
 });
