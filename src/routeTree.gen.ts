@@ -26,6 +26,7 @@ import { Route as ClaimTokenRouteImport } from './routes/claim/$token'
 import { Route as EventsIdIndexRouteImport } from './routes/events/$id.index'
 import { Route as EventsIdScanRouteImport } from './routes/events/$id.scan'
 import { Route as EventsIdDoorRouteImport } from './routes/events/$id.door'
+import { Route as ESlugWatchRouteImport } from './routes/e/$slug.watch'
 
 const LoginRoute = LoginRouteImport.update({
   id: '/login',
@@ -112,13 +113,18 @@ const EventsIdDoorRoute = EventsIdDoorRouteImport.update({
   path: '/door',
   getParentRoute: () => EventsIdRoute,
 } as any)
+const ESlugWatchRoute = ESlugWatchRouteImport.update({
+  id: '/watch',
+  path: '/watch',
+  getParentRoute: () => ESlugRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/dashboard': typeof DashboardRoute
   '/login': typeof LoginRoute
   '/claim/$token': typeof ClaimTokenRoute
-  '/e/$slug': typeof ESlugRoute
+  '/e/$slug': typeof ESlugRouteWithChildren
   '/events/$id': typeof EventsIdRouteWithChildren
   '/events/new': typeof EventsNewRoute
   '/orders/$token': typeof OrdersTokenRoute
@@ -128,6 +134,7 @@ export interface FileRoutesByFullPath {
   '/settings/profile': typeof SettingsProfileRoute
   '/settings/team': typeof SettingsTeamRoute
   '/events/': typeof EventsIndexRoute
+  '/e/$slug/watch': typeof ESlugWatchRoute
   '/events/$id/door': typeof EventsIdDoorRoute
   '/events/$id/scan': typeof EventsIdScanRoute
   '/events/$id/': typeof EventsIdIndexRoute
@@ -137,7 +144,7 @@ export interface FileRoutesByTo {
   '/dashboard': typeof DashboardRoute
   '/login': typeof LoginRoute
   '/claim/$token': typeof ClaimTokenRoute
-  '/e/$slug': typeof ESlugRoute
+  '/e/$slug': typeof ESlugRouteWithChildren
   '/events/new': typeof EventsNewRoute
   '/orders/$token': typeof OrdersTokenRoute
   '/rsvp/$token': typeof RsvpTokenRoute
@@ -146,6 +153,7 @@ export interface FileRoutesByTo {
   '/settings/profile': typeof SettingsProfileRoute
   '/settings/team': typeof SettingsTeamRoute
   '/events': typeof EventsIndexRoute
+  '/e/$slug/watch': typeof ESlugWatchRoute
   '/events/$id/door': typeof EventsIdDoorRoute
   '/events/$id/scan': typeof EventsIdScanRoute
   '/events/$id': typeof EventsIdIndexRoute
@@ -156,7 +164,7 @@ export interface FileRoutesById {
   '/dashboard': typeof DashboardRoute
   '/login': typeof LoginRoute
   '/claim/$token': typeof ClaimTokenRoute
-  '/e/$slug': typeof ESlugRoute
+  '/e/$slug': typeof ESlugRouteWithChildren
   '/events/$id': typeof EventsIdRouteWithChildren
   '/events/new': typeof EventsNewRoute
   '/orders/$token': typeof OrdersTokenRoute
@@ -166,6 +174,7 @@ export interface FileRoutesById {
   '/settings/profile': typeof SettingsProfileRoute
   '/settings/team': typeof SettingsTeamRoute
   '/events/': typeof EventsIndexRoute
+  '/e/$slug/watch': typeof ESlugWatchRoute
   '/events/$id/door': typeof EventsIdDoorRoute
   '/events/$id/scan': typeof EventsIdScanRoute
   '/events/$id/': typeof EventsIdIndexRoute
@@ -187,6 +196,7 @@ export interface FileRouteTypes {
     | '/settings/profile'
     | '/settings/team'
     | '/events/'
+    | '/e/$slug/watch'
     | '/events/$id/door'
     | '/events/$id/scan'
     | '/events/$id/'
@@ -205,6 +215,7 @@ export interface FileRouteTypes {
     | '/settings/profile'
     | '/settings/team'
     | '/events'
+    | '/e/$slug/watch'
     | '/events/$id/door'
     | '/events/$id/scan'
     | '/events/$id'
@@ -224,6 +235,7 @@ export interface FileRouteTypes {
     | '/settings/profile'
     | '/settings/team'
     | '/events/'
+    | '/e/$slug/watch'
     | '/events/$id/door'
     | '/events/$id/scan'
     | '/events/$id/'
@@ -234,7 +246,7 @@ export interface RootRouteChildren {
   DashboardRoute: typeof DashboardRoute
   LoginRoute: typeof LoginRoute
   ClaimTokenRoute: typeof ClaimTokenRoute
-  ESlugRoute: typeof ESlugRoute
+  ESlugRoute: typeof ESlugRouteWithChildren
   EventsIdRoute: typeof EventsIdRouteWithChildren
   EventsNewRoute: typeof EventsNewRoute
   OrdersTokenRoute: typeof OrdersTokenRoute
@@ -367,8 +379,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof EventsIdDoorRouteImport
       parentRoute: typeof EventsIdRoute
     }
+    '/e/$slug/watch': {
+      id: '/e/$slug/watch'
+      path: '/watch'
+      fullPath: '/e/$slug/watch'
+      preLoaderRoute: typeof ESlugWatchRouteImport
+      parentRoute: typeof ESlugRoute
+    }
   }
 }
+
+interface ESlugRouteChildren {
+  ESlugWatchRoute: typeof ESlugWatchRoute
+}
+
+const ESlugRouteChildren: ESlugRouteChildren = {
+  ESlugWatchRoute: ESlugWatchRoute,
+}
+
+const ESlugRouteWithChildren = ESlugRoute._addFileChildren(ESlugRouteChildren)
 
 interface EventsIdRouteChildren {
   EventsIdDoorRoute: typeof EventsIdDoorRoute
@@ -391,7 +420,7 @@ const rootRouteChildren: RootRouteChildren = {
   DashboardRoute: DashboardRoute,
   LoginRoute: LoginRoute,
   ClaimTokenRoute: ClaimTokenRoute,
-  ESlugRoute: ESlugRoute,
+  ESlugRoute: ESlugRouteWithChildren,
   EventsIdRoute: EventsIdRouteWithChildren,
   EventsNewRoute: EventsNewRoute,
   OrdersTokenRoute: OrdersTokenRoute,

@@ -21,6 +21,7 @@ import { AccessCodesPanel } from "@/components/AccessCodesPanel";
 import { csvField } from "@/lib/csv";
 import { CheckoutQuestionsPanel } from "@/components/CheckoutQuestionsPanel";
 import { EventPagePanel } from "@/components/EventPagePanel";
+import { VirtualHubPanel } from "@/components/VirtualHubPanel";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
@@ -170,6 +171,7 @@ function EventManageContent({ eventId }: { eventId: Id<"events"> }) {
           <TabsTrigger value="access">Access codes</TabsTrigger>
           <TabsTrigger value="questions">Questions</TabsTrigger>
           <TabsTrigger value="page">Page</TabsTrigger>
+          <TabsTrigger value="hub">Virtual hub</TabsTrigger>
           <TabsTrigger value="orders">Orders</TabsTrigger>
           <TabsTrigger value="analytics">Analytics</TabsTrigger>
           <TabsTrigger value="marketing">Marketing</TabsTrigger>
@@ -297,6 +299,9 @@ function EventManageContent({ eventId }: { eventId: Id<"events"> }) {
         </TabsContent>
         <TabsContent value="page">
           <EventPagePanel eventId={event._id} />
+        </TabsContent>
+        <TabsContent value="hub">
+          <VirtualHubPanel eventId={event._id} />
         </TabsContent>
         <TabsContent value="orders">
           <OrdersPanel eventId={event._id} />

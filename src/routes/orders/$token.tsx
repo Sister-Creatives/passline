@@ -13,6 +13,7 @@ import { api } from "../../../convex/_generated/api";
 import type { Doc } from "../../../convex/_generated/dataModel";
 import { formatMoney } from "@/lib/format-money";
 import { formatEventDateRange } from "@/lib/format-event-date";
+import { VirtualHubView, type VirtualHubViewData } from "@/components/VirtualHubView";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -89,6 +90,10 @@ function OrderPageSkeleton() {
 
 function OrderPageContent({ token }: { token: string }) {
   const { data } = useSuspenseQuery(convexQuery(api.orders.getOrder, { token }));
+  // Ticket holders are entitled to the hub by holding this order's token --
+  // no separate password gate. Null when the hub isn't set up / enabled, the
+  // order is cancelled, or the token is unknown (see virtualHub.getForOrder).
+  const { data: hub } = useSuspenseQuery(convexQuery(api.virtualHub.getForOrder, { token }));
 
   if (!data) {
     return (
@@ -139,6 +144,12 @@ function OrderPageContent({ token }: { token: string }) {
           </p>
         </CardContent>
       </Card>
+
+      {hub && (
+        <div className="mt-6">
+          <VirtualHubView hub={hub as VirtualHubViewData} />
+        </div>
+      )}
 
       <h2 className="mt-8 text-lg font-medium">Tickets</h2>
       <div className="mt-4 flex flex-col gap-3">
