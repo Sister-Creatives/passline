@@ -77,6 +77,47 @@ export const checkInTicket = mutation({
 });
 
 /**
+ * Door check-out by scanned/entered `code`. Mirrors `checkInTicket`'s
+ * auth/ownership and structured-result shape (spec F18 §4): a foreign-org or
+ * unknown code resolves to `not_found` (never leaks cross-org existence), a
+ * `cancelled` ticket returns `cancelled`, a `valid` ticket (already out, or
+ * never checked in) returns `not_in`, and a `checked_in` ticket is the only
+ * case that mutates state -- back to `valid` with `checkedOutAt` stamped --
+ * returning `ok`. Only an unauthenticated caller throws.
+ */
+export const checkOutTicket = mutation({
+  args: { code: v.string() },
+  handler: async (ctx, { code }) => {
+    const organizerId = await getAuthOrganizerId(ctx);
+    if (!organizerId) throw new Error("Not authenticated");
+
+    const ticket = await ctx.db
+      .query("tickets")
+      .withIndex("by_code", (q) => q.eq("code", code))
+      .unique();
+    if (!ticket) return { result: "not_found" as const };
+
+    const event = await ctx.db.get(ticket.eventId);
+    if (!event || event.organizerId !== organizerId) return { result: "not_found" as const };
+
+    if (ticket.status === "cancelled") {
+      return { result: "cancelled" as const, ticket };
+    }
+
+    const { ticketTypeName, gateAlert } = await ticketTypeGateInfo(ctx, ticket.ticketTypeId);
+
+    if (ticket.status === "valid") {
+      return { result: "not_in" as const, ticket, gateAlert };
+    }
+
+    const checkedOutAt = Date.now();
+    await ctx.db.patch(ticket._id, { status: "valid", checkedOutAt });
+    const updated = (await ctx.db.get(ticket._id)) as Doc<"tickets">;
+    return { result: "ok" as const, ticket: updated, ticketTypeName, gateAlert };
+  },
+});
+
+/**
  * Correct a mis-scan: owner-only, reverts a `checked_in` ticket back to
  * `valid` and clears `checkedInAt`. A no-op for any other status.
  */
@@ -133,6 +174,9 @@ export const getScanState = query({
       .collect();
     const active = tickets.filter((t) => t.status !== "cancelled");
     const checkedIn = active.filter((t) => t.status === "checked_in").length;
-    return { total: active.length, checkedIn };
+    // `currentlyInside` is the live-inside count (identical to `checkedIn`
+    // today, exposed under its own name per spec F18 §4); `checkedIn` is kept
+    // for existing callers.
+    return { total: active.length, checkedIn, currentlyInside: checkedIn };
   },
 });

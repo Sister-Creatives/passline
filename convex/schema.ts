@@ -136,6 +136,10 @@ export default defineSchema({
     grossSubtotalCents: v.optional(v.number()),
     promoCode: v.optional(v.string()),
     refundedAt: v.optional(v.number()),
+    paymentMethod: v.optional(
+      v.union(v.literal("cash"), v.literal("card"), v.literal("online")),
+    ),
+    source: v.optional(v.union(v.literal("online"), v.literal("box_office"))),
   })
     .index("by_event", ["eventId"])
     .index("by_organizer", ["organizerId"])
@@ -162,6 +166,7 @@ export default defineSchema({
     attendeeEmail: v.optional(v.string()),
     createdAt: v.number(),
     checkedInAt: v.optional(v.number()),
+    checkedOutAt: v.optional(v.number()),
   })
     .index("by_order", ["orderId"])
     .index("by_event", ["eventId"])

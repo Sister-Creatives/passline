@@ -201,16 +201,95 @@ test("getScanState counts total non-cancelled vs checked-in, owner-only", async 
   const more = await issueTickets(t, eventId, ticketTypeId, 2);
 
   let state = await as.query(api.ticketCheckin.getScanState, { eventId });
-  expect(state).toEqual({ total: 3, checkedIn: 0 });
+  expect(state).toEqual({ total: 3, checkedIn: 0, currentlyInside: 0 });
 
   await as.mutation(api.ticketCheckin.checkInTicket, { code: more[0].code });
   state = await as.query(api.ticketCheckin.getScanState, { eventId });
-  expect(state).toEqual({ total: 3, checkedIn: 1 });
+  expect(state).toEqual({ total: 3, checkedIn: 1, currentlyInside: 1 });
 
   // A cancelled ticket drops out of the total (and was never checked in).
   await t.run((ctx) => ctx.db.patch(more[1]._id, { status: "cancelled" }));
   state = await as.query(api.ticketCheckin.getScanState, { eventId });
-  expect(state).toEqual({ total: 2, checkedIn: 1 });
+  expect(state).toEqual({ total: 2, checkedIn: 1, currentlyInside: 1 });
 
   await expect(t.query(api.ticketCheckin.getScanState, { eventId })).rejects.toThrow();
+});
+
+test("checkOutTicket checks out a checked-in ticket: ok + valid + checkedOutAt set", async () => {
+  const { t, as, ticket } = await setup("Check 18+ ID");
+
+  await as.mutation(api.ticketCheckin.checkInTicket, { code: ticket.code });
+
+  const result = await as.mutation(api.ticketCheckin.checkOutTicket, { code: ticket.code });
+  expect(result.result).toBe("ok");
+  if (result.result !== "ok") throw new Error("expected ok");
+  expect(result.ticketTypeName).toBe("General");
+  expect(result.gateAlert).toBe("Check 18+ ID");
+  expect(result.ticket.status).toBe("valid");
+  expect(typeof result.ticket.checkedOutAt).toBe("number");
+
+  const row = await t.run((ctx) => ctx.db.get(ticket._id));
+  expect(row?.status).toBe("valid");
+  expect(typeof row?.checkedOutAt).toBe("number");
+});
+
+test("checkOutTicket on a not-checked-in (valid) ticket returns not_in", async () => {
+  const { as, ticket } = await setup();
+
+  const result = await as.mutation(api.ticketCheckin.checkOutTicket, { code: ticket.code });
+  expect(result.result).toBe("not_in");
+  if (result.result !== "not_in") throw new Error("expected not_in");
+  expect(result.ticket.status).toBe("valid");
+});
+
+test("checkOutTicket on a cancelled ticket returns cancelled", async () => {
+  const { t, as, ticket } = await setup();
+  await t.run((ctx) => ctx.db.patch(ticket._id, { status: "cancelled" }));
+
+  const result = await as.mutation(api.ticketCheckin.checkOutTicket, { code: ticket.code });
+  expect(result.result).toBe("cancelled");
+  if (result.result !== "cancelled") throw new Error("expected cancelled");
+  expect(result.ticket.status).toBe("cancelled");
+});
+
+test("checkOutTicket on an unknown code returns not_found", async () => {
+  const { as } = await setup();
+
+  const result = await as.mutation(api.ticketCheckin.checkOutTicket, { code: "tkt_does_not_exist" });
+  expect(result).toEqual({ result: "not_found" });
+});
+
+test("checkOutTicket is owner-only: another organizer gets not_found (no leak/mutation), unauthenticated throws", async () => {
+  const { t, as, ticket } = await setup();
+  await as.mutation(api.ticketCheckin.checkInTicket, { code: ticket.code });
+
+  const { as: asBob } = await asOrganizer(t, "bob@example.com");
+  await asBob.mutation(api.organizers.ensureOrganizer, {});
+
+  const result = await asBob.mutation(api.ticketCheckin.checkOutTicket, { code: ticket.code });
+  expect(result).toEqual({ result: "not_found" });
+
+  await expect(t.mutation(api.ticketCheckin.checkOutTicket, { code: ticket.code })).rejects.toThrow();
+
+  // Neither the cross-org call nor the unauthenticated call mutated the ticket.
+  const row = await t.run((ctx) => ctx.db.get(ticket._id));
+  expect(row?.status).toBe("checked_in");
+});
+
+test("getScanState.currentlyInside reflects check-in then drops after check-out", async () => {
+  const { t, as, eventId, ticket } = await setup();
+
+  let state = await as.query(api.ticketCheckin.getScanState, { eventId });
+  expect(state.currentlyInside).toBe(0);
+
+  await as.mutation(api.ticketCheckin.checkInTicket, { code: ticket.code });
+  state = await as.query(api.ticketCheckin.getScanState, { eventId });
+  expect(state.currentlyInside).toBe(1);
+
+  await as.mutation(api.ticketCheckin.checkOutTicket, { code: ticket.code });
+  state = await as.query(api.ticketCheckin.getScanState, { eventId });
+  expect(state.currentlyInside).toBe(0);
+
+  const row = await t.run((ctx) => ctx.db.get(ticket._id));
+  expect(row?.status).toBe("valid");
 });
