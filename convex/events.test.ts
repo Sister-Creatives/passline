@@ -458,3 +458,231 @@ test("deleteEvent removes the event and all of its rsvps", async () => {
   );
   expect(remainingRsvps).toEqual([]);
 });
+
+test("duplicateEvent creates a draft copy with a distinct slug, deep-copies config, and excludes orders/tickets", async () => {
+  const t = convexTest(schema, modules);
+  const { as } = await asOrganizer(t, "ada@example.com");
+  await as.mutation(api.organizers.ensureOrganizer, {});
+
+  const eventId = await as.mutation(api.events.createEvent, {
+    title: "Rooftop Jazz",
+    description: "Live jazz night.",
+    startsAt: 100,
+    endsAt: 200,
+    location: "Rooftop",
+    capacity: 80,
+  });
+  await as.mutation(api.events.publishEvent, { eventId });
+
+  const ticketTypeId = await as.mutation(api.ticketTypes.create, {
+    eventId,
+    name: "General",
+    kind: "free",
+    priceCents: 0,
+  });
+  await as.mutation(api.checkoutQuestions.create, {
+    eventId,
+    label: "T-shirt size",
+    kind: "text",
+    required: false,
+  });
+  await as.mutation(api.addOns.create, {
+    eventId,
+    name: "Poster",
+    priceCents: 500,
+  });
+  await as.mutation(api.eventContent.update, {
+    eventId,
+    coverImageUrl: "https://example.com/cover.jpg",
+    brandColor: "#112233",
+    ctaLabel: "Register",
+    videoUrl: undefined,
+    agenda: [{ time: "10:00", title: "Doors open" }],
+    speakers: [{ name: "Ada Lovelace" }],
+    faqs: [{ question: "Is it free?", answer: "Yes." }],
+  });
+
+  // Seed activity that must NOT be copied.
+  await as.mutation(api.orders.createOrder, {
+    eventId,
+    items: [{ ticketTypeId, quantity: 1 }],
+    buyerName: "Buyer",
+    buyerEmail: "buyer@example.com",
+  });
+
+  const newEventId = await as.mutation(api.events.duplicateEvent, { eventId });
+
+  const source = await t.run((ctx) => ctx.db.get(eventId));
+  const copy = await t.run((ctx) => ctx.db.get(newEventId));
+  expect(copy?.status).toBe("draft");
+  expect(copy?.title).toBe("Rooftop Jazz (Copy)");
+  expect(copy?.slug).not.toBe(source?.slug);
+  expect(copy?.description).toBe("Live jazz night.");
+  expect(copy?.startsAt).toBe(100);
+  expect(copy?.endsAt).toBe(200);
+  expect(copy?.location).toBe("Rooftop");
+  expect(copy?.capacity).toBe(80);
+  expect(copy?.organizerId).toEqual(source?.organizerId);
+
+  const copiedTicketTypes = await t.run((ctx) =>
+    ctx.db
+      .query("ticketTypes")
+      .withIndex("by_event", (q) => q.eq("eventId", newEventId))
+      .collect(),
+  );
+  expect(copiedTicketTypes).toHaveLength(1);
+  expect(copiedTicketTypes[0].name).toBe("General");
+  expect(copiedTicketTypes[0].sold).toBe(0);
+  expect(copiedTicketTypes[0]._id).not.toBe(ticketTypeId);
+
+  const copiedQuestions = await t.run((ctx) =>
+    ctx.db
+      .query("checkoutQuestions")
+      .withIndex("by_event", (q) => q.eq("eventId", newEventId))
+      .collect(),
+  );
+  expect(copiedQuestions).toHaveLength(1);
+  expect(copiedQuestions[0].label).toBe("T-shirt size");
+
+  const copiedAddOns = await t.run((ctx) =>
+    ctx.db
+      .query("addOns")
+      .withIndex("by_event", (q) => q.eq("eventId", newEventId))
+      .collect(),
+  );
+  expect(copiedAddOns).toHaveLength(1);
+  expect(copiedAddOns[0].name).toBe("Poster");
+  expect(copiedAddOns[0].sold).toBe(0);
+
+  const copiedContent = await t.run((ctx) =>
+    ctx.db
+      .query("eventContent")
+      .withIndex("by_event", (q) => q.eq("eventId", newEventId))
+      .unique(),
+  );
+  expect(copiedContent?.brandColor).toBe("#112233");
+  expect(copiedContent?.agenda).toEqual([
+    { time: "10:00", title: "Doors open", description: undefined },
+  ]);
+
+  // The source's orders/tickets must never appear against the copy.
+  const copiedOrders = await t.run((ctx) =>
+    ctx.db
+      .query("orders")
+      .withIndex("by_event", (q) => q.eq("eventId", newEventId))
+      .collect(),
+  );
+  expect(copiedOrders).toEqual([]);
+
+  const copiedTickets = await t.run((ctx) =>
+    ctx.db
+      .query("tickets")
+      .withIndex("by_event", (q) => q.eq("eventId", newEventId))
+      .collect(),
+  );
+  expect(copiedTickets).toEqual([]);
+});
+
+test("duplicateEvent is owner-only", async () => {
+  const t = convexTest(schema, modules);
+  const { as: asAda } = await asOrganizer(t, "ada@example.com");
+  await asAda.mutation(api.organizers.ensureOrganizer, {});
+  const { as: asBob } = await asOrganizer(t, "bob@example.com");
+  await asBob.mutation(api.organizers.ensureOrganizer, {});
+
+  const eventId = await asAda.mutation(api.events.createEvent, {
+    title: "Ada's Gala",
+    description: "Ada's own event.",
+    startsAt: 10,
+    endsAt: 20,
+    location: "Ballroom",
+    capacity: 40,
+  });
+
+  await expect(asBob.mutation(api.events.duplicateEvent, { eventId })).rejects.toThrow();
+
+  // Bob's rejected call must not have created anything under his account.
+  const bobEvents = await asBob.query(api.events.listMyEvents, {});
+  expect(bobEvents).toEqual([]);
+});
+
+test("listPublishedByOrganizer returns only that organizer's published events, sorted by startsAt", async () => {
+  const t = convexTest(schema, modules);
+  const { as: asAda } = await asOrganizer(t, "ada@example.com");
+  const adaOrganizerId = await asAda.mutation(api.organizers.ensureOrganizer, {});
+  const { as: asBob } = await asOrganizer(t, "bob@example.com");
+  await asBob.mutation(api.organizers.ensureOrganizer, {});
+
+  const later = await asAda.mutation(api.events.createEvent, {
+    title: "Later Event",
+    description: "x",
+    startsAt: 200,
+    endsAt: 300,
+    location: "Later Place",
+    capacity: 5,
+  });
+  await asAda.mutation(api.events.publishEvent, { eventId: later });
+
+  const earlier = await asAda.mutation(api.events.createEvent, {
+    title: "Earlier Event",
+    description: "x",
+    startsAt: 100,
+    endsAt: 150,
+    location: "Earlier Place",
+    capacity: 5,
+  });
+  await asAda.mutation(api.events.publishEvent, { eventId: earlier });
+
+  const draft = await asAda.mutation(api.events.createEvent, {
+    title: "Still Draft",
+    description: "x",
+    startsAt: 50,
+    endsAt: 60,
+    location: "z",
+    capacity: 5,
+  });
+
+  const bobEvent = await asBob.mutation(api.events.createEvent, {
+    title: "Bob Event",
+    description: "x",
+    startsAt: 1,
+    endsAt: 2,
+    location: "x",
+    capacity: 5,
+  });
+  await asBob.mutation(api.events.publishEvent, { eventId: bobEvent });
+
+  // Called unauthenticated -- this is a public query.
+  const listed = await t.query(api.events.listPublishedByOrganizer, {
+    organizerId: adaOrganizerId,
+  });
+
+  expect(listed.map((e) => e.id)).toEqual([earlier, later]);
+  expect(listed[0]).toEqual({
+    id: earlier,
+    title: "Earlier Event",
+    slug: expect.any(String),
+    startsAt: 100,
+    endsAt: 150,
+    location: "Earlier Place",
+  });
+  expect(listed.some((e) => e.id === draft)).toBe(false);
+  expect(listed.some((e) => e.id === bobEvent)).toBe(false);
+});
+
+test("getPublicProfile returns an organizer's name/image, or null when not found", async () => {
+  const t = convexTest(schema, modules);
+  const { as } = await asOrganizer(t, "ada@example.com");
+  const organizerId = await as.mutation(api.organizers.ensureOrganizer, {});
+
+  const profile = await t.query(api.organizers.getPublicProfile, { organizerId });
+  expect(profile).toEqual({ name: "ada@example.com", image: undefined });
+
+  const deletedId = await t.run(async (ctx) => {
+    const id = await ctx.db.insert("organizers", { name: "Temp", email: "temp@example.com" });
+    await ctx.db.delete(id);
+    return id;
+  });
+  const missing = await t.query(api.organizers.getPublicProfile, { organizerId: deletedId });
+  expect(missing).toBeNull();
+});

@@ -1,4 +1,5 @@
 import { mutation, query } from "./_generated/server";
+import { v } from "convex/values";
 import { getAuthUserId } from "@convex-dev/auth/server";
 import { getAuthOrganizerId } from "./auth";
 
@@ -34,5 +35,20 @@ export const getMe = query({
     const organizerId = await getAuthOrganizerId(ctx);
     if (!organizerId) return null;
     return await ctx.db.get(organizerId);
+  },
+});
+
+/**
+ * Public: the display identity of an organizer for the host directory page
+ * (`/host/$organizerId`) -- just `name`/`image`, never `email`. Returns null
+ * (rather than throwing) for an unknown id, mirroring the rest of the
+ * public-read surface (e.g. `events.getEventBySlug`).
+ */
+export const getPublicProfile = query({
+  args: { organizerId: v.id("organizers") },
+  handler: async (ctx, { organizerId }) => {
+    const organizer = await ctx.db.get(organizerId);
+    if (!organizer) return null;
+    return { name: organizer.name, image: organizer.image };
   },
 });

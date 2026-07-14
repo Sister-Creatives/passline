@@ -188,3 +188,152 @@ export const getEventBySlug = query({
     return event;
   },
 });
+
+/**
+ * Duplicate an event into a new draft "template" (owner-only).
+ *
+ * Copies the reusable config -- ticket types, checkout questions, add-ons,
+ * page content (`eventContent`), and virtual hub config -- into a fresh
+ * `events` row with a new title/slug and `status: "draft"`. Every copied
+ * child row gets a fresh id and, where applicable, its counters reset
+ * (`sold: 0`); `sortOrder` is preserved so the copy's ordering matches the
+ * source. Deliberately does NOT copy orders/orderItems/orderAddOns/tickets/
+ * rsvps/promoCodes/accessCodes/emailCampaigns -- a duplicate always starts
+ * with zero activity (promo/access codes reference per-event ticket-type ids
+ * that change on copy, so carrying them over would silently break them).
+ */
+export const duplicateEvent = mutation({
+  args: { eventId: v.id("events") },
+  handler: async (ctx, { eventId }) => {
+    const source = await requireOwnedEvent(ctx, eventId);
+
+    const title = `${source.title} (Copy)`;
+    const newEventId = await ctx.db.insert("events", {
+      organizerId: source.organizerId,
+      title,
+      description: source.description,
+      startsAt: source.startsAt,
+      endsAt: source.endsAt,
+      location: source.location,
+      capacity: source.capacity,
+      status: "draft",
+      slug: slugify(title, crypto.randomUUID()),
+      currency: source.currency,
+      feeMode: source.feeMode,
+    });
+
+    const ticketTypes = await ctx.db
+      .query("ticketTypes")
+      .withIndex("by_event", (q) => q.eq("eventId", eventId))
+      .collect();
+    for (const ticketType of ticketTypes) {
+      await ctx.db.insert("ticketTypes", {
+        eventId: newEventId,
+        name: ticketType.name,
+        kind: ticketType.kind,
+        priceCents: ticketType.priceCents,
+        capacity: ticketType.capacity,
+        sold: 0,
+        badge: ticketType.badge,
+        minPerOrder: ticketType.minPerOrder,
+        maxPerOrder: ticketType.maxPerOrder,
+        visibility: ticketType.visibility,
+        sortOrder: ticketType.sortOrder,
+        status: "active",
+        gateAlert: ticketType.gateAlert,
+      });
+    }
+
+    const questions = await ctx.db
+      .query("checkoutQuestions")
+      .withIndex("by_event", (q) => q.eq("eventId", eventId))
+      .collect();
+    for (const question of questions) {
+      await ctx.db.insert("checkoutQuestions", {
+        eventId: newEventId,
+        organizerId: source.organizerId,
+        label: question.label,
+        kind: question.kind,
+        options: question.options,
+        required: question.required,
+        sortOrder: question.sortOrder,
+        active: question.active,
+        createdAt: Date.now(),
+      });
+    }
+
+    const addOns = await ctx.db
+      .query("addOns")
+      .withIndex("by_event", (q) => q.eq("eventId", eventId))
+      .collect();
+    for (const addOn of addOns) {
+      await ctx.db.insert("addOns", {
+        eventId: newEventId,
+        organizerId: source.organizerId,
+        name: addOn.name,
+        priceCents: addOn.priceCents,
+        capacity: addOn.capacity,
+        sold: 0,
+        sortOrder: addOn.sortOrder,
+        active: addOn.active,
+      });
+    }
+
+    const content = await ctx.db
+      .query("eventContent")
+      .withIndex("by_event", (q) => q.eq("eventId", eventId))
+      .unique();
+    if (content) {
+      const { _id, _creationTime, eventId: _eventId, organizerId: _organizerId, ...rest } = content;
+      await ctx.db.insert("eventContent", {
+        eventId: newEventId,
+        organizerId: source.organizerId,
+        ...rest,
+      });
+    }
+
+    const hub = await ctx.db
+      .query("virtualHubs")
+      .withIndex("by_event", (q) => q.eq("eventId", eventId))
+      .unique();
+    if (hub) {
+      const { _id, _creationTime, eventId: _eventId, organizerId: _organizerId, ...rest } = hub;
+      await ctx.db.insert("virtualHubs", {
+        eventId: newEventId,
+        organizerId: source.organizerId,
+        ...rest,
+      });
+    }
+
+    return newEventId;
+  },
+});
+
+/**
+ * Public: an organizer's `published` events for the host directory page
+ * (`/host/$organizerId`), sorted ascending by `startsAt`. Loaded via
+ * `by_organizer` then filtered to `published` in memory -- bounded per
+ * organizer, mirroring `listMyEvents`. Returns a narrow projection (not the
+ * full event doc) so the public directory never leaks `description`,
+ * `capacity`, `currency`, or other org-internal fields.
+ */
+export const listPublishedByOrganizer = query({
+  args: { organizerId: v.id("organizers") },
+  handler: async (ctx, { organizerId }) => {
+    const events = await ctx.db
+      .query("events")
+      .withIndex("by_organizer", (q) => q.eq("organizerId", organizerId))
+      .collect();
+    return events
+      .filter((event) => event.status === "published")
+      .sort((a, b) => a.startsAt - b.startsAt)
+      .map((event) => ({
+        id: event._id,
+        title: event.title,
+        slug: event.slug,
+        startsAt: event.startsAt,
+        endsAt: event.endsAt,
+        location: event.location,
+      }));
+  },
+});
