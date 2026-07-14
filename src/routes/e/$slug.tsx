@@ -7,6 +7,7 @@ import { convexQuery } from "@convex-dev/react-query";
 import { api } from "../../../convex/_generated/api";
 import type { Doc } from "../../../convex/_generated/dataModel";
 import { isValidHexColor, parseVideoEmbed } from "../../../convex/lib/eventContent";
+import { ACCESSIBILITY_FEATURES } from "@/lib/accessibility";
 import { RsvpForm } from "@/components/RsvpForm";
 import { TrackingPixels } from "@/components/TrackingPixels";
 import { formatEventDateRange } from "@/lib/format-event-date";
@@ -17,6 +18,7 @@ import {
   AccordionTrigger,
 } from "@/components/ui/accordion";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 
 // PUBLIC route: no AuthGuard. Anyone with the link can view a published
@@ -96,12 +98,14 @@ function EventPageContent({ slug }: { slug: string }) {
 // accessing the raw union everywhere.
 type PublicEventContent = {
   coverImageUrl?: string;
+  coverImageAlt?: string;
   brandColor?: string;
   ctaLabel?: string;
   videoUrl?: string;
   agenda: Doc<"eventContent">["agenda"];
   speakers: Doc<"eventContent">["speakers"];
   faqs: Doc<"eventContent">["faqs"];
+  accessibility?: Doc<"eventContent">["accessibility"];
 };
 
 function EventDetails({ slug, event }: { slug: string; event: Doc<"events"> }) {
@@ -130,6 +134,13 @@ function EventDetails({ slug, event }: { slug: string; event: Doc<"events"> }) {
         ? `https://player.vimeo.com/video/${embed.id}`
         : null;
 
+  const accessibility = content?.accessibility;
+  const enabledAccessibilityFeatures = ACCESSIBILITY_FEATURES.filter(
+    ({ key }) => accessibility?.[key],
+  );
+  const accessibilityNotes = accessibility?.notes;
+  const hasAccessibilityInfo = enabledAccessibilityFeatures.length > 0 || !!accessibilityNotes;
+
   return (
     <div
       className="mx-auto max-w-2xl p-4 sm:p-8"
@@ -144,7 +155,7 @@ function EventDetails({ slug, event }: { slug: string; event: Doc<"events"> }) {
       {content?.coverImageUrl && (
         <img
           src={content.coverImageUrl}
-          alt=""
+          alt={content.coverImageAlt || stripHtml(event.title)}
           loading="lazy"
           className="mb-6 max-h-80 w-full max-w-full rounded-lg object-cover"
         />
@@ -233,6 +244,27 @@ function EventDetails({ slug, event }: { slug: string; event: Doc<"events"> }) {
               </AccordionItem>
             ))}
           </Accordion>
+        </section>
+      )}
+
+      {hasAccessibilityInfo && (
+        <section className="mt-8">
+          <h2 className="text-lg font-semibold">Accessibility</h2>
+          {enabledAccessibilityFeatures.length > 0 && (
+            <ul className="mt-3 flex flex-wrap gap-2">
+              {enabledAccessibilityFeatures.map(({ key, label, icon: Icon }) => (
+                <li key={key}>
+                  <Badge variant="outline">
+                    <Icon />
+                    {label}
+                  </Badge>
+                </li>
+              ))}
+            </ul>
+          )}
+          {accessibilityNotes && (
+            <p className="mt-3 text-sm whitespace-pre-line">{accessibilityNotes}</p>
+          )}
         </section>
       )}
 
