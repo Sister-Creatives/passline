@@ -57,6 +57,17 @@ export default defineSchema({
     .index("by_event_and_status", ["eventId", "status"])
     .index("by_token", ["token"]),
 
+  eventSessions: defineTable({
+    eventId: v.id("events"),
+    organizerId: v.id("organizers"),
+    startsAt: v.number(),
+    endsAt: v.number(),
+    capacity: v.number(), // per-session capacity (integer >= 1)
+    sold: v.number(), // reserved seats for this session
+    label: v.optional(v.string()), // e.g. "Matinee"
+    sortOrder: v.number(),
+  }).index("by_event", ["eventId"]),
+
   ticketTypes: defineTable({
     eventId: v.id("events"),
     name: v.string(),
@@ -140,6 +151,7 @@ export default defineSchema({
       v.union(v.literal("cash"), v.literal("card"), v.literal("online")),
     ),
     source: v.optional(v.union(v.literal("online"), v.literal("box_office"))),
+    sessionId: v.optional(v.id("eventSessions")),
   })
     .index("by_event", ["eventId"])
     .index("by_organizer", ["organizerId"])
@@ -167,6 +179,7 @@ export default defineSchema({
     createdAt: v.number(),
     checkedInAt: v.optional(v.number()),
     checkedOutAt: v.optional(v.number()),
+    sessionId: v.optional(v.id("eventSessions")),
   })
     .index("by_order", ["orderId"])
     .index("by_event", ["eventId"])
