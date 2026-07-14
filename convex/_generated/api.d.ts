@@ -13,6 +13,7 @@ import type * as addOns from "../addOns.js";
 import type * as analytics from "../analytics.js";
 import type * as apiHttp from "../apiHttp.js";
 import type * as apiKeys from "../apiKeys.js";
+import type * as audit from "../audit.js";
 import type * as auth from "../auth.js";
 import type * as checkoutQuestions from "../checkoutQuestions.js";
 import type * as crons from "../crons.js";
@@ -50,6 +51,7 @@ declare const fullApi: ApiFromModules<{
   analytics: typeof analytics;
   apiHttp: typeof apiHttp;
   apiKeys: typeof apiKeys;
+  audit: typeof audit;
   auth: typeof auth;
   checkoutQuestions: typeof checkoutQuestions;
   crons: typeof crons;

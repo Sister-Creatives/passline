@@ -277,6 +277,14 @@ export default defineSchema({
     ),
   }).index("by_event", ["eventId"]),
 
+  auditLogs: defineTable({
+    organizerId: v.id("organizers"), // the actor (single-user today; a member id can be added later)
+    eventId: v.optional(v.id("events")),
+    action: v.string(), // stable code, e.g. "event.published", "ticket_type.created"
+    summary: v.string(), // human-readable, e.g. 'Created ticket type "Adult"'
+    createdAt: v.number(),
+  }).index("by_event", ["eventId"]),
+
   virtualHubs: defineTable({
     eventId: v.id("events"),
     organizerId: v.id("organizers"),
