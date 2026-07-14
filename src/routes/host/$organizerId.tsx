@@ -13,7 +13,17 @@ import { Empty, EmptyHeader, EmptyTitle, EmptyDescription } from "@/components/u
 
 // PUBLIC route: no AuthGuard. A host's public directory of published events
 // -- anyone with the link can browse it, mirroring /e/$slug's public surface.
-export const Route = createFileRoute("/host/$organizerId")({ component: HostDirectoryPage });
+//
+// errorComponent covers a malformed/wrong-table organizerId: the
+// `v.id("organizers")` arg validator throws server-side before
+// getPublicProfile ever gets a chance to return null, so that case is caught
+// here rather than by the null-profile branch below. Both render the same
+// HostNotFound state so a malformed id and a valid-but-missing id look
+// identical to the visitor.
+export const Route = createFileRoute("/host/$organizerId")({
+  component: HostDirectoryPage,
+  errorComponent: HostNotFound,
+});
 
 // Initials for the host avatar's fallback (first letter of up to the first
 // two whitespace-separated words of their name). Mirrors /e/$slug's speaker
@@ -52,6 +62,23 @@ function HostDirectorySkeleton() {
   );
 }
 
+// Shared "not found" state for a host that doesn't exist -- rendered both
+// when getPublicProfile resolves to null (valid id, no such organizer) and
+// as the route's errorComponent (malformed/wrong-table id, which fails the
+// `v.id("organizers")` arg validator before the query ever runs).
+function HostNotFound() {
+  return (
+    <div className="mx-auto max-w-2xl p-4 sm:p-8">
+      <Empty>
+        <EmptyHeader>
+          <EmptyTitle>Host not found</EmptyTitle>
+          <EmptyDescription>This host doesn't exist or is no longer available.</EmptyDescription>
+        </EmptyHeader>
+      </Empty>
+    </div>
+  );
+}
+
 type PublishedEvent = {
   id: Id<"events">;
   title: string;
@@ -72,18 +99,7 @@ function HostDirectoryContent({ organizerId }: { organizerId: Id<"organizers"> }
   );
 
   if (!profile) {
-    return (
-      <div className="mx-auto max-w-2xl p-4 sm:p-8">
-        <Empty>
-          <EmptyHeader>
-            <EmptyTitle>Host not found</EmptyTitle>
-            <EmptyDescription>
-              This host doesn't exist or is no longer available.
-            </EmptyDescription>
-          </EmptyHeader>
-        </Empty>
-      </div>
-    );
+    return <HostNotFound />;
   }
 
   const now = Date.now();

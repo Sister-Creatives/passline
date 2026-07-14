@@ -82,6 +82,7 @@ const STATUS_LABEL: Record<string, string> = {
 function EventManageContent({ eventId }: { eventId: Id<"events"> }) {
   const navigate = useNavigate();
   const [editOpen, setEditOpen] = useState(false);
+  const [isDuplicating, setIsDuplicating] = useState(false);
 
   // Reactive query: any RSVP change (new RSVP, cancellation, waitlist
   // autopilot promotion) re-renders this page live, with no manual refetch.
@@ -135,12 +136,15 @@ function EventManageContent({ eventId }: { eventId: Id<"events"> }) {
   }
 
   async function handleDuplicate() {
+    setIsDuplicating(true);
     try {
       const newEventId = await duplicateEvent({ eventId });
       toast.success("Event duplicated");
       navigate({ to: "/events/$id", params: { id: newEventId } });
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Failed to duplicate event");
+    } finally {
+      setIsDuplicating(false);
     }
   }
 
@@ -225,7 +229,7 @@ function EventManageContent({ eventId }: { eventId: Id<"events"> }) {
                   <EventForm event={event} onDone={() => setEditOpen(false)} />
                 </DialogContent>
               </Dialog>
-              <Button variant="outline" onClick={handleDuplicate}>
+              <Button variant="outline" onClick={handleDuplicate} disabled={isDuplicating}>
                 <Copy /> Duplicate
               </Button>
               <AlertDialog>

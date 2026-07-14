@@ -501,6 +501,22 @@ test("duplicateEvent creates a draft copy with a distinct slug, deep-copies conf
     speakers: [{ name: "Ada Lovelace" }],
     faqs: [{ question: "Is it free?", answer: "Yes." }],
   });
+  await as.mutation(api.marketing.updateTrackingPixels, {
+    eventId,
+    metaPixelId: "pixel-123",
+    googleAnalyticsId: "G-ABC123",
+    gtmId: "GTM-XYZ",
+  });
+  await as.mutation(api.virtualHub.update, {
+    eventId,
+    enabled: true,
+    heading: "Join us online",
+    description: "Stream the show live.",
+    videoUrl: undefined,
+    meetingUrl: "https://meet.example.com/room",
+    resources: [{ title: "Slides", url: "https://example.com/slides" }],
+    accessPassword: "secret",
+  });
 
   // Seed activity that must NOT be copied.
   await as.mutation(api.orders.createOrder, {
@@ -564,6 +580,27 @@ test("duplicateEvent creates a draft copy with a distinct slug, deep-copies conf
   expect(copiedContent?.agenda).toEqual([
     { time: "10:00", title: "Doors open", description: undefined },
   ]);
+
+  expect(copy?.metaPixelId).toBe("pixel-123");
+  expect(copy?.googleAnalyticsId).toBe("G-ABC123");
+  expect(copy?.gtmId).toBe("GTM-XYZ");
+
+  const copiedHub = await t.run((ctx) =>
+    ctx.db
+      .query("virtualHubs")
+      .withIndex("by_event", (q) => q.eq("eventId", newEventId))
+      .unique(),
+  );
+  expect(copiedHub).not.toBeNull();
+  expect(copiedHub?.enabled).toBe(true);
+  expect(copiedHub?.heading).toBe("Join us online");
+  expect(copiedHub?.description).toBe("Stream the show live.");
+  expect(copiedHub?.meetingUrl).toBe("https://meet.example.com/room");
+  expect(copiedHub?.resources).toEqual([
+    { title: "Slides", url: "https://example.com/slides" },
+  ]);
+  expect(copiedHub?.accessPassword).toBe("secret");
+  expect(copiedHub?.eventId).toBe(newEventId);
 
   // The source's orders/tickets must never appear against the copy.
   const copiedOrders = await t.run((ctx) =>

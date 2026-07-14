@@ -220,6 +220,9 @@ export const duplicateEvent = mutation({
       slug: slugify(title, crypto.randomUUID()),
       currency: source.currency,
       feeMode: source.feeMode,
+      metaPixelId: source.metaPixelId,
+      googleAnalyticsId: source.googleAnalyticsId,
+      gtmId: source.gtmId,
     });
 
     const ticketTypes = await ctx.db
