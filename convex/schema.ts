@@ -32,6 +32,9 @@ export default defineSchema({
     slug: v.string(),
     currency: v.optional(v.string()), // ISO 4217; code default "USD"
     feeMode: v.optional(v.union(v.literal("pass"), v.literal("absorb"))),
+    metaPixelId: v.optional(v.string()),
+    googleAnalyticsId: v.optional(v.string()),
+    gtmId: v.optional(v.string()),
   })
     .index("by_organizer", ["organizerId"])
     .index("by_slug", ["slug"]),
@@ -209,4 +212,13 @@ export default defineSchema({
     label: v.string(), // snapshot of the question label at purchase time
     value: v.string(), // text; for checkbox "true"/"false"; for select the chosen option
   }).index("by_order", ["orderId"]),
+
+  emailCampaigns: defineTable({
+    eventId: v.id("events"),
+    organizerId: v.id("organizers"),
+    subject: v.string(),
+    body: v.string(), // organizer-authored (trusted; may contain HTML)
+    recipientCount: v.number(),
+    createdAt: v.number(),
+  }).index("by_event", ["eventId"]),
 });
