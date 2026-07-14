@@ -105,6 +105,20 @@ async function makeFixedPromoCode(
   });
 }
 
+async function makeAddOn(
+  as: ReturnType<TestConvex<typeof schema>["withIdentity"]>,
+  eventId: Id<"events">,
+  priceCents: number,
+  overrides: { capacity?: number; name?: string } = {},
+) {
+  return as.mutation(api.addOns.create, {
+    eventId,
+    name: overrides.name ?? "T-shirt",
+    priceCents,
+    capacity: overrides.capacity,
+  });
+}
+
 test("createOrder reserves capacity by incrementing sold and returns a pending order for a paid cart", async () => {
   const t = convexTest(schema, modules);
   const { as } = await asOrganizer(t, "ada@example.com");
@@ -415,6 +429,190 @@ test("createOrder rejects an empty cart", async () => {
       buyerEmail: "buyer@example.com",
     }),
   ).rejects.toThrow();
+});
+
+// --- add-ons (F11.3) -------------------------------------------------------
+
+test("createOrder with add-on items reserves add-on sold and includes them in subtotal/totalCents", async () => {
+  const t = convexTest(schema, modules);
+  const { as } = await asOrganizer(t, "ada@example.com");
+  await as.mutation(api.organizers.ensureOrganizer, {});
+  const eventId = await makePublishedEvent(as, 100);
+  const ticketTypeId = await makePaidTicketType(as, eventId, 1000, { capacity: 10 });
+  const addOnId = await makeAddOn(as, eventId, 500, { capacity: 10 });
+
+  const result = await t.mutation(api.orders.createOrder, {
+    eventId,
+    items: [{ ticketTypeId, quantity: 2 }],
+    buyerName: "Buyer",
+    buyerEmail: "buyer@example.com",
+    addOnItems: [{ addOnId, quantity: 3 }],
+  });
+
+  // ticket gross 2000 + add-on gross 1500 = 3500 gross; fee = 3500*300/10000 = 105; total = 3605
+  expect(result.status).toBe("pending");
+  expect(result.totalCents).toBe(3605);
+
+  const order = await t.run((ctx) => ctx.db.get(result.orderId));
+  expect(order?.grossSubtotalCents).toBe(3500);
+  expect(order?.subtotalCents).toBe(3500);
+  expect(order?.feeCents).toBe(105);
+  expect(order?.totalCents).toBe(3605);
+
+  const addOn = await t.run((ctx) => ctx.db.get(addOnId));
+  expect(addOn?.sold).toBe(3);
+
+  const orderAddOnRows = await t.run((ctx) =>
+    ctx.db.query("orderAddOns").withIndex("by_order", (q) => q.eq("orderId", result.orderId)).collect(),
+  );
+  expect(orderAddOnRows).toHaveLength(1);
+  expect(orderAddOnRows[0]).toMatchObject({ addOnId, quantity: 3, unitPriceCents: 500 });
+
+  const ticketType = await t.run((ctx) => ctx.db.get(ticketTypeId));
+  expect(ticketType?.sold).toBe(2);
+});
+
+test("an add-on-only order (no tickets) succeeds", async () => {
+  const t = convexTest(schema, modules);
+  const { as } = await asOrganizer(t, "ada@example.com");
+  await as.mutation(api.organizers.ensureOrganizer, {});
+  const eventId = await makePublishedEvent(as, 100);
+  const addOnId = await makeAddOn(as, eventId, 500, { capacity: 10 });
+
+  const result = await t.mutation(api.orders.createOrder, {
+    eventId,
+    items: [],
+    buyerName: "Buyer",
+    buyerEmail: "buyer@example.com",
+    addOnItems: [{ addOnId, quantity: 2 }],
+  });
+
+  // gross = 1000, fee = 1000*300/10000 = 30, total = 1030
+  expect(result.status).toBe("pending");
+  expect(result.totalCents).toBe(1030);
+
+  const addOn = await t.run((ctx) => ctx.db.get(addOnId));
+  expect(addOn?.sold).toBe(2);
+
+  const items = await t.run((ctx) =>
+    ctx.db.query("orderItems").withIndex("by_order", (q) => q.eq("orderId", result.orderId)).collect(),
+  );
+  expect(items).toHaveLength(0);
+});
+
+test("createOrder rejects an over-cap add-on and leaves sold untouched", async () => {
+  const t = convexTest(schema, modules);
+  const { as } = await asOrganizer(t, "ada@example.com");
+  await as.mutation(api.organizers.ensureOrganizer, {});
+  const eventId = await makePublishedEvent(as, 100);
+  const addOnId = await makeAddOn(as, eventId, 500, { capacity: 2 });
+
+  await expect(
+    t.mutation(api.orders.createOrder, {
+      eventId,
+      items: [],
+      buyerName: "Buyer",
+      buyerEmail: "buyer@example.com",
+      addOnItems: [{ addOnId, quantity: 3 }],
+    }),
+  ).rejects.toThrow();
+
+  const addOn = await t.run((ctx) => ctx.db.get(addOnId));
+  expect(addOn?.sold).toBe(0);
+});
+
+test("cancelOrder releases add-on capacity along with ticket-type capacity", async () => {
+  const t = convexTest(schema, modules);
+  const { as } = await asOrganizer(t, "ada@example.com");
+  await as.mutation(api.organizers.ensureOrganizer, {});
+  const eventId = await makePublishedEvent(as, 100);
+  const ticketTypeId = await makePaidTicketType(as, eventId, 1000, { capacity: 10 });
+  const addOnId = await makeAddOn(as, eventId, 500, { capacity: 5 });
+
+  const result = await t.mutation(api.orders.createOrder, {
+    eventId,
+    items: [{ ticketTypeId, quantity: 1 }],
+    buyerName: "Buyer",
+    buyerEmail: "buyer@example.com",
+    addOnItems: [{ addOnId, quantity: 2 }],
+  });
+  expect(result.status).toBe("pending");
+
+  let addOn = await t.run((ctx) => ctx.db.get(addOnId));
+  expect(addOn?.sold).toBe(2);
+
+  await as.mutation(api.orders.cancelOrder, { orderId: result.orderId });
+
+  const order = await t.run((ctx) => ctx.db.get(result.orderId));
+  expect(order?.status).toBe("cancelled");
+
+  addOn = await t.run((ctx) => ctx.db.get(addOnId));
+  expect(addOn?.sold).toBe(0);
+
+  const ticketType = await t.run((ctx) => ctx.db.get(ticketTypeId));
+  expect(ticketType?.sold).toBe(0);
+});
+
+test("refundOrder releases add-on capacity along with ticket-type capacity", async () => {
+  const t = convexTest(schema, modules);
+  const { as } = await asOrganizer(t, "ada@example.com");
+  await as.mutation(api.organizers.ensureOrganizer, {});
+  const eventId = await makePublishedEvent(as, 100);
+  const ticketTypeId = await makeFreeTicketType(as, eventId, { capacity: 10 });
+  const addOnId = await makeAddOn(as, eventId, 500, { capacity: 5 });
+
+  const result = await t.mutation(api.orders.createOrder, {
+    eventId,
+    items: [{ ticketTypeId, quantity: 1 }],
+    buyerName: "Buyer",
+    buyerEmail: "buyer@example.com",
+    addOnItems: [{ addOnId, quantity: 2 }],
+  });
+  // Total is nonzero (the paid add-on), so the order stays pending -- mark it
+  // paid explicitly (mirrors a real payment confirmation) so refundOrder is
+  // reachable.
+  expect(result.status).toBe("pending");
+  await t.mutation(internal.orders.markOrderPaid, { orderId: result.orderId });
+
+  let addOn = await t.run((ctx) => ctx.db.get(addOnId));
+  expect(addOn?.sold).toBe(2);
+
+  await as.mutation(api.orders.refundOrder, { orderId: result.orderId });
+
+  const order = await t.run((ctx) => ctx.db.get(result.orderId));
+  expect(order?.status).toBe("refunded");
+
+  addOn = await t.run((ctx) => ctx.db.get(addOnId));
+  expect(addOn?.sold).toBe(0);
+
+  const ticketType = await t.run((ctx) => ctx.db.get(ticketTypeId));
+  expect(ticketType?.sold).toBe(0);
+});
+
+test("getOrder returns the order's add-ons joined with their names", async () => {
+  const t = convexTest(schema, modules);
+  const { as } = await asOrganizer(t, "ada@example.com");
+  await as.mutation(api.organizers.ensureOrganizer, {});
+  const eventId = await makePublishedEvent(as, 100);
+  const ticketTypeId = await makeFreeTicketType(as, eventId);
+  const addOnId = await makeAddOn(as, eventId, 300, { name: "Parking pass" });
+
+  const result = await t.mutation(api.orders.createOrder, {
+    eventId,
+    items: [{ ticketTypeId, quantity: 1 }],
+    buyerName: "Buyer",
+    buyerEmail: "buyer@example.com",
+    addOnItems: [{ addOnId, quantity: 2 }],
+  });
+
+  const found = await t.query(api.orders.getOrder, { token: result.token });
+  expect(found?.addOns).toHaveLength(1);
+  expect(found?.addOns[0]).toMatchObject({
+    addOnId,
+    quantity: 2,
+    unitPriceCents: 300,
+    name: "Parking pass",
+  });
 });
 
 test("a free cart is paid immediately with one ticket issued per unit", async () => {

@@ -74,6 +74,11 @@ const orderItemInput = v.object({
   quantity: v.number(),
 });
 
+const addOnItemInput = v.object({
+  addOnId: v.id("addOns"),
+  quantity: v.number(),
+});
+
 const answerInput = v.object({
   questionId: v.id("checkoutQuestions"),
   value: v.string(),
@@ -91,7 +96,11 @@ const answerInput = v.object({
  * `validateAndSnapshotAnswers` and stored as `orderResponses` rows. Optional
  * `accessCode` (F4b) unlocks `hidden` ticket types for this checkout only --
  * this is the real gate, since a hidden type can never be bought without its
- * code even via the raw HTTP API.
+ * code even via the raw HTTP API. Optional `addOnItems` (F11.3) sells
+ * event-level add-ons alongside (or instead of) tickets -- they contribute to
+ * the same subtotal/fee math and reserve their own per-add-on capacity, but
+ * issue no `tickets` rows and don't count against the event's overall
+ * capacity (only ticket items do).
  */
 export const createOrder = mutation({
   args: {
@@ -102,11 +111,19 @@ export const createOrder = mutation({
     promoCode: v.optional(v.string()),
     answers: v.optional(v.array(answerInput)),
     accessCode: v.optional(v.string()),
+    addOnItems: v.optional(v.array(addOnItemInput)),
   },
-  handler: async (ctx, { eventId, items, buyerName, buyerEmail, promoCode, answers, accessCode }) => {
+  handler: async (
+    ctx,
+    { eventId, items, buyerName, buyerEmail, promoCode, answers, accessCode, addOnItems },
+  ) => {
     const event = await ctx.db.get(eventId);
     if (!event || event.status !== "published") throw new Error("Event not found");
-    if (items.length === 0) throw new Error("Cart is empty");
+    // The cart may be tickets, add-ons, or both -- only a fully-empty cart
+    // (neither) is rejected.
+    if (items.length === 0 && (addOnItems === undefined || addOnItems.length === 0)) {
+      throw new Error("Cart is empty");
+    }
 
     const unlocked = accessCode
       ? await unlockedTicketTypeIds(ctx, eventId, accessCode)
@@ -175,7 +192,41 @@ export const createOrder = mutation({
       throw new Error("Not enough remaining event capacity");
     }
 
-    const grossSubtotalCents = lineItems.reduce(
+    // Aggregate add-on items by addOnId (mirrors the ticket-type aggregation
+    // above) and validate each against the event's add-ons + per-add-on
+    // capacity. Add-ons are event-level only -- `by_event` scoping here means
+    // an addOnId belonging to a different event simply isn't in the map, so
+    // it falls through to "Add-on not found" below.
+    const addOns = await ctx.db
+      .query("addOns")
+      .withIndex("by_event", (q) => q.eq("eventId", eventId))
+      .collect();
+    const addOnsById = new Map(addOns.map((a) => [a._id, a]));
+
+    const quantityByAddOn = new Map<Id<"addOns">, number>();
+    for (const item of addOnItems ?? []) {
+      if (!Number.isInteger(item.quantity) || item.quantity < 1) {
+        throw new Error("Quantity must be a whole number of at least 1");
+      }
+      quantityByAddOn.set(item.addOnId, (quantityByAddOn.get(item.addOnId) ?? 0) + item.quantity);
+    }
+
+    const addOnLineItems: (OrderLineItem & { addOnId: Id<"addOns"> })[] = [];
+    for (const [addOnId, totalQuantity] of quantityByAddOn) {
+      const addOn = addOnsById.get(addOnId);
+      if (!addOn) throw new Error("Add-on not found");
+      if (!addOn.active) throw new Error(`${addOn.name} is not available for purchase`);
+      if (addOn.capacity !== undefined && addOn.sold + totalQuantity > addOn.capacity) {
+        throw new Error(`Not enough remaining capacity for ${addOn.name}`);
+      }
+      addOnLineItems.push({ addOnId, unitPriceCents: addOn.priceCents, quantity: totalQuantity });
+    }
+
+    // grossSubtotalCents = ticket gross + add-on gross; computeOrderAmounts
+    // runs on the combined cart so a promo discount and the booking fee both
+    // apply to the combined subtotal exactly as they would for tickets alone.
+    const combinedLineItems: OrderLineItem[] = [...lineItems, ...addOnLineItems];
+    const grossSubtotalCents = combinedLineItems.reduce(
       (sum, item) => sum + item.unitPriceCents * item.quantity,
       0,
     );
@@ -190,7 +241,7 @@ export const createOrder = mutation({
     }
 
     const feeMode = event.feeMode ?? "pass";
-    const amounts = computeOrderAmounts(lineItems, feeMode, discountCents);
+    const amounts = computeOrderAmounts(combinedLineItems, feeMode, discountCents);
     const currency = event.currency ?? "USD";
     const token = randomToken("ord_");
 
@@ -217,6 +268,15 @@ export const createOrder = mutation({
       await ctx.db.insert("orderItems", {
         orderId,
         ticketTypeId: item.ticketTypeId,
+        quantity: item.quantity,
+        unitPriceCents: item.unitPriceCents,
+      });
+    }
+
+    for (const item of addOnLineItems) {
+      await ctx.db.insert("orderAddOns", {
+        orderId,
+        addOnId: item.addOnId,
         quantity: item.quantity,
         unitPriceCents: item.unitPriceCents,
       });
@@ -257,6 +317,13 @@ export const createOrder = mutation({
       const ticketType = ticketTypesById.get(item.ticketTypeId);
       if (!ticketType) throw new Error("Ticket type not found");
       await ctx.db.patch(item.ticketTypeId, { sold: ticketType.sold + item.quantity });
+    }
+
+    // Reserve add-on capacity, mirroring the ticket-type reservation above.
+    for (const item of addOnLineItems) {
+      const addOn = addOnsById.get(item.addOnId);
+      if (!addOn) throw new Error("Add-on not found");
+      await ctx.db.patch(item.addOnId, { sold: addOn.sold + item.quantity });
     }
 
     let status: "pending" | "paid" = "pending";
@@ -312,6 +379,18 @@ export const cancelOrder = mutation({
       }
     }
 
+    // Release add-on capacity, mirroring the ticket-type release above.
+    const orderAddOns = await ctx.db
+      .query("orderAddOns")
+      .withIndex("by_order", (q) => q.eq("orderId", orderId))
+      .collect();
+    for (const item of orderAddOns) {
+      const addOn = await ctx.db.get(item.addOnId);
+      if (addOn) {
+        await ctx.db.patch(item.addOnId, { sold: Math.max(0, addOn.sold - item.quantity) });
+      }
+    }
+
     // Restore the promo redemption consumed at createOrder, so a cancelled
     // pending order doesn't permanently burn a limited-use code without a sale.
     if (order.promoCode) {
@@ -338,7 +417,10 @@ export const cancelOrder = mutation({
  * returns the order's `orderResponses` (F5 checkout question answers) and
  * its `event` (nullable -- an organizer can delete an event without deleting
  * its past orders, so an order can outlive its event), so a self-service
- * page can show the event title without a second round trip.
+ * page can show the event title without a second round trip. Also returns
+ * `addOns` (F11.3): the order's `orderAddOns` joined with each add-on's
+ * current `name` (not a purchase-time snapshot -- only `unitPriceCents` is
+ * snapshotted on the line item itself).
  */
 export const getOrder = query({
   args: { token: v.string() },
@@ -361,7 +443,17 @@ export const getOrder = query({
       .query("orderResponses")
       .withIndex("by_order", (q) => q.eq("orderId", order._id))
       .collect();
-    return { order, event, items, tickets, orderResponses };
+    const orderAddOns = await ctx.db
+      .query("orderAddOns")
+      .withIndex("by_order", (q) => q.eq("orderId", order._id))
+      .collect();
+    const addOns = await Promise.all(
+      orderAddOns.map(async (row) => {
+        const addOn = await ctx.db.get(row.addOnId);
+        return { ...row, name: addOn?.name ?? "Unknown add-on" };
+      }),
+    );
+    return { order, event, items, tickets, orderResponses, addOns };
   },
 });
 
@@ -403,6 +495,18 @@ export const refundOrder = mutation({
       const ticketType = await ctx.db.get(item.ticketTypeId);
       if (ticketType) {
         await ctx.db.patch(item.ticketTypeId, { sold: Math.max(0, ticketType.sold - item.quantity) });
+      }
+    }
+
+    // Release add-on capacity, mirroring cancelOrder.
+    const orderAddOns = await ctx.db
+      .query("orderAddOns")
+      .withIndex("by_order", (q) => q.eq("orderId", orderId))
+      .collect();
+    for (const item of orderAddOns) {
+      const addOn = await ctx.db.get(item.addOnId);
+      if (addOn) {
+        await ctx.db.patch(item.addOnId, { sold: Math.max(0, addOn.sold - item.quantity) });
       }
     }
 

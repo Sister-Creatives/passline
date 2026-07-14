@@ -569,6 +569,145 @@ test("POST /v1/orders with a missing required answer returns 400", async () => {
   expect(body.error).toEqual(expect.any(String));
 });
 
+// --- add-ons (F11.3) -------------------------------------------------------
+
+test("GET /v1/events/{eventId}/add-ons returns active add-ons of a published event", async () => {
+  const t = convexTest(schema, modules);
+  const { as } = await asOrganizer(t, "ada@example.com");
+  await as.mutation(api.organizers.ensureOrganizer, {});
+  const { eventId } = await seedPublishedEventWithFreeTicketType(as);
+  const addOnId = await as.mutation(api.addOns.create, {
+    eventId,
+    name: "T-shirt",
+    priceCents: 2000,
+    capacity: 50,
+  });
+  const inactiveAddOnId = await as.mutation(api.addOns.create, {
+    eventId,
+    name: "Retired add-on",
+    priceCents: 500,
+  });
+  await t.run((ctx) => ctx.db.patch(inactiveAddOnId, { active: false }));
+  const { secret } = await as.mutation(api.apiKeys.create, { name: "Prod" });
+
+  const res = await t.fetch(`/v1/events/${eventId}/add-ons`, {
+    headers: { Authorization: `Bearer ${secret}` },
+  });
+
+  expect(res.status).toBe(200);
+  expect(res.headers.get("content-type")).toMatch(/application\/json/);
+  const body = await res.json();
+  expect(body.data).toHaveLength(1);
+  expect(body.data[0]).toMatchObject({
+    _id: addOnId,
+    name: "T-shirt",
+    priceCents: 2000,
+    capacity: 50,
+  });
+});
+
+test("GET /v1/events/{eventId}/add-ons 404s for another organizer's event", async () => {
+  const t = convexTest(schema, modules);
+  const { as: asAda } = await asOrganizer(t, "ada@example.com");
+  await asAda.mutation(api.organizers.ensureOrganizer, {});
+  const { eventId } = await seedPublishedEventWithFreeTicketType(asAda);
+  await asAda.mutation(api.addOns.create, { eventId, name: "T-shirt", priceCents: 2000 });
+
+  const { as: asBob } = await asOrganizer(t, "bob@example.com");
+  await asBob.mutation(api.organizers.ensureOrganizer, {});
+  const { secret } = await asBob.mutation(api.apiKeys.create, { name: "Bob's key" });
+
+  const res = await t.fetch(`/v1/events/${eventId}/add-ons`, {
+    headers: { Authorization: `Bearer ${secret}` },
+  });
+
+  expect(res.status).toBe(404);
+  expect(await res.json()).toEqual({ error: "not found" });
+});
+
+test("GET /v1/events/{eventId}/add-ons without a key returns 401", async () => {
+  const t = convexTest(schema, modules);
+  const { as } = await asOrganizer(t, "ada@example.com");
+  await as.mutation(api.organizers.ensureOrganizer, {});
+  const { eventId } = await seedPublishedEventWithFreeTicketType(as);
+
+  const res = await t.fetch(`/v1/events/${eventId}/add-ons`);
+
+  expect(res.status).toBe(401);
+});
+
+test("POST /v1/orders with add-on items returns 201 and reserves add-on capacity", async () => {
+  const t = convexTest(schema, modules);
+  const { as } = await asOrganizer(t, "ada@example.com");
+  await as.mutation(api.organizers.ensureOrganizer, {});
+  const { eventId, ticketTypeId } = await seedPublishedEventWithFreeTicketType(as);
+  const addOnId = await as.mutation(api.addOns.create, {
+    eventId,
+    name: "T-shirt",
+    priceCents: 2000,
+    capacity: 10,
+  });
+  const { secret } = await as.mutation(api.apiKeys.create, { name: "Prod" });
+
+  const res = await t.fetch("/v1/orders", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${secret}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      eventId,
+      items: [{ ticketTypeId, quantity: 1 }],
+      buyerName: "Buyer One",
+      buyerEmail: "buyer@example.com",
+      addOnItems: [{ addOnId, quantity: 2 }],
+    }),
+  });
+
+  expect(res.status).toBe(201);
+  const body = await res.json();
+  expect(body.data.orderId).toEqual(expect.any(String));
+
+  const addOn = await t.run((ctx) => ctx.db.get(addOnId));
+  expect(addOn?.sold).toBe(2);
+});
+
+test("POST /v1/orders with an over-cap add-on returns 400", async () => {
+  const t = convexTest(schema, modules);
+  const { as } = await asOrganizer(t, "ada@example.com");
+  await as.mutation(api.organizers.ensureOrganizer, {});
+  const { eventId, ticketTypeId } = await seedPublishedEventWithFreeTicketType(as);
+  const addOnId = await as.mutation(api.addOns.create, {
+    eventId,
+    name: "T-shirt",
+    priceCents: 2000,
+    capacity: 1,
+  });
+  const { secret } = await as.mutation(api.apiKeys.create, { name: "Prod" });
+
+  const res = await t.fetch("/v1/orders", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${secret}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      eventId,
+      items: [{ ticketTypeId, quantity: 1 }],
+      buyerName: "Buyer One",
+      buyerEmail: "buyer@example.com",
+      addOnItems: [{ addOnId, quantity: 2 }],
+    }),
+  });
+
+  expect(res.status).toBe(400);
+  const body = await res.json();
+  expect(body.error).toEqual(expect.any(String));
+
+  const addOn = await t.run((ctx) => ctx.db.get(addOnId));
+  expect(addOn?.sold).toBe(0);
+});
+
 test("POST /v1/orders without a key returns 401", async () => {
   const t = convexTest(schema, modules);
   const { as } = await asOrganizer(t, "ada@example.com");

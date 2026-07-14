@@ -131,6 +131,7 @@ export const listEvents = httpAction(async (ctx, request) => {
 
 const TICKET_TYPES_PATH = /^\/v1\/events\/([^/]+)\/ticket-types\/?$/;
 const QUESTIONS_PATH = /^\/v1\/events\/([^/]+)\/questions\/?$/;
+const ADD_ONS_PATH = /^\/v1\/events\/([^/]+)\/add-ons\/?$/;
 
 /** GET /v1/events/{eventId}/ticket-types — that event's ticket types, if it's the caller's. */
 async function handleListTicketTypes(
@@ -179,11 +180,37 @@ async function handleListQuestions(
 }
 
 /**
- * GET /v1/events/{eventId}/ticket-types and GET /v1/events/{eventId}/questions
- * both live under this single httpAction: Convex's httpRouter allows only one
- * handler per (method, pathPrefix), and both endpoints share the
- * "/v1/events/" prefix, so they dispatch here by matching the URL's suffix
- * rather than each registering their own route in convex/http.ts.
+ * GET /v1/events/{eventId}/add-ons — that event's active add-ons (F11.3), if
+ * it's the caller's. Ownership is checked first (mirrors
+ * `handleListQuestions`); the data itself reuses the public
+ * `addOns.listForEvent` query, so this endpoint's shape always matches what a
+ * checkout would render (active add-ons of a *published* event only).
+ */
+async function handleListAddOns(
+  ctx: ActionCtx,
+  organizerId: Id<"organizers">,
+  eventId: string,
+): Promise<Response> {
+  try {
+    const typedEventId = eventId as Id<"events">;
+    const ownerId = await ctx.runQuery(internal.apiHttp.eventOrganizerId, { eventId: typedEventId });
+    if (ownerId === null || ownerId !== organizerId) return notFound();
+    const addOns = await ctx.runQuery(api.addOns.listForEvent, { eventId: typedEventId });
+    return jsonResponse({ data: addOns });
+  } catch {
+    // Malformed id segment (not a valid Convex id at all) — same 404 as a
+    // well-formed id that doesn't resolve to the caller's event.
+    return notFound();
+  }
+}
+
+/**
+ * GET /v1/events/{eventId}/ticket-types, GET /v1/events/{eventId}/questions,
+ * and GET /v1/events/{eventId}/add-ons all live under this single httpAction:
+ * Convex's httpRouter allows only one handler per (method, pathPrefix), and
+ * all three endpoints share the "/v1/events/" prefix, so they dispatch here
+ * by matching the URL's suffix rather than each registering their own route
+ * in convex/http.ts.
  */
 export const listEventSubResource = httpAction(async (ctx, request) => {
   const organizerId = await authenticate(ctx, request);
@@ -197,6 +224,9 @@ export const listEventSubResource = httpAction(async (ctx, request) => {
   const questionsMatch = pathname.match(QUESTIONS_PATH);
   if (questionsMatch) return handleListQuestions(ctx, organizerId, questionsMatch[1]);
 
+  const addOnsMatch = pathname.match(ADD_ONS_PATH);
+  if (addOnsMatch) return handleListAddOns(ctx, organizerId, addOnsMatch[1]);
+
   return notFound();
 });
 
@@ -208,6 +238,7 @@ type CreateOrderBody = {
   promoCode?: unknown;
   answers?: unknown;
   accessCode?: unknown;
+  addOnItems?: unknown;
 };
 
 /**
@@ -223,6 +254,8 @@ type CreateOrderBody = {
  * itself validates it via `validateAndSnapshotAnswers`. An optional
  * `accessCode` (F4b) is likewise passed through unvalidated — `createOrder`
  * resolves it and enforces it against any `hidden` ticket types in the cart.
+ * An optional `addOnItems` (F11.3) is likewise passed through unvalidated —
+ * `createOrder` itself validates each add-on's ownership/active/capacity.
  */
 export const createOrder = httpAction(async (ctx, request) => {
   const organizerId = await authenticate(ctx, request);
@@ -235,7 +268,7 @@ export const createOrder = httpAction(async (ctx, request) => {
     return badRequest("Invalid JSON body");
   }
 
-  const { eventId, items, buyerName, buyerEmail, promoCode, answers, accessCode } = body;
+  const { eventId, items, buyerName, buyerEmail, promoCode, answers, accessCode, addOnItems } = body;
   if (typeof eventId !== "string") return badRequest("eventId is required");
   if (typeof buyerName !== "string") return badRequest("buyerName is required");
   if (typeof buyerEmail !== "string") return badRequest("buyerEmail is required");
@@ -248,6 +281,9 @@ export const createOrder = httpAction(async (ctx, request) => {
   }
   if (accessCode !== undefined && typeof accessCode !== "string") {
     return badRequest("accessCode must be a string");
+  }
+  if (addOnItems !== undefined && !Array.isArray(addOnItems)) {
+    return badRequest("addOnItems must be an array");
   }
 
   let ownerId: Id<"organizers"> | null;
@@ -271,6 +307,7 @@ export const createOrder = httpAction(async (ctx, request) => {
       promoCode: promoCode as string | undefined,
       answers: answers as { questionId: Id<"checkoutQuestions">; value: string }[] | undefined,
       accessCode: accessCode as string | undefined,
+      addOnItems: addOnItems as { addOnId: Id<"addOns">; quantity: number }[] | undefined,
     });
     return jsonResponse({ data: result }, 201);
   } catch (err) {
