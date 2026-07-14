@@ -8,6 +8,7 @@ import { LoaderCircle, Minus, Plus, Store } from "lucide-react";
 import { api } from "../../convex/_generated/api";
 import type { Id } from "../../convex/_generated/dataModel";
 import { formatMoney } from "@/lib/format-money";
+import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -45,6 +46,89 @@ function adjustQuantity(
     const clamped = Math.max(0, max !== undefined ? Math.min(next, max) : next);
     return { ...prev, [id]: clamped };
   });
+}
+
+type SeatRow = {
+  id: Id<"seats">;
+  ticketTypeId: Id<"ticketTypes">;
+  section: string;
+  row: string;
+  number: number;
+  status: "available" | "sold";
+};
+
+/**
+ * F10.4: a clickable seat grid for a seated ticket type -- grouped by
+ * section then row (seats already arrive sorted by section/sortOrder from
+ * `seats.listForEvent`). Available seats toggle into/out of `selected`; sold
+ * seats are disabled/greyed, mirroring SeatingPanel's read-only grid but
+ * interactive.
+ */
+function SeatPicker({
+  seats,
+  selected,
+  onToggle,
+}: {
+  seats: SeatRow[];
+  selected: ReadonlySet<Id<"seats">>;
+  onToggle: (seatId: Id<"seats">) => void;
+}) {
+  const sections = new Map<string, SeatRow[]>();
+  for (const seat of seats) {
+    const list = sections.get(seat.section) ?? [];
+    list.push(seat);
+    sections.set(seat.section, list);
+  }
+
+  return (
+    <div className="flex flex-col gap-2">
+      {[...sections.entries()].map(([section, sectionSeats]) => {
+        const rows = new Map<string, SeatRow[]>();
+        for (const seat of sectionSeats) {
+          const list = rows.get(seat.row) ?? [];
+          list.push(seat);
+          rows.set(seat.row, list);
+        }
+        return (
+          <div key={section} className="flex flex-col gap-1">
+            {sections.size > 1 && (
+              <p className="text-xs font-medium text-muted-foreground">{section}</p>
+            )}
+            {[...rows.entries()].map(([row, rowSeats]) => (
+              <div key={row} className="flex items-center gap-1.5">
+                <span className="w-5 shrink-0 text-xs text-muted-foreground">{row}</span>
+                <div className="flex flex-wrap gap-1">
+                  {rowSeats.map((seat) => {
+                    const isSold = seat.status === "sold";
+                    const isSelected = selected.has(seat.id);
+                    return (
+                      <button
+                        key={seat.id}
+                        type="button"
+                        disabled={isSold}
+                        onClick={() => onToggle(seat.id)}
+                        title={`${seat.section} ${seat.row}${seat.number}${isSold ? " · sold" : ""}`}
+                        className={cn(
+                          "flex h-6 w-6 items-center justify-center rounded-sm border text-[10px] tabular-nums transition-colors",
+                          isSold
+                            ? "cursor-not-allowed border-transparent bg-muted text-muted-foreground/50"
+                            : isSelected
+                              ? "border-primary bg-primary text-primary-foreground"
+                              : "border-input bg-background text-foreground hover:bg-accent",
+                        )}
+                      >
+                        {seat.number}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
+          </div>
+        );
+      })}
+    </div>
+  );
 }
 
 /**
@@ -109,16 +193,25 @@ function BoxOfficeForm({
   const { data: sessions, isPending: sessionsPending } = useQuery(
     convexQuery(api.eventSessions.listForEvent, { eventId }),
   );
+  // F10: a ticket type with >= 1 seats row is "seated" -- its picker replaces
+  // the quantity stepper below. `seats.listForEvent` is the public (published
+  // events only) query, which matches `createBoxOfficeOrder`'s own
+  // published-event requirement, so this never hides a seat map that a sale
+  // could actually reach.
+  const { data: seatsData, isPending: seatsPending } = useQuery(
+    convexQuery(api.seats.listForEvent, { eventId }),
+  );
   const createBoxOfficeOrder = useMutation(api.orders.createBoxOfficeOrder);
 
   const [ticketQuantities, setTicketQuantities] = useState<Record<string, number>>({});
   const [addOnQuantities, setAddOnQuantities] = useState<Record<string, number>>({});
+  const [selectedSeats, setSelectedSeats] = useState<Record<string, Id<"seats">[]>>({});
   const [buyerName, setBuyerName] = useState("");
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("cash");
   const [sessionId, setSessionId] = useState<Id<"eventSessions"> | "">("");
   const [submitting, setSubmitting] = useState(false);
 
-  if (typesPending || addOnsPending || sessionsPending) {
+  if (typesPending || addOnsPending || sessionsPending || seatsPending) {
     return (
       <div className="flex flex-col gap-3">
         <Skeleton className="h-10 w-full" />
@@ -138,18 +231,50 @@ function BoxOfficeForm({
   const eventSessions = sessions ?? [];
   const hasSessions = eventSessions.length > 0;
 
-  const items = Object.entries(ticketQuantities)
-    .filter(([, quantity]) => quantity > 0)
-    .map(([ticketTypeId, quantity]) => ({ ticketTypeId: ticketTypeId as Id<"ticketTypes">, quantity }));
+  // F10: group seats by ticket type -- a type with >= 1 seats row is
+  // "seated" and gets a picker instead of a quantity stepper below.
+  const seatsByTicketType = new Map<string, SeatRow[]>();
+  for (const seat of seatsData ?? []) {
+    const list = seatsByTicketType.get(seat.ticketTypeId) ?? [];
+    list.push(seat);
+    seatsByTicketType.set(seat.ticketTypeId, list);
+  }
+
+  function toggleSeat(ticketTypeId: string, seatId: Id<"seats">) {
+    setSelectedSeats((prev) => {
+      const current = prev[ticketTypeId] ?? [];
+      const next = current.includes(seatId)
+        ? current.filter((id) => id !== seatId)
+        : [...current, seatId];
+      return { ...prev, [ticketTypeId]: next };
+    });
+  }
+
+  const items: { ticketTypeId: Id<"ticketTypes">; quantity?: number; seatIds?: Id<"seats">[] }[] =
+    [];
+  for (const tt of sellableTicketTypes) {
+    const seatsForType = seatsByTicketType.get(tt._id) ?? [];
+    if (seatsForType.length > 0) {
+      const seatIds = selectedSeats[tt._id] ?? [];
+      if (seatIds.length > 0) items.push({ ticketTypeId: tt._id, seatIds });
+    } else {
+      const quantity = ticketQuantities[tt._id] ?? 0;
+      if (quantity > 0) items.push({ ticketTypeId: tt._id, quantity });
+    }
+  }
   const addOnItems = Object.entries(addOnQuantities)
     .filter(([, quantity]) => quantity > 0)
     .map(([addOnId, quantity]) => ({ addOnId: addOnId as Id<"addOns">, quantity }));
 
   const subtotalCents =
-    sellableTicketTypes.reduce(
-      (sum, tt) => sum + tt.priceCents * (ticketQuantities[tt._id] ?? 0),
-      0,
-    ) + activeAddOns.reduce((sum, a) => sum + a.priceCents * (addOnQuantities[a._id] ?? 0), 0);
+    sellableTicketTypes.reduce((sum, tt) => {
+      const seatsForType = seatsByTicketType.get(tt._id) ?? [];
+      const quantity =
+        seatsForType.length > 0
+          ? (selectedSeats[tt._id]?.length ?? 0)
+          : (ticketQuantities[tt._id] ?? 0);
+      return sum + tt.priceCents * quantity;
+    }, 0) + activeAddOns.reduce((sum, a) => sum + a.priceCents * (addOnQuantities[a._id] ?? 0), 0);
 
   const canSubmit =
     buyerName.trim().length > 0 &&
@@ -200,6 +325,34 @@ function BoxOfficeForm({
     <form onSubmit={handleSubmit} className="flex flex-col gap-4">
       <div className="flex flex-col gap-2">
         {sellableTicketTypes.map((tt) => {
+          const seatsForType = seatsByTicketType.get(tt._id) ?? [];
+          if (seatsForType.length > 0) {
+            const selected = new Set(selectedSeats[tt._id] ?? []);
+            const availableCount = seatsForType.filter((s) => s.status === "available").length;
+            return (
+              <div key={tt._id} className="flex flex-col gap-2 rounded-md border p-2">
+                <div className="flex items-center justify-between gap-2">
+                  <div>
+                    <p className="text-sm font-medium">{tt.name}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {tt.kind === "free" ? "Free" : formatMoney(tt.priceCents, currency)} ·{" "}
+                      {availableCount} available
+                    </p>
+                  </div>
+                  {selected.size > 0 && (
+                    <span className="text-xs font-medium tabular-nums">
+                      {selected.size} selected
+                    </span>
+                  )}
+                </div>
+                <SeatPicker
+                  seats={seatsForType}
+                  selected={selected}
+                  onToggle={(seatId) => toggleSeat(tt._id, seatId)}
+                />
+              </div>
+            );
+          }
           const remaining = tt.capacity !== undefined ? Math.max(0, tt.capacity - tt.sold) : undefined;
           const quantity = ticketQuantities[tt._id] ?? 0;
           return (

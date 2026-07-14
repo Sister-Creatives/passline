@@ -13,6 +13,7 @@ import { AttendeeTable } from "@/components/AttendeeTable";
 import { EventForm } from "@/components/EventForm";
 import { TicketTypesPanel } from "@/components/TicketTypesPanel";
 import { SessionsPanel } from "@/components/SessionsPanel";
+import { SeatingPanel } from "@/components/SeatingPanel";
 import { AddOnsPanel } from "@/components/AddOnsPanel";
 import { OrdersPanel } from "@/components/OrdersPanel";
 import { AnalyticsPanel } from "@/components/AnalyticsPanel";
@@ -185,6 +186,7 @@ function EventManageContent({ eventId }: { eventId: Id<"events"> }) {
           <TabsTrigger value="details">Details</TabsTrigger>
           <TabsTrigger value="tickets">Ticket types</TabsTrigger>
           <TabsTrigger value="sessions">Sessions</TabsTrigger>
+          <TabsTrigger value="seating">Seating</TabsTrigger>
           <TabsTrigger value="addons">Add-ons</TabsTrigger>
           <TabsTrigger value="promo">Promo codes</TabsTrigger>
           <TabsTrigger value="access">Access codes</TabsTrigger>
@@ -311,6 +313,9 @@ function EventManageContent({ eventId }: { eventId: Id<"events"> }) {
         </TabsContent>
         <TabsContent value="sessions">
           <SessionsPanel eventId={event._id} />
+        </TabsContent>
+        <TabsContent value="seating">
+          <SeatingPanel eventId={event._id} />
         </TabsContent>
         <TabsContent value="addons">
           <AddOnsPanel eventId={event._id} currency={event.currency ?? "USD"} />
