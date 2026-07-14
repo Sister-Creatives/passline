@@ -32,9 +32,10 @@ sections beyond the light muted dot noted in §6.
 
 **No schema changes.** `createEvent` keeps its current required args (title, description, location,
 capacity, start/end), so the Details **content** requirements pass the moment a draft exists — no
-need to relax `events` fields to optional (the `date` rule additionally wants a future `endsAt`, so
-a past-dated draft still shows an incomplete Details badge). Readiness is computed live from existing
-tables (`events`, `ticketTypes`, `seats`, `eventContent`); nothing is stored.
+need to relax `events` fields to optional (the `date` rule is a **recommended** warning that wants a
+future `endsAt`, so a past-dated draft shows a Details *warning* badge but can still publish).
+Readiness is computed live from existing tables (`events`, `ticketTypes`, `seats`, `accessCodes`,
+`eventContent`); nothing is stored.
 
 ## 4. Readiness engine (the core)
 
@@ -72,6 +73,7 @@ export function computeReadiness(input: {
   event: Doc<"events">;
   ticketTypes: Doc<"ticketTypes">[];
   seats: Doc<"seats">[];
+  accessCodes: Doc<"accessCodes">[];
   eventContent: Doc<"eventContent"> | null;
   now: number;                    // injected for determinism (never Date.now() inside)
 }): EventReadiness;
@@ -82,9 +84,9 @@ export function computeReadiness(input: {
 | id | section | severity | passes when |
 |----|---------|----------|-------------|
 | `details` | details | required | `title`, `description`, `location` non-empty **and** `endsAt > startsAt` (true post-create; re-checked defensively for edits) |
-| `tickets` | tickets | required | ≥ 1 ticket type with `status === "active"` **and** `visibility === "visible"` |
-| `date` | details | required | `endsAt > now` (do not publish an event that already ended) |
+| `tickets` | tickets | required (conditional) | **"a way in" exists:** `ticketTypes.length === 0` (free-RSVP event) **or** ≥1 ticket type with `status === "active"` **and** `visibility === "visible"` **or** ≥1 access code with `active === true` (unlocks hidden types for an invite-only event). Fails only when ticket types exist, none is active+visible, and no active access code exists. |
 | `seating` | seating | required (conditional) | fires **only if `seats.length > 0`**: every seated ticket type (has ≥1 seat) has `seatCount ≥ (capacity ?? seatCount)` — i.e. enough seats mapped for its cap. Never fires for non-seated events. |
+| `date` | details | recommended | `endsAt > now` (a past-dated event is almost always a mistake, but importing/record-keeping is legitimate — warn, do not block) |
 | `cover` | page | recommended | `eventContent?.coverImageUrl` is set |
 | `page` | page | recommended | any page richness present (`agenda`/`speakers`/`faqs` non-empty) |
 
@@ -93,21 +95,28 @@ rules fail; else `warning` if any `recommended` rule fails; else `complete`. Sec
 (sessions, add-ons, promo, access, questions, hub, accessibility, and all Manage sections) are
 **optional** — absent from `sectionStatus` and shown without a readiness glyph.
 
-**Confirmed product decisions** (baked in): `tickets` is required, so a legacy free-RSVP event with
-no ticket types must add at least one (free = a $0 "free"-kind ticket type) before it can publish;
-`date` is required, so a past-dated event cannot be published.
+**Confirmed product decisions** (baked in, refined during planning to fit this platform's
+RSVP-by-default / ticketed-by-opt-in model and to avoid a fragile 18-file test retrofit): the
+`tickets` blocker is **conditional** — a bare event with no ticket types publishes as free RSVP, an
+invite-only event whose only tickets are hidden publishes as long as an active access code unlocks
+them, and the blocker bites only a genuinely unreachable ticketed setup (has tickets, none
+visible/active, no active code). `date` is a **recommended warning**, not a blocker. This design
+leaves all existing publish-path tests green (they publish either zero-ticket RSVP events or
+active+visible ticketed events); the only new backend behavior is `publishEvent` rejecting an
+unreachable ticketed setup or a seating-incoherent one.
 
 ## 5. Backend functions
 
 `convex/events.ts`:
 
 - **`getEventReadiness({ eventId })`** — new organizer query, owner-checked via the existing
-  `requireOwnedEvent`. Loads the event + its `ticketTypes` (`by_event`), `seats` (`by_event`), and
-  `eventContent` (`by_event`), calls `computeReadiness({ …, now: Date.now() })`, returns the report.
-  Read-only, reactive: the rail updates live as sections are filled in.
+  `requireOwnedEvent`. Loads the event + its `ticketTypes` (`by_event`), `seats` (`by_event`),
+  `accessCodes` (`by_event`), and `eventContent` (`by_event`), calls
+  `computeReadiness({ …, now: Date.now() })`, returns the report. Read-only, reactive: the rail
+  updates live as sections are filled in.
 - **`publishEvent` enforcement** — before flipping status to `"published"`, load the same docs, call
   `computeReadiness`, and if `!canPublish` **throw** `Error` naming the first failing required rule
-  (e.g. `"Cannot publish: add at least one visible ticket type"`). Covers every caller (UI, HTTP
+  (e.g. `"Cannot publish: add a ticket type buyers can access"`). Covers every caller (UI, HTTP
   API, duplicate-then-publish), not just the button. The existing `recordAudit("event.published")`
   stays, after the successful patch. `unpublishEvent` is unchanged (unpublishing is always allowed).
 
@@ -149,27 +158,33 @@ copy to "Add the basics — tickets and design come next"; on success navigate t
 
 ## 7. Testing (TDD)
 
-- **`convex/readiness.test.ts`** (pure helper, the bulk of the coverage): a fresh draft with a
-  future date + no tickets fails only `tickets`; adding one hidden/archived type still fails, one
-  active+visible type passes it; a past `endsAt` fails `date`; the `seating` rule stays `pass` when
-  no seats exist, fails when a seated type has fewer seats than its capacity, passes when covered;
-  `cover`/`page` toggle `warning` vs `complete` on the `page` section without affecting
-  `canPublish`; `sectionStatus` and `blockersRemaining`/`canPublish` are computed correctly.
+- **`convex/readiness.test.ts`** (pure helper, the bulk of the coverage): a fresh draft with **no
+  ticket types** passes `tickets` (free-RSVP, `canPublish` true); adding a single **hidden** type
+  with **no** access code fails `tickets` (unreachable), adding an **active access code** for it
+  passes again, and an **active + visible** type passes directly; an **archived-only** set fails; the
+  `seating` rule stays `pass` when no seats exist, fails when a seated type has fewer seats than its
+  capacity, passes when covered; `date` failing (past `endsAt`) marks Details `warning` but keeps
+  `canPublish` true; `cover`/`page` toggle `warning` vs `complete` on the `page` section without
+  affecting `canPublish`; `sectionStatus`, `blockersRemaining`, and `canPublish` compute correctly.
 - **`convex/events.test.ts`** (append): `getEventReadiness` is owner-only and mirrors the helper on
-  real docs; `publishEvent` **throws** on a draft with no visible ticket type and **succeeds** once
-  one is added (and past-date is rejected); a non-owner is rejected. Confirm the existing publish
-  tests are updated to seed a valid ticket type first.
+  real docs; `publishEvent` **throws** for a draft whose only ticket type is hidden with no access
+  code, and **succeeds** once the type is made visible (or an active code is added); a zero-ticket
+  RSVP draft still publishes; a non-owner is rejected. **No existing test is modified** — the gate is
+  designed so every current publish-path test (zero-ticket RSVP events, or active+visible ticketed
+  events, or hidden+active-code invite events) stays green. A full `pnpm test` run confirms zero
+  regressions across the 327+ existing tests.
 - **Frontend** verified by `pnpm exec tsc --noEmit` + `pnpm build` + a manual drive (create → land
-  on Tickets → watch the rail go Ready 2/3 → 3/3 → Publish enables → publish → View page).
+  on Tickets → watch the rail go Ready 1/2 → 2/2 → Publish enables → publish → View page).
 
 ## 8. Constraints
 
 Carried from the plan: shadcn/ui for all UI (`Sidebar`/`Collapsible` primitives already installed
 for the nav; `Skeleton` for loading, no spinners/"Loading…"); plain `Error`; integer cents;
 per-file convex-test helpers; English, no emojis. **Additive to the backend**: the only behavior
-change is `publishEvent` now enforcing readiness — existing tests that publish must seed a valid
-ticket type. Reused panels must not be modified. Determinism: `computeReadiness` takes `now` as an
-argument (never `Date.now()` in its body).
+change is `publishEvent` now rejecting an unreachable ticketed setup or a seating-incoherent one; the
+refined conditional rules leave every existing publish-path test green (no test edits). Reused panels
+must not be modified. Determinism: `computeReadiness` takes `now` as an argument (never `Date.now()`
+in its body).
 
 ## 9. Delivery
 
