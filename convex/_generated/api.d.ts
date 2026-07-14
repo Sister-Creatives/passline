@@ -32,6 +32,7 @@ import type * as orders from "../orders.js";
 import type * as organizers from "../organizers.js";
 import type * as promoCodes from "../promoCodes.js";
 import type * as rsvps from "../rsvps.js";
+import type * as seats from "../seats.js";
 import type * as ticketCheckin from "../ticketCheckin.js";
 import type * as ticketTypes from "../ticketTypes.js";
 import type * as tickets from "../tickets.js";
@@ -71,6 +72,7 @@ declare const fullApi: ApiFromModules<{
   organizers: typeof organizers;
   promoCodes: typeof promoCodes;
   rsvps: typeof rsvps;
+  seats: typeof seats;
   ticketCheckin: typeof ticketCheckin;
   ticketTypes: typeof ticketTypes;
   tickets: typeof tickets;
