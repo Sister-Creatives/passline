@@ -29,6 +29,10 @@ interface RsvpFormProps {
   slug: string;
   /** When the event is at capacity, the form collects a waitlist join instead. */
   isFull: boolean;
+  /** Organizer-supplied label (e.g. "Register", "Donate") for the primary RSVP button; falls back to "RSVP" when unset. Never applied to the waitlist button -- that copy stays fixed regardless of `ctaLabel`. */
+  ctaLabel?: string;
+  /** Validated "#RRGGBB" brand color for the primary button; the caller is responsible for checking `isValidHexColor` before passing this. */
+  accentColor?: string;
 }
 
 /**
@@ -36,7 +40,7 @@ interface RsvpFormProps {
  * result (confirmed vs. waitlisted), then routes the attendee to their
  * ticket/confirmation page keyed by the returned token.
  */
-export function RsvpForm({ slug, isFull }: RsvpFormProps) {
+export function RsvpForm({ slug, isFull, ctaLabel, accentColor }: RsvpFormProps) {
   const navigate = useNavigate();
   const rsvp = useMutation(api.rsvps.rsvp);
 
@@ -99,9 +103,13 @@ export function RsvpForm({ slug, isFull }: RsvpFormProps) {
             </FormItem>
           )}
         />
-        <Button type="submit" disabled={isSubmitting}>
+        <Button
+          type="submit"
+          disabled={isSubmitting}
+          style={!isFull && accentColor ? { backgroundColor: accentColor, borderColor: accentColor } : undefined}
+        >
           {isSubmitting && <LoaderCircle className="animate-spin" />}
-          {isFull ? "Join the waitlist" : "RSVP"}
+          {isFull ? "Join the waitlist" : (ctaLabel ?? "RSVP")}
         </Button>
       </form>
     </Form>
