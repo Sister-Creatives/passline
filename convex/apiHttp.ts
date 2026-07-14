@@ -133,6 +133,7 @@ const TICKET_TYPES_PATH = /^\/v1\/events\/([^/]+)\/ticket-types\/?$/;
 const QUESTIONS_PATH = /^\/v1\/events\/([^/]+)\/questions\/?$/;
 const ADD_ONS_PATH = /^\/v1\/events\/([^/]+)\/add-ons\/?$/;
 const SESSIONS_PATH = /^\/v1\/events\/([^/]+)\/sessions\/?$/;
+const SEATS_PATH = /^\/v1\/events\/([^/]+)\/seats\/?$/;
 
 /** GET /v1/events/{eventId}/ticket-types — that event's ticket types, if it's the caller's. */
 async function handleListTicketTypes(
@@ -232,12 +233,38 @@ async function handleListSessions(
 }
 
 /**
+ * GET /v1/events/{eventId}/seats — that event's seat map (F10), if it's the
+ * caller's. Ownership is checked first (mirrors `handleListSessions`); the
+ * data itself reuses the public `seats.listForEvent` query, so this
+ * endpoint's shape always matches what a buyer's seat picker would render
+ * (seats of a *published* event, sorted by section then reading order).
+ */
+async function handleListSeats(
+  ctx: ActionCtx,
+  organizerId: Id<"organizers">,
+  eventId: string,
+): Promise<Response> {
+  try {
+    const typedEventId = eventId as Id<"events">;
+    const ownerId = await ctx.runQuery(internal.apiHttp.eventOrganizerId, { eventId: typedEventId });
+    if (ownerId === null || ownerId !== organizerId) return notFound();
+    const seats = await ctx.runQuery(api.seats.listForEvent, { eventId: typedEventId });
+    return jsonResponse({ data: seats });
+  } catch {
+    // Malformed id segment (not a valid Convex id at all) — same 404 as a
+    // well-formed id that doesn't resolve to the caller's event.
+    return notFound();
+  }
+}
+
+/**
  * GET /v1/events/{eventId}/ticket-types, GET /v1/events/{eventId}/questions,
- * GET /v1/events/{eventId}/add-ons, and GET /v1/events/{eventId}/sessions all
- * live under this single httpAction: Convex's httpRouter allows only one
- * handler per (method, pathPrefix), and all four endpoints share the
- * "/v1/events/" prefix, so they dispatch here by matching the URL's suffix
- * rather than each registering their own route in convex/http.ts.
+ * GET /v1/events/{eventId}/add-ons, GET /v1/events/{eventId}/sessions, and
+ * GET /v1/events/{eventId}/seats all live under this single httpAction:
+ * Convex's httpRouter allows only one handler per (method, pathPrefix), and
+ * all five endpoints share the "/v1/events/" prefix, so they dispatch here by
+ * matching the URL's suffix rather than each registering their own route in
+ * convex/http.ts.
  */
 export const listEventSubResource = httpAction(async (ctx, request) => {
   const organizerId = await authenticate(ctx, request);
@@ -256,6 +283,9 @@ export const listEventSubResource = httpAction(async (ctx, request) => {
 
   const sessionsMatch = pathname.match(SESSIONS_PATH);
   if (sessionsMatch) return handleListSessions(ctx, organizerId, sessionsMatch[1]);
+
+  const seatsMatch = pathname.match(SEATS_PATH);
+  if (seatsMatch) return handleListSeats(ctx, organizerId, seatsMatch[1]);
 
   return notFound();
 });
@@ -289,7 +319,10 @@ type CreateOrderBody = {
  * `createOrder` itself validates each add-on's ownership/active/capacity. An
  * optional `sessionId` (F13) is likewise passed through unvalidated —
  * `createOrder` itself requires/rejects it depending on whether the event has
- * sessions and validates it belongs to the event.
+ * sessions and validates it belongs to the event. Each `items` entry's
+ * optional `seatIds` (F10) is likewise passed through unvalidated —
+ * `createOrder` itself requires it for a seated ticket type (and rejects it
+ * for a GA one) and validates each seat's ownership/availability.
  */
 export const createOrder = httpAction(async (ctx, request) => {
   const organizerId = await authenticate(ctx, request);
@@ -339,7 +372,11 @@ export const createOrder = httpAction(async (ctx, request) => {
   try {
     const result = await ctx.runMutation(api.orders.createOrder, {
       eventId: eventId as Id<"events">,
-      items: items as { ticketTypeId: Id<"ticketTypes">; quantity: number }[],
+      items: items as {
+        ticketTypeId: Id<"ticketTypes">;
+        quantity?: number;
+        seatIds?: Id<"seats">[];
+      }[],
       buyerName,
       buyerEmail,
       promoCode: promoCode as string | undefined,

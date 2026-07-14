@@ -56,6 +56,28 @@ async function issueTicketsAndMarkPaid(ctx: MutationCtx, order: Doc<"orders">) {
     .withIndex("by_order", (q) => q.eq("orderId", order._id))
     .collect();
   for (const item of items) {
+    // F10: a seated line item was reserved with specific seats at
+    // `buildOrder` time (stamped onto the orderItem) -- issue exactly one
+    // ticket per seat, each stamped with that seat's id + a human label. A GA
+    // (or session) item has no `seatIds` and falls through to the original
+    // quantity loop, byte-identical to before.
+    if (item.seatIds && item.seatIds.length > 0) {
+      for (const seatId of item.seatIds) {
+        const seat = await ctx.db.get(seatId);
+        await ctx.db.insert("tickets", {
+          orderId: order._id,
+          eventId: order.eventId,
+          ticketTypeId: item.ticketTypeId,
+          code: randomToken("tkt_"),
+          status: "valid",
+          createdAt: Date.now(),
+          sessionId: order.sessionId,
+          seatId,
+          seatLabel: seat ? `${seat.section} ${seat.row}${seat.number}` : undefined,
+        });
+      }
+      continue;
+    }
     for (let i = 0; i < item.quantity; i++) {
       await ctx.db.insert("tickets", {
         orderId: order._id,
@@ -76,7 +98,11 @@ async function issueTicketsAndMarkPaid(ctx: MutationCtx, order: Doc<"orders">) {
 
 const orderItemInput = v.object({
   ticketTypeId: v.id("ticketTypes"),
-  quantity: v.number(),
+  // F10: a seated ticket type derives its quantity from `seatIds.length`
+  // instead, so `quantity` is optional at the wire level -- `buildOrder`
+  // itself still requires it (and validates it) for a GA item.
+  quantity: v.optional(v.number()),
+  seatIds: v.optional(v.array(v.id("seats"))),
 });
 
 const addOnItemInput = v.object({
@@ -91,7 +117,13 @@ const answerInput = v.object({
 
 type BuildOrderArgs = {
   eventId: Id<"events">;
-  items: { ticketTypeId: Id<"ticketTypes">; quantity: number }[];
+  items: {
+    ticketTypeId: Id<"ticketTypes">;
+    quantity?: number;
+    // F10: non-empty and required for a seated ticket type (one seat per
+    // ticket); rejected on a GA (non-seated) item.
+    seatIds?: Id<"seats">[];
+  }[];
   addOnItems?: { addOnId: Id<"addOns">; quantity: number }[];
   buyerName: string;
   buyerEmail: string;
@@ -181,6 +213,24 @@ async function buildOrder(
     throw new Error("This event has no sessions");
   }
 
+  // F10: a ticket type is "seated" iff it has >= 1 `seats` row. Determined
+  // once per distinct ticketTypeId referenced by the cart (an item can
+  // legally omit `quantity` or `seatIds` depending on which kind it turns
+  // out to be, so this has to run before either is validated below).
+  // Seated ticket types can't be combined with a session this slice.
+  const distinctTicketTypeIds = [...new Set(items.map((item) => item.ticketTypeId))];
+  const seatedTicketTypeIds = new Set<Id<"ticketTypes">>();
+  for (const ticketTypeId of distinctTicketTypeIds) {
+    const anySeat = await ctx.db
+      .query("seats")
+      .withIndex("by_ticketType", (q) => q.eq("ticketTypeId", ticketTypeId))
+      .first();
+    if (anySeat) seatedTicketTypeIds.add(ticketTypeId);
+  }
+  if (session && seatedTicketTypeIds.size > 0) {
+    throw new Error("Seated tickets can't be combined with sessions");
+  }
+
   const unlocked = accessCode
     ? await unlockedTicketTypeIds(ctx, eventId, accessCode)
     : new Set<Id<"ticketTypes">>();
@@ -201,15 +251,54 @@ async function buildOrder(
   // Aggregate the cart by ticketTypeId first, so a cart that lists the same
   // ticket type across multiple line items is validated (min/max/capacity)
   // against its combined quantity rather than bypassing per-type limits.
+  // F10: a seated item is aggregated by seatIds (de-duped) instead of a
+  // numeric quantity -- its quantity is derived below as the de-duped count.
   const quantityByTicketType = new Map<Id<"ticketTypes">, number>();
+  const seatIdsByTicketType = new Map<Id<"ticketTypes">, Set<Id<"seats">>>();
   for (const item of items) {
-    if (!Number.isInteger(item.quantity) || item.quantity < 1) {
+    if (seatedTicketTypeIds.has(item.ticketTypeId)) {
+      if (!item.seatIds || item.seatIds.length === 0) {
+        throw new Error("Seated ticket types require seatIds");
+      }
+      const set = seatIdsByTicketType.get(item.ticketTypeId) ?? new Set<Id<"seats">>();
+      for (const seatId of item.seatIds) set.add(seatId);
+      seatIdsByTicketType.set(item.ticketTypeId, set);
+      continue;
+    }
+    if (item.seatIds && item.seatIds.length > 0) {
+      throw new Error("This ticket type does not support seat selection");
+    }
+    // `?? NaN` so a GA item that omits `quantity` altogether fails the
+    // integer check below (rather than TS narrowing away `undefined`).
+    const quantity = item.quantity ?? NaN;
+    if (!Number.isInteger(quantity) || quantity < 1) {
       throw new Error("Quantity must be a whole number of at least 1");
     }
     quantityByTicketType.set(
       item.ticketTypeId,
-      (quantityByTicketType.get(item.ticketTypeId) ?? 0) + item.quantity,
+      (quantityByTicketType.get(item.ticketTypeId) ?? 0) + quantity,
     );
+  }
+
+  // Validate every referenced seat -- exists, belongs to this ticketTypeId +
+  // eventId, and is still `available` -- entirely before any mutation below,
+  // so a rejected seat (already sold / wrong type / wrong event) leaves the
+  // cart's reservations completely untouched (no partial mutation). Folding
+  // the de-duped count into `quantityByTicketType` here (rather than earlier)
+  // means a seated type's quantity is always exactly its distinct seat count.
+  const seatsById = new Map<Id<"seats">, Doc<"seats">>();
+  for (const [ticketTypeId, seatIdSet] of seatIdsByTicketType) {
+    for (const seatId of seatIdSet) {
+      const seat = await ctx.db.get(seatId);
+      if (!seat || seat.eventId !== eventId || seat.ticketTypeId !== ticketTypeId) {
+        throw new Error("Seat not found for this ticket type");
+      }
+      if (seat.status !== "available") {
+        throw new Error(`Seat ${seat.section} ${seat.row}${seat.number} is no longer available`);
+      }
+      seatsById.set(seatId, seat);
+    }
+    quantityByTicketType.set(ticketTypeId, seatIdSet.size);
   }
 
   const lineItems: (OrderLineItem & { ticketTypeId: Id<"ticketTypes"> })[] = [];
@@ -235,8 +324,11 @@ async function buildOrder(
     // A multi-session event's ticket types are pure pricing tiers across
     // sessions -- their own `capacity` (if any) is not enforced; only the
     // session's is, below. A single event enforces it exactly as before.
+    // F10: a seated type's per-type numeric cap is skipped too -- its seat
+    // inventory (validated above) is the capacity.
     if (
       !session &&
+      !seatedTicketTypeIds.has(ticketTypeId) &&
       ticketType.capacity !== undefined &&
       ticketType.sold + totalQuantity > ticketType.capacity
     ) {
@@ -348,11 +440,13 @@ async function buildOrder(
   });
 
   for (const item of lineItems) {
+    const seatIdSet = seatIdsByTicketType.get(item.ticketTypeId);
     await ctx.db.insert("orderItems", {
       orderId,
       ticketTypeId: item.ticketTypeId,
       quantity: item.quantity,
       unitPriceCents: item.unitPriceCents,
+      seatIds: seatIdSet ? [...seatIdSet] : undefined,
     });
   }
 
@@ -414,6 +508,13 @@ async function buildOrder(
     const addOn = addOnsById.get(item.addOnId);
     if (!addOn) throw new Error("Add-on not found");
     await ctx.db.patch(item.addOnId, { sold: addOn.sold + item.quantity });
+  }
+
+  // F10: reserve every purchased seat by flipping it to `sold` -- last, so
+  // every validation above (including each seat's own availability) has
+  // already passed and this order is guaranteed to persist.
+  for (const seatId of seatsById.keys()) {
+    await ctx.db.patch(seatId, { status: "sold" });
   }
 
   const order = await ctx.db.get(orderId);
@@ -591,6 +692,19 @@ export const cancelOrder = mutation({
       }
     }
 
+    // F10: release any seats this order reserved. A pending order never had
+    // tickets issued for it (that happens at payment confirmation), so the
+    // seatIds stamped onto each orderItem at `buildOrder` time -- not the
+    // tickets table -- are the only record of which seats to free.
+    for (const item of items) {
+      for (const seatId of item.seatIds ?? []) {
+        const seat = await ctx.db.get(seatId);
+        if (seat) {
+          await ctx.db.patch(seatId, { status: "available" });
+        }
+      }
+    }
+
     // Restore the promo redemption consumed at createOrder, so a cancelled
     // pending order doesn't permanently burn a limited-use code without a sale.
     if (order.promoCode) {
@@ -692,6 +806,12 @@ export const refundOrder = mutation({
     for (const ticket of tickets) {
       if (ticket.status !== "cancelled") {
         await ctx.db.patch(ticket._id, { status: "cancelled" });
+      }
+      // F10: a refunded order already has tickets (unlike cancelOrder's
+      // pending order), so each seat-tied ticket's own `seatId` is the
+      // release record here.
+      if (ticket.seatId) {
+        await ctx.db.patch(ticket.seatId, { status: "available" });
       }
     }
 

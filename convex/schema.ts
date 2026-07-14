@@ -162,6 +162,13 @@ export default defineSchema({
     ticketTypeId: v.id("ticketTypes"),
     quantity: v.number(),
     unitPriceCents: v.number(), // snapshot of the price at purchase time
+    // F10: the specific seats this line item reserved, for a seated ticket
+    // type. Undefined for a GA item. Persisted here (not just on the seat
+    // rows themselves) so ticket issuance -- which can happen well after
+    // `buildOrder` reserves the seats, e.g. at payment confirmation -- and
+    // cancelOrder's release both know exactly which seats belong to this
+    // order without a reverse lookup.
+    seatIds: v.optional(v.array(v.id("seats"))),
   }).index("by_order", ["orderId"]),
 
   seats: defineTable({
