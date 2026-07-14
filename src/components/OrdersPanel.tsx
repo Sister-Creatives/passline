@@ -20,12 +20,14 @@ const STATUS_VARIANT = {
   pending: "secondary",
   paid: "default",
   cancelled: "outline",
+  refunded: "outline",
 } as const;
 
 const STATUS_LABEL = {
   pending: "Pending",
   paid: "Paid",
   cancelled: "Cancelled",
+  refunded: "Refunded",
 } as const;
 
 /**

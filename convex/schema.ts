@@ -118,6 +118,7 @@ export default defineSchema({
       v.literal("pending"),
       v.literal("paid"),
       v.literal("cancelled"),
+      v.literal("refunded"),
     ),
     currency: v.string(),
     feeMode: v.union(v.literal("pass"), v.literal("absorb")),
@@ -131,6 +132,7 @@ export default defineSchema({
     discountCents: v.optional(v.number()),
     grossSubtotalCents: v.optional(v.number()),
     promoCode: v.optional(v.string()),
+    refundedAt: v.optional(v.number()),
   })
     .index("by_event", ["eventId"])
     .index("by_organizer", ["organizerId"])
@@ -154,6 +156,7 @@ export default defineSchema({
       v.literal("cancelled"),
     ),
     attendeeName: v.optional(v.string()),
+    attendeeEmail: v.optional(v.string()),
     createdAt: v.number(),
     checkedInAt: v.optional(v.number()),
   })
