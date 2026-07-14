@@ -363,6 +363,63 @@ export const getOrder = query({
 });
 
 /**
+ * Refund a `paid` order (owner-only, via the order's event): cancels every
+ * non-cancelled ticket, releases the capacity reserved by the order's items
+ * (mirroring `cancelOrder`'s release), restores a used promo code's
+ * `timesRedeemed`, and marks the order `refunded`. Idempotent -- a
+ * `cancelled`/already-`refunded` order returns early with no further effect,
+ * so a retried call never double-releases capacity. A `pending` order is
+ * rejected -- it was never fulfilled, so `cancelOrder` (not a refund) is the
+ * right call for it.
+ *
+ * F3b: issue the Stripe refund for a nonzero order here (money-back) -- F6
+ * does the inventory/record only.
+ */
+export const refundOrder = mutation({
+  args: { orderId: v.id("orders") },
+  handler: async (ctx, { orderId }) => {
+    const order = await requireOwnedOrder(ctx, orderId);
+    if (order.status === "cancelled" || order.status === "refunded") return null; // idempotent no-op
+    if (order.status === "pending") throw new Error("Use cancelOrder for a pending order");
+
+    const tickets = await ctx.db
+      .query("tickets")
+      .withIndex("by_order", (q) => q.eq("orderId", orderId))
+      .collect();
+    for (const ticket of tickets) {
+      if (ticket.status !== "cancelled") {
+        await ctx.db.patch(ticket._id, { status: "cancelled" });
+      }
+    }
+
+    const items = await ctx.db
+      .query("orderItems")
+      .withIndex("by_order", (q) => q.eq("orderId", orderId))
+      .collect();
+    for (const item of items) {
+      const ticketType = await ctx.db.get(item.ticketTypeId);
+      if (ticketType) {
+        await ctx.db.patch(item.ticketTypeId, { sold: Math.max(0, ticketType.sold - item.quantity) });
+      }
+    }
+
+    // Restore the promo redemption consumed at createOrder, mirroring cancelOrder.
+    if (order.promoCode) {
+      const promo = await ctx.db
+        .query("promoCodes")
+        .withIndex("by_event_and_code", (q) => q.eq("eventId", order.eventId).eq("code", order.promoCode!))
+        .unique();
+      if (promo && promo.timesRedeemed > 0) {
+        await ctx.db.patch(promo._id, { timesRedeemed: promo.timesRedeemed - 1 });
+      }
+    }
+
+    await ctx.db.patch(orderId, { status: "refunded", refundedAt: Date.now() });
+    return null;
+  },
+});
+
+/**
  * Owner-only: an event's orders, newest first, for the dashboard Orders tab.
  * Each order is annotated with `itemCount` (the sum of its order items'
  * quantities) so the dashboard can show item counts without an N+1 query per

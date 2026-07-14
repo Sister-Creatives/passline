@@ -28,6 +28,7 @@ import type * as promoCodes from "../promoCodes.js";
 import type * as rsvps from "../rsvps.js";
 import type * as ticketCheckin from "../ticketCheckin.js";
 import type * as ticketTypes from "../ticketTypes.js";
+import type * as tickets from "../tickets.js";
 import type * as waitlist from "../waitlist.js";
 import type * as webhookDelivery from "../webhookDelivery.js";
 import type * as webhooks from "../webhooks.js";
@@ -59,6 +60,7 @@ declare const fullApi: ApiFromModules<{
   rsvps: typeof rsvps;
   ticketCheckin: typeof ticketCheckin;
   ticketTypes: typeof ticketTypes;
+  tickets: typeof tickets;
   waitlist: typeof waitlist;
   webhookDelivery: typeof webhookDelivery;
   webhooks: typeof webhooks;
