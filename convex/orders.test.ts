@@ -1346,3 +1346,154 @@ test("listOrdersForEvent returns the event's orders newest first, owner-only", a
 
   await expect(asBob.query(api.orders.listOrdersForEvent, { eventId })).rejects.toThrow();
 });
+
+// --- createBoxOfficeOrder (F18.2) ----------------------------------------
+
+test("createBoxOfficeOrder issues tickets immediately: order paid, tickets valid, source/paymentMethod set", async () => {
+  const t = convexTest(schema, modules);
+  const { as } = await asOrganizer(t, "ada@example.com");
+  await as.mutation(api.organizers.ensureOrganizer, {});
+  const eventId = await makePublishedEvent(as, 100);
+  const ticketTypeId = await makePaidTicketType(as, eventId, 1000, { capacity: 10 });
+
+  const result = await as.mutation(api.orders.createBoxOfficeOrder, {
+    eventId,
+    items: [{ ticketTypeId, quantity: 2 }],
+    buyerName: "Walk-up Buyer",
+    paymentMethod: "card",
+  });
+
+  expect(result.totalCents).toBeGreaterThan(0);
+  expect(result.token).toMatch(/^ord_[0-9a-f]{32}$/);
+
+  const order = await t.run((ctx) => ctx.db.get(result.orderId));
+  expect(order?.status).toBe("paid");
+  expect(order?.source).toBe("box_office");
+  expect(order?.paymentMethod).toBe("card");
+  expect(typeof order?.paidAt).toBe("number");
+
+  const tickets = await t.run((ctx) =>
+    ctx.db.query("tickets").withIndex("by_order", (q) => q.eq("orderId", result.orderId)).collect(),
+  );
+  expect(tickets).toHaveLength(2);
+  expect(tickets.every((tk) => tk.status === "valid")).toBe(true);
+
+  const ticketType = await t.run((ctx) => ctx.db.get(ticketTypeId));
+  expect(ticketType?.sold).toBe(2);
+});
+
+test("createBoxOfficeOrder with cash payment has zero fee: feeCents === 0 and totalCents === subtotalCents", async () => {
+  const t = convexTest(schema, modules);
+  const { as } = await asOrganizer(t, "ada@example.com");
+  await as.mutation(api.organizers.ensureOrganizer, {});
+  const eventId = await makePublishedEvent(as, 100);
+  const ticketTypeId = await makePaidTicketType(as, eventId, 1000);
+
+  const result = await as.mutation(api.orders.createBoxOfficeOrder, {
+    eventId,
+    items: [{ ticketTypeId, quantity: 3 }],
+    buyerName: "Cash Buyer",
+    paymentMethod: "cash",
+  });
+
+  const order = await t.run((ctx) => ctx.db.get(result.orderId));
+  expect(order?.subtotalCents).toBe(3000);
+  expect(order?.feeCents).toBe(0);
+  expect(order?.totalCents).toBe(3000);
+  expect(order?.payoutCents).toBe(3000);
+  expect(order?.paymentMethod).toBe("cash");
+  expect(result.totalCents).toBe(3000);
+});
+
+test("createBoxOfficeOrder with card payment carries the event's normal booking fee", async () => {
+  const t = convexTest(schema, modules);
+  const { as } = await asOrganizer(t, "ada@example.com");
+  await as.mutation(api.organizers.ensureOrganizer, {});
+  const eventId = await makePublishedEvent(as, 100);
+  const ticketTypeId = await makePaidTicketType(as, eventId, 1000);
+
+  const result = await as.mutation(api.orders.createBoxOfficeOrder, {
+    eventId,
+    items: [{ ticketTypeId, quantity: 3 }],
+    buyerName: "Card Buyer",
+    paymentMethod: "card",
+  });
+
+  const order = await t.run((ctx) => ctx.db.get(result.orderId));
+  // subtotal = 3000, fee = 3000 * 300 / 10000 = 90, total = 3090 (feeMode defaults to "pass")
+  expect(order?.subtotalCents).toBe(3000);
+  expect(order?.feeCents).toBe(90);
+  expect(order?.totalCents).toBe(3090);
+  expect(result.totalCents).toBe(3090);
+});
+
+test("createBoxOfficeOrder respects ticket-type capacity", async () => {
+  const t = convexTest(schema, modules);
+  const { as } = await asOrganizer(t, "ada@example.com");
+  await as.mutation(api.organizers.ensureOrganizer, {});
+  const eventId = await makePublishedEvent(as, 100);
+  const ticketTypeId = await makePaidTicketType(as, eventId, 1000, { capacity: 2 });
+
+  await expect(
+    as.mutation(api.orders.createBoxOfficeOrder, {
+      eventId,
+      items: [{ ticketTypeId, quantity: 3 }],
+      buyerName: "Over Capacity",
+      paymentMethod: "cash",
+    }),
+  ).rejects.toThrow();
+
+  const ticketType = await t.run((ctx) => ctx.db.get(ticketTypeId));
+  expect(ticketType?.sold).toBe(0);
+});
+
+test("createBoxOfficeOrder is owner-only: rejects a non-owner and an unauthenticated caller", async () => {
+  const t = convexTest(schema, modules);
+  const { as: asAda } = await asOrganizer(t, "ada@example.com");
+  await asAda.mutation(api.organizers.ensureOrganizer, {});
+  const { as: asBob } = await asOrganizer(t, "bob@example.com");
+  await asBob.mutation(api.organizers.ensureOrganizer, {});
+
+  const eventId = await makePublishedEvent(asAda, 100);
+  const ticketTypeId = await makePaidTicketType(asAda, eventId, 1000);
+
+  await expect(
+    asBob.mutation(api.orders.createBoxOfficeOrder, {
+      eventId,
+      items: [{ ticketTypeId, quantity: 1 }],
+      buyerName: "Bob's Buyer",
+      paymentMethod: "cash",
+    }),
+  ).rejects.toThrow();
+
+  await expect(
+    t.mutation(api.orders.createBoxOfficeOrder, {
+      eventId,
+      items: [{ ticketTypeId, quantity: 1 }],
+      buyerName: "Anon Buyer",
+      paymentMethod: "cash",
+    }),
+  ).rejects.toThrow();
+
+  // Neither rejected call reserved capacity.
+  const ticketType = await t.run((ctx) => ctx.db.get(ticketTypeId));
+  expect(ticketType?.sold).toBe(0);
+});
+
+test("createBoxOfficeOrder records an order.box_office audit entry", async () => {
+  const t = convexTest(schema, modules);
+  const { as } = await asOrganizer(t, "ada@example.com");
+  await as.mutation(api.organizers.ensureOrganizer, {});
+  const eventId = await makePublishedEvent(as, 100);
+  const ticketTypeId = await makePaidTicketType(as, eventId, 1000);
+
+  await as.mutation(api.orders.createBoxOfficeOrder, {
+    eventId,
+    items: [{ ticketTypeId, quantity: 1 }],
+    buyerName: "Audited Buyer",
+    paymentMethod: "cash",
+  });
+
+  const logs = await as.query(api.audit.listForEvent, { eventId });
+  expect(logs.some((l) => l.action === "order.box_office")).toBe(true);
+});

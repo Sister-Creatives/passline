@@ -85,14 +85,31 @@ const answerInput = v.object({
   value: v.string(),
 });
 
+type BuildOrderArgs = {
+  eventId: Id<"events">;
+  items: { ticketTypeId: Id<"ticketTypes">; quantity: number }[];
+  addOnItems?: { addOnId: Id<"addOns">; quantity: number }[];
+  buyerName: string;
+  buyerEmail: string;
+  promoCode?: string;
+  accessCode?: string;
+  answers?: { questionId: Id<"checkoutQuestions">; value: string }[];
+  /**
+   * When true, the stored order carries zero platform fee regardless of the
+   * event's `feeMode` -- `feeCents` is forced to 0 and `totalCents` down to
+   * `subtotalCents` (the organizer's payout equals the subtotal too, since
+   * there's no fee to absorb). Used by `createBoxOfficeOrder` for cash sales
+   * (F18); `createOrder`'s public checkout never sets this.
+   */
+  feeOverrideZero?: boolean;
+};
+
 /**
- * Public checkout mutation -- no account required (buyers have no account,
- * mirroring the public RSVP flow in convex/rsvps.ts). Validates every item
- * against its ticket type and the event's overall capacity, reserves that
- * capacity by incrementing each type's `sold`, computes totals/fees, and
- * inserts the order + its items. A $0 total (an all-free cart) is fulfilled
- * inline -- tickets are issued and the order is marked `paid` in the same
- * mutation, so a free "checkout" needs no payment step at all. Optional
+ * Shared order-building core (F18 extraction) behind both the public
+ * `createOrder` checkout and the organizer-facing `createBoxOfficeOrder`:
+ * validates every item against its ticket type and the event's overall
+ * capacity, reserves that capacity by incrementing each type's `sold`,
+ * computes totals/fees, and inserts the order + its items. Optional
  * `answers` to the event's checkout questions (F5) are validated via
  * `validateAndSnapshotAnswers` and stored as `orderResponses` rows. Optional
  * `accessCode` (F4b) unlocks `hidden` ticket types for this checkout only --
@@ -102,6 +119,263 @@ const answerInput = v.object({
  * the same subtotal/fee math and reserve their own per-add-on capacity, but
  * issue no `tickets` rows and don't count against the event's overall
  * capacity (only ticket items do).
+ *
+ * Deliberately stops short of issuing tickets / marking the order paid --
+ * that's the caller's job (`createOrder` does it inline only for a $0 total;
+ * `createBoxOfficeOrder` always does it immediately), so this helper's own
+ * job is just "validate the cart and persist a pending order for it."
+ * Plain helper (not a Convex function), like `issueTicketsAndMarkPaid` --
+ * runs in the caller's own mutation transaction.
+ */
+async function buildOrder(
+  ctx: MutationCtx,
+  {
+    eventId,
+    items,
+    addOnItems,
+    buyerName,
+    buyerEmail,
+    promoCode,
+    accessCode,
+    answers,
+    feeOverrideZero,
+  }: BuildOrderArgs,
+): Promise<{ orderId: Id<"orders">; order: Doc<"orders"> }> {
+  const event = await ctx.db.get(eventId);
+  if (!event || event.status !== "published") throw new Error("Event not found");
+  // The cart may be tickets, add-ons, or both -- only a fully-empty cart
+  // (neither) is rejected.
+  if (items.length === 0 && (addOnItems === undefined || addOnItems.length === 0)) {
+    throw new Error("Cart is empty");
+  }
+
+  const unlocked = accessCode
+    ? await unlockedTicketTypeIds(ctx, eventId, accessCode)
+    : new Set<Id<"ticketTypes">>();
+
+  // Validate before any capacity/promo side effects, so a rejected answer
+  // (missing required question, invalid select value) leaves no partial
+  // state behind -- mirrors how min/maxPerOrder checks below run before
+  // any `sold` counters are patched.
+  const answerSnapshots = await validateAndSnapshotAnswers(ctx, eventId, answers ?? []);
+
+  const ticketTypes = await ctx.db
+    .query("ticketTypes")
+    .withIndex("by_event", (q) => q.eq("eventId", eventId))
+    .collect();
+  const ticketTypesById = new Map(ticketTypes.map((t) => [t._id, t]));
+  const alreadySold = ticketTypes.reduce((sum, t) => sum + t.sold, 0);
+
+  // Aggregate the cart by ticketTypeId first, so a cart that lists the same
+  // ticket type across multiple line items is validated (min/max/capacity)
+  // against its combined quantity rather than bypassing per-type limits.
+  const quantityByTicketType = new Map<Id<"ticketTypes">, number>();
+  for (const item of items) {
+    if (!Number.isInteger(item.quantity) || item.quantity < 1) {
+      throw new Error("Quantity must be a whole number of at least 1");
+    }
+    quantityByTicketType.set(
+      item.ticketTypeId,
+      (quantityByTicketType.get(item.ticketTypeId) ?? 0) + item.quantity,
+    );
+  }
+
+  const lineItems: (OrderLineItem & { ticketTypeId: Id<"ticketTypes"> })[] = [];
+  let totalRequested = 0;
+
+  for (const [ticketTypeId, totalQuantity] of quantityByTicketType) {
+    const ticketType = ticketTypesById.get(ticketTypeId);
+    if (!ticketType) throw new Error("Ticket type not found");
+    if (ticketType.status !== "active") {
+      throw new Error(`${ticketType.name} is not available for purchase`);
+    }
+    // `visible` types are always allowed; a `hidden` type requires its id
+    // to be among those unlocked by a valid, active accessCode.
+    if (ticketType.visibility === "hidden" && !unlocked.has(ticketTypeId)) {
+      throw new Error("This ticket requires a valid access code");
+    }
+    if (ticketType.minPerOrder !== undefined && totalQuantity < ticketType.minPerOrder) {
+      throw new Error(`Minimum order quantity for ${ticketType.name} is ${ticketType.minPerOrder}`);
+    }
+    if (ticketType.maxPerOrder !== undefined && totalQuantity > ticketType.maxPerOrder) {
+      throw new Error(`Maximum order quantity for ${ticketType.name} is ${ticketType.maxPerOrder}`);
+    }
+    if (ticketType.capacity !== undefined && ticketType.sold + totalQuantity > ticketType.capacity) {
+      throw new Error(`Not enough remaining capacity for ${ticketType.name}`);
+    }
+
+    totalRequested += totalQuantity;
+    lineItems.push({
+      ticketTypeId,
+      unitPriceCents: ticketType.priceCents,
+      quantity: totalQuantity,
+    });
+  }
+
+  if (alreadySold + totalRequested > event.capacity) {
+    throw new Error("Not enough remaining event capacity");
+  }
+
+  // Aggregate add-on items by addOnId (mirrors the ticket-type aggregation
+  // above) and validate each against the event's add-ons + per-add-on
+  // capacity. Add-ons are event-level only -- `by_event` scoping here means
+  // an addOnId belonging to a different event simply isn't in the map, so
+  // it falls through to "Add-on not found" below.
+  const addOns = await ctx.db
+    .query("addOns")
+    .withIndex("by_event", (q) => q.eq("eventId", eventId))
+    .collect();
+  const addOnsById = new Map(addOns.map((a) => [a._id, a]));
+
+  const quantityByAddOn = new Map<Id<"addOns">, number>();
+  for (const item of addOnItems ?? []) {
+    if (!Number.isInteger(item.quantity) || item.quantity < 1) {
+      throw new Error("Quantity must be a whole number of at least 1");
+    }
+    quantityByAddOn.set(item.addOnId, (quantityByAddOn.get(item.addOnId) ?? 0) + item.quantity);
+  }
+
+  const addOnLineItems: (OrderLineItem & { addOnId: Id<"addOns"> })[] = [];
+  for (const [addOnId, totalQuantity] of quantityByAddOn) {
+    const addOn = addOnsById.get(addOnId);
+    if (!addOn) throw new Error("Add-on not found");
+    if (!addOn.active) throw new Error(`${addOn.name} is not available for purchase`);
+    if (addOn.capacity !== undefined && addOn.sold + totalQuantity > addOn.capacity) {
+      throw new Error(`Not enough remaining capacity for ${addOn.name}`);
+    }
+    addOnLineItems.push({ addOnId, unitPriceCents: addOn.priceCents, quantity: totalQuantity });
+  }
+
+  // grossSubtotalCents = ticket gross + add-on gross; computeOrderAmounts
+  // runs on the combined cart so a promo discount and the booking fee both
+  // apply to the combined subtotal exactly as they would for tickets alone.
+  const combinedLineItems: OrderLineItem[] = [...lineItems, ...addOnLineItems];
+  const grossSubtotalCents = combinedLineItems.reduce(
+    (sum, item) => sum + item.unitPriceCents * item.quantity,
+    0,
+  );
+
+  let promoCodeId: Id<"promoCodes"> | undefined;
+  let discountCents = 0;
+  const normalizedPromoCode = promoCode?.trim().toUpperCase();
+  if (normalizedPromoCode) {
+    const resolved = await resolveAndComputeDiscount(ctx, eventId, normalizedPromoCode, grossSubtotalCents);
+    promoCodeId = resolved.promoCodeId;
+    discountCents = resolved.discountCents;
+  }
+
+  const feeMode = event.feeMode ?? "pass";
+  let amounts = computeOrderAmounts(combinedLineItems, feeMode, discountCents);
+  // Cash box-office sales (F18) incur zero platform fee: force feeCents to 0
+  // and collapse totalCents down to subtotalCents (the buyer owes exactly the
+  // subtotal), regardless of the event's own feeMode. payoutCents also
+  // becomes the subtotal -- there's no fee left to pass or absorb.
+  if (feeOverrideZero) {
+    amounts = {
+      ...amounts,
+      feeCents: 0,
+      totalCents: amounts.subtotalCents,
+      payoutCents: amounts.subtotalCents,
+    };
+  }
+  const currency = event.currency ?? "USD";
+  const token = randomToken("ord_");
+
+  const orderId = await ctx.db.insert("orders", {
+    eventId,
+    organizerId: event.organizerId,
+    buyerName,
+    buyerEmail,
+    status: "pending",
+    currency,
+    feeMode,
+    subtotalCents: amounts.subtotalCents,
+    feeCents: amounts.feeCents,
+    totalCents: amounts.totalCents,
+    payoutCents: amounts.payoutCents,
+    grossSubtotalCents: amounts.grossSubtotalCents,
+    discountCents: amounts.discountCents,
+    promoCode: normalizedPromoCode,
+    token,
+    createdAt: Date.now(),
+  });
+
+  for (const item of lineItems) {
+    await ctx.db.insert("orderItems", {
+      orderId,
+      ticketTypeId: item.ticketTypeId,
+      quantity: item.quantity,
+      unitPriceCents: item.unitPriceCents,
+    });
+  }
+
+  for (const item of addOnLineItems) {
+    await ctx.db.insert("orderAddOns", {
+      orderId,
+      addOnId: item.addOnId,
+      quantity: item.quantity,
+      unitPriceCents: item.unitPriceCents,
+    });
+  }
+
+  for (const snapshot of answerSnapshots) {
+    await ctx.db.insert("orderResponses", {
+      orderId,
+      eventId,
+      questionId: snapshot.questionId,
+      label: snapshot.label,
+      value: snapshot.value,
+    });
+  }
+
+  // Atomically record the redemption: re-read the promo row in this same
+  // mutation (rather than trusting the count from resolveAndComputeDiscount
+  // above) and reject if incrementing would exceed maxRedemptions. Because
+  // the resolve-check and this increment both read+write the same row
+  // within one mutation, Convex's OCC serializes concurrent redemptions of
+  // the same code -- a losing concurrent mutation retries, re-reads the
+  // now-updated count, and throws here instead of overselling the cap.
+  if (promoCodeId) {
+    const promoCodeRow = await ctx.db.get(promoCodeId);
+    if (!promoCodeRow) throw new Error("Invalid promo code");
+    if (
+      promoCodeRow.maxRedemptions !== undefined &&
+      promoCodeRow.timesRedeemed >= promoCodeRow.maxRedemptions
+    ) {
+      throw new Error("Promo code has been fully redeemed");
+    }
+    await ctx.db.patch(promoCodeId, { timesRedeemed: promoCodeRow.timesRedeemed + 1 });
+  }
+
+  // Reserve capacity: patch each distinct ticket type once with its final
+  // tally (current `sold` + the aggregate quantity reserved for it in this cart).
+  for (const item of lineItems) {
+    const ticketType = ticketTypesById.get(item.ticketTypeId);
+    if (!ticketType) throw new Error("Ticket type not found");
+    await ctx.db.patch(item.ticketTypeId, { sold: ticketType.sold + item.quantity });
+  }
+
+  // Reserve add-on capacity, mirroring the ticket-type reservation above.
+  for (const item of addOnLineItems) {
+    const addOn = addOnsById.get(item.addOnId);
+    if (!addOn) throw new Error("Add-on not found");
+    await ctx.db.patch(item.addOnId, { sold: addOn.sold + item.quantity });
+  }
+
+  const order = await ctx.db.get(orderId);
+  if (!order) throw new Error("Order not found");
+  return { orderId, order };
+}
+
+/**
+ * Public checkout mutation -- no account required (buyers have no account,
+ * mirroring the public RSVP flow in convex/rsvps.ts). Thin wrapper around
+ * `buildOrder` (F18 extraction) with `feeOverrideZero: false` -- the public
+ * checkout always uses the event's own `feeMode`. A $0 total (an all-free
+ * cart, or a promo/discount that zeroes it) is fulfilled inline here --
+ * tickets are issued and the order is marked `paid` in the same mutation, so
+ * a free "checkout" needs no payment step at all; a nonzero total stays
+ * `pending` for F3b's payment-confirmation seam (`markOrderPaid`).
  */
 export const createOrder = mutation({
   args: {
@@ -118,224 +392,75 @@ export const createOrder = mutation({
     ctx,
     { eventId, items, buyerName, buyerEmail, promoCode, answers, accessCode, addOnItems },
   ) => {
-    const event = await ctx.db.get(eventId);
-    if (!event || event.status !== "published") throw new Error("Event not found");
-    // The cart may be tickets, add-ons, or both -- only a fully-empty cart
-    // (neither) is rejected.
-    if (items.length === 0 && (addOnItems === undefined || addOnItems.length === 0)) {
-      throw new Error("Cart is empty");
-    }
-
-    const unlocked = accessCode
-      ? await unlockedTicketTypeIds(ctx, eventId, accessCode)
-      : new Set<Id<"ticketTypes">>();
-
-    // Validate before any capacity/promo side effects, so a rejected answer
-    // (missing required question, invalid select value) leaves no partial
-    // state behind -- mirrors how min/maxPerOrder checks below run before
-    // any `sold` counters are patched.
-    const answerSnapshots = await validateAndSnapshotAnswers(ctx, eventId, answers ?? []);
-
-    const ticketTypes = await ctx.db
-      .query("ticketTypes")
-      .withIndex("by_event", (q) => q.eq("eventId", eventId))
-      .collect();
-    const ticketTypesById = new Map(ticketTypes.map((t) => [t._id, t]));
-    const alreadySold = ticketTypes.reduce((sum, t) => sum + t.sold, 0);
-
-    // Aggregate the cart by ticketTypeId first, so a cart that lists the same
-    // ticket type across multiple line items is validated (min/max/capacity)
-    // against its combined quantity rather than bypassing per-type limits.
-    const quantityByTicketType = new Map<Id<"ticketTypes">, number>();
-    for (const item of items) {
-      if (!Number.isInteger(item.quantity) || item.quantity < 1) {
-        throw new Error("Quantity must be a whole number of at least 1");
-      }
-      quantityByTicketType.set(
-        item.ticketTypeId,
-        (quantityByTicketType.get(item.ticketTypeId) ?? 0) + item.quantity,
-      );
-    }
-
-    const lineItems: (OrderLineItem & { ticketTypeId: Id<"ticketTypes"> })[] = [];
-    let totalRequested = 0;
-
-    for (const [ticketTypeId, totalQuantity] of quantityByTicketType) {
-      const ticketType = ticketTypesById.get(ticketTypeId);
-      if (!ticketType) throw new Error("Ticket type not found");
-      if (ticketType.status !== "active") {
-        throw new Error(`${ticketType.name} is not available for purchase`);
-      }
-      // `visible` types are always allowed; a `hidden` type requires its id
-      // to be among those unlocked by a valid, active accessCode.
-      if (ticketType.visibility === "hidden" && !unlocked.has(ticketTypeId)) {
-        throw new Error("This ticket requires a valid access code");
-      }
-      if (ticketType.minPerOrder !== undefined && totalQuantity < ticketType.minPerOrder) {
-        throw new Error(`Minimum order quantity for ${ticketType.name} is ${ticketType.minPerOrder}`);
-      }
-      if (ticketType.maxPerOrder !== undefined && totalQuantity > ticketType.maxPerOrder) {
-        throw new Error(`Maximum order quantity for ${ticketType.name} is ${ticketType.maxPerOrder}`);
-      }
-      if (ticketType.capacity !== undefined && ticketType.sold + totalQuantity > ticketType.capacity) {
-        throw new Error(`Not enough remaining capacity for ${ticketType.name}`);
-      }
-
-      totalRequested += totalQuantity;
-      lineItems.push({
-        ticketTypeId,
-        unitPriceCents: ticketType.priceCents,
-        quantity: totalQuantity,
-      });
-    }
-
-    if (alreadySold + totalRequested > event.capacity) {
-      throw new Error("Not enough remaining event capacity");
-    }
-
-    // Aggregate add-on items by addOnId (mirrors the ticket-type aggregation
-    // above) and validate each against the event's add-ons + per-add-on
-    // capacity. Add-ons are event-level only -- `by_event` scoping here means
-    // an addOnId belonging to a different event simply isn't in the map, so
-    // it falls through to "Add-on not found" below.
-    const addOns = await ctx.db
-      .query("addOns")
-      .withIndex("by_event", (q) => q.eq("eventId", eventId))
-      .collect();
-    const addOnsById = new Map(addOns.map((a) => [a._id, a]));
-
-    const quantityByAddOn = new Map<Id<"addOns">, number>();
-    for (const item of addOnItems ?? []) {
-      if (!Number.isInteger(item.quantity) || item.quantity < 1) {
-        throw new Error("Quantity must be a whole number of at least 1");
-      }
-      quantityByAddOn.set(item.addOnId, (quantityByAddOn.get(item.addOnId) ?? 0) + item.quantity);
-    }
-
-    const addOnLineItems: (OrderLineItem & { addOnId: Id<"addOns"> })[] = [];
-    for (const [addOnId, totalQuantity] of quantityByAddOn) {
-      const addOn = addOnsById.get(addOnId);
-      if (!addOn) throw new Error("Add-on not found");
-      if (!addOn.active) throw new Error(`${addOn.name} is not available for purchase`);
-      if (addOn.capacity !== undefined && addOn.sold + totalQuantity > addOn.capacity) {
-        throw new Error(`Not enough remaining capacity for ${addOn.name}`);
-      }
-      addOnLineItems.push({ addOnId, unitPriceCents: addOn.priceCents, quantity: totalQuantity });
-    }
-
-    // grossSubtotalCents = ticket gross + add-on gross; computeOrderAmounts
-    // runs on the combined cart so a promo discount and the booking fee both
-    // apply to the combined subtotal exactly as they would for tickets alone.
-    const combinedLineItems: OrderLineItem[] = [...lineItems, ...addOnLineItems];
-    const grossSubtotalCents = combinedLineItems.reduce(
-      (sum, item) => sum + item.unitPriceCents * item.quantity,
-      0,
-    );
-
-    let promoCodeId: Id<"promoCodes"> | undefined;
-    let discountCents = 0;
-    const normalizedPromoCode = promoCode?.trim().toUpperCase();
-    if (normalizedPromoCode) {
-      const resolved = await resolveAndComputeDiscount(ctx, eventId, normalizedPromoCode, grossSubtotalCents);
-      promoCodeId = resolved.promoCodeId;
-      discountCents = resolved.discountCents;
-    }
-
-    const feeMode = event.feeMode ?? "pass";
-    const amounts = computeOrderAmounts(combinedLineItems, feeMode, discountCents);
-    const currency = event.currency ?? "USD";
-    const token = randomToken("ord_");
-
-    const orderId = await ctx.db.insert("orders", {
+    const { orderId, order } = await buildOrder(ctx, {
       eventId,
-      organizerId: event.organizerId,
+      items,
+      addOnItems,
       buyerName,
       buyerEmail,
-      status: "pending",
-      currency,
-      feeMode,
-      subtotalCents: amounts.subtotalCents,
-      feeCents: amounts.feeCents,
-      totalCents: amounts.totalCents,
-      payoutCents: amounts.payoutCents,
-      grossSubtotalCents: amounts.grossSubtotalCents,
-      discountCents: amounts.discountCents,
-      promoCode: normalizedPromoCode,
-      token,
-      createdAt: Date.now(),
+      promoCode,
+      accessCode,
+      answers,
+      feeOverrideZero: false,
     });
 
-    for (const item of lineItems) {
-      await ctx.db.insert("orderItems", {
-        orderId,
-        ticketTypeId: item.ticketTypeId,
-        quantity: item.quantity,
-        unitPriceCents: item.unitPriceCents,
-      });
-    }
-
-    for (const item of addOnLineItems) {
-      await ctx.db.insert("orderAddOns", {
-        orderId,
-        addOnId: item.addOnId,
-        quantity: item.quantity,
-        unitPriceCents: item.unitPriceCents,
-      });
-    }
-
-    for (const snapshot of answerSnapshots) {
-      await ctx.db.insert("orderResponses", {
-        orderId,
-        eventId,
-        questionId: snapshot.questionId,
-        label: snapshot.label,
-        value: snapshot.value,
-      });
-    }
-
-    // Atomically record the redemption: re-read the promo row in this same
-    // mutation (rather than trusting the count from resolveAndComputeDiscount
-    // above) and reject if incrementing would exceed maxRedemptions. Because
-    // the resolve-check and this increment both read+write the same row
-    // within one mutation, Convex's OCC serializes concurrent redemptions of
-    // the same code -- a losing concurrent mutation retries, re-reads the
-    // now-updated count, and throws here instead of overselling the cap.
-    if (promoCodeId) {
-      const promoCodeRow = await ctx.db.get(promoCodeId);
-      if (!promoCodeRow) throw new Error("Invalid promo code");
-      if (
-        promoCodeRow.maxRedemptions !== undefined &&
-        promoCodeRow.timesRedeemed >= promoCodeRow.maxRedemptions
-      ) {
-        throw new Error("Promo code has been fully redeemed");
-      }
-      await ctx.db.patch(promoCodeId, { timesRedeemed: promoCodeRow.timesRedeemed + 1 });
-    }
-
-    // Reserve capacity: patch each distinct ticket type once with its final
-    // tally (current `sold` + the aggregate quantity reserved for it in this cart).
-    for (const item of lineItems) {
-      const ticketType = ticketTypesById.get(item.ticketTypeId);
-      if (!ticketType) throw new Error("Ticket type not found");
-      await ctx.db.patch(item.ticketTypeId, { sold: ticketType.sold + item.quantity });
-    }
-
-    // Reserve add-on capacity, mirroring the ticket-type reservation above.
-    for (const item of addOnLineItems) {
-      const addOn = addOnsById.get(item.addOnId);
-      if (!addOn) throw new Error("Add-on not found");
-      await ctx.db.patch(item.addOnId, { sold: addOn.sold + item.quantity });
-    }
-
     let status: "pending" | "paid" = "pending";
-    if (amounts.totalCents === 0) {
-      const order = await ctx.db.get(orderId);
-      if (!order) throw new Error("Order not found");
+    if (order.totalCents === 0) {
       await issueTicketsAndMarkPaid(ctx, order);
       status = "paid";
     }
 
-    return { orderId, token, totalCents: amounts.totalCents, currency, status };
+    return { orderId, token: order.token, totalCents: order.totalCents, currency: order.currency, status };
+  },
+});
+
+/**
+ * Organizer-facing box-office sale (F18): sells tickets/add-ons at the door,
+ * where payment is collected externally (cash or card) rather than online.
+ * Built on the same `buildOrder` core as the public `createOrder`, so a
+ * box-office cart gets identical validation (capacity, active/visible types,
+ * access-code gate, min/max) -- it just skips promo codes, access codes, and
+ * checkout-question answers, none of which apply to a door sale. A cash sale
+ * is zero-fee (`feeOverrideZero`); a card sale keeps the event's normal fee.
+ * Unlike `createOrder`, tickets are always issued immediately (there's no
+ * "pending" state for a door sale -- payment already happened in person), and
+ * the order is tagged `source: "box_office"` + the chosen `paymentMethod` so
+ * it's distinguishable from an online order in the dashboard.
+ */
+export const createBoxOfficeOrder = mutation({
+  args: {
+    eventId: v.id("events"),
+    items: v.array(orderItemInput),
+    addOnItems: v.optional(v.array(addOnItemInput)),
+    buyerName: v.string(),
+    buyerEmail: v.optional(v.string()),
+    paymentMethod: v.union(v.literal("cash"), v.literal("card")),
+  },
+  handler: async (ctx, { eventId, items, addOnItems, buyerName, buyerEmail, paymentMethod }) => {
+    const event = await requireOwnedEvent(ctx, eventId);
+
+    const { orderId, order } = await buildOrder(ctx, {
+      eventId,
+      items,
+      addOnItems,
+      buyerName,
+      buyerEmail: buyerEmail ?? "",
+      feeOverrideZero: paymentMethod === "cash",
+    });
+
+    await ctx.db.patch(orderId, { source: "box_office", paymentMethod });
+    const patchedOrder = await ctx.db.get(orderId);
+    if (!patchedOrder) throw new Error("Order not found");
+    await issueTicketsAndMarkPaid(ctx, patchedOrder);
+
+    await recordAudit(ctx, {
+      organizerId: event.organizerId,
+      eventId,
+      action: "order.box_office",
+      summary: `Box office sale to ${buyerName} (${paymentMethod}): ${order.totalCents} cents`,
+    });
+
+    return { orderId, token: order.token, totalCents: order.totalCents };
   },
 });
 
