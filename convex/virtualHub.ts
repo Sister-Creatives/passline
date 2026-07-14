@@ -32,10 +32,24 @@ function normalizeOptionalString(s: string | undefined): string | undefined {
 
 /** Trim both fields, drop rows where either the title or the url is blank, cap at MAX_RESOURCES. */
 function normalizeResources(rows: ResourceRow[]): ResourceRow[] {
-  return rows
+  const normalized = rows
     .map((row) => ({ title: row.title.trim(), url: row.url.trim() }))
     .filter((row) => row.title.length > 0 && row.url.length > 0)
     .slice(0, MAX_RESOURCES);
+  for (const row of normalized) {
+    if (!row.url.startsWith("http://") && !row.url.startsWith("https://")) {
+      throw new Error("Resource URLs must start with http:// or https://");
+    }
+  }
+  return normalized;
+}
+
+/** Constant-time string comparison, used for the shared-password gate in `getWithPassword`. */
+function timingSafeEqualString(a: string, b: string): boolean {
+  if (a.length !== b.length) return false;
+  let diff = 0;
+  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return diff === 0;
 }
 
 /**
@@ -69,8 +83,9 @@ export const get = query({
  * into an iframe `src`, mirroring eventContent.update); `meetingUrl`, when
  * set, must start with `https://` (it's rendered as a plain `href`, never
  * script/iframe -- see F14 spec §7). Every string is trimmed, resource rows
- * missing a title or url are dropped, and the resources array is capped at
- * MAX_RESOURCES.
+ * missing a title or url are dropped, the resources array is capped at
+ * MAX_RESOURCES, and each surviving resource `url` must start with
+ * `http://` or `https://` (blocks `javascript:`/`data:` URLs).
  */
 export const update = mutation({
   args: {
@@ -126,9 +141,12 @@ export const update = mutation({
 /**
  * Public: the virtual hub view for a ticket holder, proven by holding their
  * order's opaque token (mirrors `orders.getOrder`'s by-token lookup -- no
- * account required). Returns null (never throws) for an unknown token, a
- * cancelled order, an event with no hub config, or a hub that isn't
- * `enabled`. Never includes `accessPassword` (see `toPublicHubView`).
+ * account required). The hub is paywalled behind a paid order: returns null
+ * (never throws) for an unknown token, a non-`paid` order (`pending`,
+ * `cancelled`, or `refunded`), an event with no hub config, or a hub that
+ * isn't `enabled`. Free-event tickets are fulfilled to `"paid"` inline by
+ * `createOrder`, so free-event ticket holders still pass. Never includes
+ * `accessPassword` (see `toPublicHubView`).
  */
 export const getForOrder = query({
   args: { token: v.string() },
@@ -137,7 +155,7 @@ export const getForOrder = query({
       .query("orders")
       .withIndex("by_token", (q) => q.eq("token", token))
       .unique();
-    if (!order || order.status === "cancelled") return null;
+    if (!order || order.status !== "paid") return null;
 
     const hub = await ctx.db
       .query("virtualHubs")
@@ -171,7 +189,7 @@ export const getWithPassword = query({
       .withIndex("by_event", (q) => q.eq("eventId", event._id))
       .unique();
     if (!hub || !hub.enabled || !hub.accessPassword) return null;
-    if (hub.accessPassword !== password) return null;
+    if (!timingSafeEqualString(hub.accessPassword, password)) return null;
 
     return toPublicHubView(hub);
   },

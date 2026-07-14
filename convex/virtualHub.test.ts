@@ -2,7 +2,7 @@
 import { convexTest, type TestConvex } from "convex-test";
 import { expect, test } from "vitest";
 import schema from "./schema";
-import { api } from "./_generated/api";
+import { api, internal } from "./_generated/api";
 
 const modules = import.meta.glob("./**/*.*s");
 
@@ -46,7 +46,7 @@ const baseUpdateArgs = { enabled: true, resources: [] };
 // order for it via `createOrder`, mirroring convex/orders.test.ts. Paid
 // (rather than free) so the order stays `pending` -- a free cart is
 // fulfilled inline by `createOrder` and can't be `cancelOrder`'d.
-async function makeOrder(
+async function makePendingOrder(
   t: TestConvex<typeof schema>,
   as: ReturnType<TestConvex<typeof schema>["withIdentity"]>,
   eventId: Awaited<ReturnType<typeof makeEvent>>,
@@ -63,6 +63,18 @@ async function makeOrder(
     buyerName: "Buyer One",
     buyerEmail: "buyer@example.com",
   });
+}
+
+// Same as makePendingOrder, but immediately marks the order paid (mirroring
+// a real payment confirmation), for tests that need a `paid` order.
+async function makePaidOrder(
+  t: TestConvex<typeof schema>,
+  as: ReturnType<TestConvex<typeof schema>["withIdentity"]>,
+  eventId: Awaited<ReturnType<typeof makeEvent>>,
+) {
+  const order = await makePendingOrder(t, as, eventId);
+  await t.mutation(internal.orders.markOrderPaid, { orderId: order.orderId });
+  return order;
 }
 
 // --- get -----------------------------------------------------------------
@@ -217,6 +229,50 @@ test("update accepts a valid https:// meetingUrl", async () => {
   expect(hub?.meetingUrl).toBe("https://meet.google.com/abc-defg-hij");
 });
 
+test("update rejects a resource url that isn't http:// or https://", async () => {
+  const t = convexTest(schema, modules);
+  const { as } = await asOrganizer(t, "ada@example.com");
+  await as.mutation(api.organizers.ensureOrganizer, {});
+  const eventId = await makeEvent(as);
+
+  await expect(
+    as.mutation(api.virtualHub.update, {
+      eventId,
+      enabled: true,
+      resources: [{ title: "x", url: "javascript:alert(1)" }],
+    }),
+  ).rejects.toThrow();
+
+  await expect(
+    as.mutation(api.virtualHub.update, {
+      eventId,
+      enabled: true,
+      resources: [{ title: "x", url: "data:text/html,<script>alert(1)</script>" }],
+    }),
+  ).rejects.toThrow();
+
+  const rows = await t.run((ctx) =>
+    ctx.db.query("virtualHubs").withIndex("by_event", (q) => q.eq("eventId", eventId)).collect(),
+  );
+  expect(rows).toHaveLength(0);
+});
+
+test("update accepts a normal https:// resource url", async () => {
+  const t = convexTest(schema, modules);
+  const { as } = await asOrganizer(t, "ada@example.com");
+  await as.mutation(api.organizers.ensureOrganizer, {});
+  const eventId = await makeEvent(as);
+
+  await as.mutation(api.virtualHub.update, {
+    eventId,
+    enabled: true,
+    resources: [{ title: "Slides", url: "https://example.com/slides.pdf" }],
+  });
+
+  const hub = await as.query(api.virtualHub.get, { eventId });
+  expect(hub.resources).toEqual([{ title: "Slides", url: "https://example.com/slides.pdf" }]);
+});
+
 test("update drops resource rows with a blank title or url and trims surviving ones", async () => {
   const t = convexTest(schema, modules);
   const { as } = await asOrganizer(t, "ada@example.com");
@@ -273,7 +329,7 @@ test("update is owner-only", async () => {
 
 // --- getForOrder -----------------------------------------------------------
 
-test("getForOrder returns the hub (no password) for a non-cancelled order of an enabled hub", async () => {
+test("getForOrder returns the hub (no password) for a paid order of an enabled hub", async () => {
   const t = convexTest(schema, modules);
   const { as } = await asOrganizer(t, "ada@example.com");
   await as.mutation(api.organizers.ensureOrganizer, {});
@@ -288,7 +344,7 @@ test("getForOrder returns the hub (no password) for a non-cancelled order of an 
     resources: [{ title: "Slides", url: "https://example.com/slides.pdf" }],
     accessPassword: "letmein",
   });
-  const order = await makeOrder(t, as, eventId);
+  const order = await makePaidOrder(t, as, eventId);
 
   const hub = await t.query(api.virtualHub.getForOrder, { token: order.token });
   expect(hub).toMatchObject({
@@ -301,14 +357,39 @@ test("getForOrder returns the hub (no password) for a non-cancelled order of an 
   expect(hub).not.toHaveProperty("accessPassword");
 });
 
+test("getForOrder returns null for a pending order", async () => {
+  const t = convexTest(schema, modules);
+  const { as } = await asOrganizer(t, "ada@example.com");
+  await as.mutation(api.organizers.ensureOrganizer, {});
+  const eventId = await makePublishedEvent(as);
+  await as.mutation(api.virtualHub.update, { eventId, enabled: true, resources: [] });
+  const order = await makePendingOrder(t, as, eventId);
+
+  const hub = await t.query(api.virtualHub.getForOrder, { token: order.token });
+  expect(hub).toBeNull();
+});
+
 test("getForOrder returns null for a cancelled order", async () => {
   const t = convexTest(schema, modules);
   const { as } = await asOrganizer(t, "ada@example.com");
   await as.mutation(api.organizers.ensureOrganizer, {});
   const eventId = await makePublishedEvent(as);
   await as.mutation(api.virtualHub.update, { eventId, enabled: true, resources: [] });
-  const order = await makeOrder(t, as, eventId);
+  const order = await makePendingOrder(t, as, eventId);
   await as.mutation(api.orders.cancelOrder, { orderId: order.orderId });
+
+  const hub = await t.query(api.virtualHub.getForOrder, { token: order.token });
+  expect(hub).toBeNull();
+});
+
+test("getForOrder returns null for a refunded order", async () => {
+  const t = convexTest(schema, modules);
+  const { as } = await asOrganizer(t, "ada@example.com");
+  await as.mutation(api.organizers.ensureOrganizer, {});
+  const eventId = await makePublishedEvent(as);
+  await as.mutation(api.virtualHub.update, { eventId, enabled: true, resources: [] });
+  const order = await makePaidOrder(t, as, eventId);
+  await as.mutation(api.orders.refundOrder, { orderId: order.orderId });
 
   const hub = await t.query(api.virtualHub.getForOrder, { token: order.token });
   expect(hub).toBeNull();
@@ -320,7 +401,7 @@ test("getForOrder returns null when the hub is disabled", async () => {
   await as.mutation(api.organizers.ensureOrganizer, {});
   const eventId = await makePublishedEvent(as);
   await as.mutation(api.virtualHub.update, { eventId, enabled: false, resources: [] });
-  const order = await makeOrder(t, as, eventId);
+  const order = await makePaidOrder(t, as, eventId);
 
   const hub = await t.query(api.virtualHub.getForOrder, { token: order.token });
   expect(hub).toBeNull();
@@ -331,7 +412,7 @@ test("getForOrder returns null when no hub config exists for the event", async (
   const { as } = await asOrganizer(t, "ada@example.com");
   await as.mutation(api.organizers.ensureOrganizer, {});
   const eventId = await makePublishedEvent(as);
-  const order = await makeOrder(t, as, eventId);
+  const order = await makePaidOrder(t, as, eventId);
 
   const hub = await t.query(api.virtualHub.getForOrder, { token: order.token });
   expect(hub).toBeNull();
