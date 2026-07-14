@@ -164,6 +164,19 @@ export default defineSchema({
     unitPriceCents: v.number(), // snapshot of the price at purchase time
   }).index("by_order", ["orderId"]),
 
+  seats: defineTable({
+    eventId: v.id("events"),
+    organizerId: v.id("organizers"),
+    ticketTypeId: v.id("ticketTypes"), // the pricing tier for this seat
+    section: v.string(),
+    row: v.string(), // "A", "B", …
+    number: v.number(), // 1..seatsPerRow
+    status: v.union(v.literal("available"), v.literal("sold")),
+    sortOrder: v.number(), // stable ordering across a section
+  })
+    .index("by_event", ["eventId"])
+    .index("by_ticketType", ["ticketTypeId"]),
+
   tickets: defineTable({
     orderId: v.id("orders"),
     eventId: v.id("events"),
@@ -180,6 +193,8 @@ export default defineSchema({
     checkedInAt: v.optional(v.number()),
     checkedOutAt: v.optional(v.number()),
     sessionId: v.optional(v.id("eventSessions")),
+    seatId: v.optional(v.id("seats")),
+    seatLabel: v.optional(v.string()),
   })
     .index("by_order", ["orderId"])
     .index("by_event", ["eventId"])
