@@ -1,6 +1,8 @@
 import type { Doc } from "../_generated/dataModel";
 
 /** Every section in the event editor. Rule-bearing ones appear in `sectionStatus`. */
+// Kept in sync by hand with `EventSectionKey` in `src/lib/eventSections.ts` —
+// backend code can't import from `src/`, so update both when adding/removing a section.
 export type SectionKey =
   | "details" | "tickets" | "sessions" | "seating" | "addons" | "promo"
   | "access" | "questions" | "page" | "hub" | "accessibility"

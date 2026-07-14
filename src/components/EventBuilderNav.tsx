@@ -9,6 +9,7 @@ import { EVENT_SECTIONS, type EventSectionKey } from "@/lib/eventSections";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
 type SectionStatus = "complete" | "warning" | "incomplete";
 
@@ -74,25 +75,63 @@ export function EventBuilderNav({
             {blockers.length > 0 && (
               <ul className="mt-2 flex flex-col gap-1 text-xs text-muted-foreground">
                 {blockers.map((b) => (
-                  <li key={b.id}>&bull; {b.label}</li>
+                  <li key={b.id}>
+                    &bull;{" "}
+                    <Link
+                      to="/events/$id"
+                      params={{ id: eventId }}
+                      search={{ section: b.section }}
+                      className="hover:underline"
+                    >
+                      {b.label}
+                    </Link>
+                  </li>
                 ))}
               </ul>
             )}
             {blockers.length === 0 && suggestions.length > 0 && (
               <ul className="mt-2 flex flex-col gap-1 text-xs text-muted-foreground">
                 {suggestions.map((s) => (
-                  <li key={s.id}>Suggested: {s.label}</li>
+                  <li key={s.id}>
+                    Suggested:{" "}
+                    <Link
+                      to="/events/$id"
+                      params={{ id: eventId }}
+                      search={{ section: s.section }}
+                      className="hover:underline"
+                    >
+                      {s.label}
+                    </Link>
+                  </li>
                 ))}
               </ul>
             )}
-            <Button
-              className="mt-3 w-full"
-              variant={isPublished ? "outline" : "default"}
-              disabled={!isPublished && !readiness.canPublish}
-              onClick={onTogglePublish}
-            >
-              {isPublished ? "Unpublish" : "Publish"}
-            </Button>
+            {!isPublished && !readiness.canPublish ? (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <span className="mt-3 block">
+                    <Button
+                      className="w-full"
+                      variant="default"
+                      disabled
+                    >
+                      Publish
+                    </Button>
+                  </span>
+                </TooltipTrigger>
+                <TooltipContent>
+                  {blockers.map((b) => b.label).join("; ")}
+                </TooltipContent>
+              </Tooltip>
+            ) : (
+              <Button
+                className="mt-3 w-full"
+                variant={isPublished ? "outline" : "default"}
+                onClick={onTogglePublish}
+              >
+                {isPublished ? "Unpublish" : "Publish"}
+              </Button>
+            )}
             {isPublished && (
               <Button asChild variant="link" size="sm" className="mt-1 w-full">
                 <a href={`/e/${slug}`} target="_blank" rel="noreferrer">

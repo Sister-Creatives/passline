@@ -1,5 +1,7 @@
 export type EventSectionGroup = "build" | "manage";
 
+// Kept in sync by hand with `SectionKey` in `convex/lib/readiness.ts` — backend
+// code can't import from `src/`, so update both when adding/removing a section.
 export type EventSectionKey =
   | "details" | "tickets" | "sessions" | "seating" | "addons" | "promo"
   | "access" | "questions" | "page" | "hub" | "accessibility"

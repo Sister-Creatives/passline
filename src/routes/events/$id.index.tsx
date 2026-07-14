@@ -3,6 +3,7 @@ import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useSuspenseQuery } from "@tanstack/react-query";
 import { convexQuery } from "@convex-dev/react-query";
 import { useMutation } from "convex/react";
+import type { FunctionReturnType } from "convex/server";
 import { Copy, Download, QrCode, ScanLine, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -35,6 +36,8 @@ import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
+
+type EventWithRsvps = FunctionReturnType<typeof api.events.getMyEventWithRsvps>;
 
 export const Route = createFileRoute("/events/$id/")({
   validateSearch: (search: Record<string, unknown>): { section?: EventSectionKey } => ({
@@ -176,9 +179,9 @@ function SectionContent({
   section, event, seatsTaken, rsvps,
 }: {
   section: EventSectionKey;
-  event: any;
+  event: EventWithRsvps["event"];
   seatsTaken: number;
-  rsvps: { confirmed: any[]; pendingClaim: any[]; waitlisted: any[]; checkedIn: any[] };
+  rsvps: EventWithRsvps;
 }) {
   const currency = event.currency ?? "USD";
   switch (section) {
@@ -201,7 +204,7 @@ function SectionContent({
   }
 }
 
-function DetailsSection({ event, seatsTaken }: { event: any; seatsTaken: number }) {
+function DetailsSection({ event, seatsTaken }: { event: EventWithRsvps["event"]; seatsTaken: number }) {
   const capacityPercent = Math.min(100, (seatsTaken / event.capacity) * 100);
   return (
     <div className="flex max-w-2xl flex-col gap-6">
@@ -219,7 +222,12 @@ function DetailsSection({ event, seatsTaken }: { event: any; seatsTaken: number 
   );
 }
 
-function AttendeesSection({ event, rsvps }: { event: any; rsvps: any }) {
+function AttendeesSection({
+  event, rsvps,
+}: {
+  event: EventWithRsvps["event"];
+  rsvps: EventWithRsvps;
+}) {
   const cancelRsvp = useMutation(api.rsvps.cancelRsvp);
   const { confirmed, pendingClaim, waitlisted, checkedIn } = rsvps;
 
@@ -236,7 +244,7 @@ function AttendeesSection({ event, rsvps }: { event: any; rsvps: any }) {
     try {
       const header = ["Name", "Email", "Status", "Checked in at"];
       const attendees = [...confirmed, ...pendingClaim, ...waitlisted, ...checkedIn];
-      const rows = attendees.map((a: any) => [
+      const rows = attendees.map((a: EventWithRsvps["confirmed"][number]) => [
         a.name, a.email, STATUS_LABEL[a.status] ?? a.status,
         a.checkedInAt ? new Date(a.checkedInAt).toLocaleString() : "",
       ]);
@@ -264,7 +272,7 @@ function AttendeesSection({ event, rsvps }: { event: any; rsvps: any }) {
         title={`Confirmed (${confirmed.length})`}
         attendees={confirmed}
         emptyMessage="No confirmed attendees yet."
-        renderAction={(a: any) => (
+        renderAction={(a: EventWithRsvps["confirmed"][number]) => (
           <Button variant="outline" size="sm" onClick={() => handleCancel(a.token)}>Cancel</Button>
         )}
       />
