@@ -12,6 +12,7 @@ import { computeOrderAmounts, type OrderLineItem } from "./lib/fees";
 import { resolveAndComputeDiscount } from "./promoCodes";
 import { validateAndSnapshotAnswers } from "./checkoutQuestions";
 import { unlockedTicketTypeIds } from "./accessCodes";
+import { recordAudit } from "./audit";
 
 /** 16 random bytes -> 32 lowercase hex chars, prefixed to form an opaque token/code. */
 function randomToken(prefix: string): string {
@@ -522,6 +523,12 @@ export const refundOrder = mutation({
     }
 
     await ctx.db.patch(orderId, { status: "refunded", refundedAt: Date.now() });
+    await recordAudit(ctx, {
+      organizerId: order.organizerId,
+      eventId: order.eventId,
+      action: "order.refunded",
+      summary: `Refunded order ${order.token.slice(0, 12)}`,
+    });
     return null;
   },
 });

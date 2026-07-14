@@ -2,7 +2,7 @@
 import { convexTest, type TestConvex } from "convex-test";
 import { expect, test } from "vitest";
 import schema from "./schema";
-import { api } from "./_generated/api";
+import { api, internal } from "./_generated/api";
 
 const modules = import.meta.glob("./**/*.*s");
 
@@ -110,4 +110,80 @@ test("listForEvent rejects a non-owner and an unauthenticated caller", async () 
 
   await expect(asBob.query(api.audit.listForEvent, { eventId })).rejects.toThrow();
   await expect(t.query(api.audit.listForEvent, { eventId })).rejects.toThrow();
+});
+
+// --- recordAudit hook points (F17.2) -----------------------------------
+
+test("publishEvent appends exactly one event.published audit row", async () => {
+  const t = convexTest(schema, modules);
+  const { as } = await asOrganizer(t, "ada@example.com");
+  await as.mutation(api.organizers.ensureOrganizer, {});
+  const eventId = await makeEvent(as);
+
+  await as.mutation(api.events.publishEvent, { eventId });
+
+  const rows = await as.query(api.audit.listForEvent, { eventId });
+  expect(rows).toHaveLength(1);
+  expect(rows[0].action).toBe("event.published");
+  expect(rows[0].summary).toBeTruthy();
+});
+
+test("ticketTypes.create appends exactly one ticket_type.created audit row", async () => {
+  const t = convexTest(schema, modules);
+  const { as } = await asOrganizer(t, "ada@example.com");
+  await as.mutation(api.organizers.ensureOrganizer, {});
+  const eventId = await makeEvent(as);
+
+  await as.mutation(api.ticketTypes.create, {
+    eventId,
+    name: "Adult",
+    kind: "free",
+    priceCents: 0,
+  });
+
+  const rows = await as.query(api.audit.listForEvent, { eventId });
+  expect(rows).toHaveLength(1);
+  expect(rows[0].action).toBe("ticket_type.created");
+  expect(rows[0].summary).toBeTruthy();
+});
+
+test("refundOrder appends exactly one order.refunded audit row", async () => {
+  const t = convexTest(schema, modules);
+  const { as } = await asOrganizer(t, "ada@example.com");
+  await as.mutation(api.organizers.ensureOrganizer, {});
+  const eventId = await as.mutation(api.events.createEvent, {
+    title: "Ticketed Event",
+    description: "x",
+    startsAt: 1,
+    endsAt: 2,
+    location: "x",
+    capacity: 100,
+  });
+  await as.mutation(api.events.publishEvent, { eventId });
+  const ticketTypeId = await as.mutation(api.ticketTypes.create, {
+    eventId,
+    name: "General",
+    kind: "paid",
+    priceCents: 1000,
+  });
+
+  const result = await t.mutation(api.orders.createOrder, {
+    eventId,
+    items: [{ ticketTypeId, quantity: 1 }],
+    buyerName: "Buyer",
+    buyerEmail: "buyer@example.com",
+  });
+  await t.mutation(internal.orders.markOrderPaid, { orderId: result.orderId });
+
+  // publishEvent + ticketTypes.create above already recorded their own rows;
+  // isolate refundOrder's effect by counting before/after.
+  const before = await as.query(api.audit.listForEvent, { eventId });
+
+  await as.mutation(api.orders.refundOrder, { orderId: result.orderId });
+
+  const after = await as.query(api.audit.listForEvent, { eventId });
+  expect(after).toHaveLength(before.length + 1);
+  const newRow = after.find((row) => !before.some((b) => b._id === row._id));
+  expect(newRow?.action).toBe("order.refunded");
+  expect(newRow?.summary).toBeTruthy();
 });

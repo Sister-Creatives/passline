@@ -3,6 +3,7 @@ import { v } from "convex/values";
 import type { Id } from "./_generated/dataModel";
 import { getAuthOrganizerId } from "./auth";
 import { emitTicketTypeEvent } from "./webhooks";
+import { recordAudit } from "./audit";
 
 const kindValidator = v.union(v.literal("paid"), v.literal("free"), v.literal("donation"));
 const visibilityValidator = v.union(v.literal("visible"), v.literal("hidden"));
@@ -123,6 +124,12 @@ export const create = mutation({
     } catch {
       // Best-effort: webhook emission must not fail the ticket-type mutation (spec §5).
     }
+    await recordAudit(ctx, {
+      organizerId: event.organizerId,
+      eventId: args.eventId,
+      action: "ticket_type.created",
+      summary: `Created ticket type "${args.name.trim()}"`,
+    });
     return id;
   },
 });
@@ -187,6 +194,12 @@ export const update = mutation({
     } catch {
       // Best-effort: webhook emission must not fail the ticket-type mutation (spec §5).
     }
+    await recordAudit(ctx, {
+      organizerId: event.organizerId,
+      eventId: event._id,
+      action: "ticket_type.updated",
+      summary: `Updated ticket type "${args.name.trim()}"`,
+    });
     return null;
   },
 });
@@ -194,7 +207,7 @@ export const update = mutation({
 export const remove = mutation({
   args: { ticketTypeId: v.id("ticketTypes") },
   handler: async (ctx, { ticketTypeId }) => {
-    const { event } = await requireOwnedTicketType(ctx, ticketTypeId);
+    const { ticketType, event } = await requireOwnedTicketType(ctx, ticketTypeId);
     await ctx.db.delete(ticketTypeId);
     try {
       await emitTicketTypeEvent(
@@ -206,6 +219,12 @@ export const remove = mutation({
     } catch {
       // Best-effort: webhook emission must not fail the ticket-type mutation (spec §5).
     }
+    await recordAudit(ctx, {
+      organizerId: event.organizerId,
+      eventId: event._id,
+      action: "ticket_type.removed",
+      summary: `Removed ticket type "${ticketType.name}"`,
+    });
     return null;
   },
 });

@@ -2,6 +2,7 @@ import { mutation, query, type QueryCtx, type MutationCtx } from "./_generated/s
 import { v } from "convex/values";
 import type { Id } from "./_generated/dataModel";
 import { getAuthOrganizerId } from "./auth";
+import { recordAudit } from "./audit";
 
 const discountKindValidator = v.union(v.literal("percent"), v.literal("fixed"));
 
@@ -68,7 +69,7 @@ export const create = mutation({
       .unique();
     if (existing) throw new Error("A promo code with that code already exists for this event");
 
-    return ctx.db.insert("promoCodes", {
+    const id = await ctx.db.insert("promoCodes", {
       eventId: args.eventId,
       organizerId: event.organizerId,
       code,
@@ -80,6 +81,13 @@ export const create = mutation({
       active: true,
       createdAt: Date.now(),
     });
+    await recordAudit(ctx, {
+      organizerId: event.organizerId,
+      eventId: args.eventId,
+      action: "promo_code.created",
+      summary: `Created promo code "${code}"`,
+    });
+    return id;
   },
 });
 
@@ -97,8 +105,14 @@ export const list = query({
 export const remove = mutation({
   args: { promoCodeId: v.id("promoCodes") },
   handler: async (ctx, { promoCodeId }) => {
-    await requireOwnedPromoCode(ctx, promoCodeId);
+    const { promoCode, event } = await requireOwnedPromoCode(ctx, promoCodeId);
     await ctx.db.delete(promoCodeId);
+    await recordAudit(ctx, {
+      organizerId: event.organizerId,
+      eventId: event._id,
+      action: "promo_code.removed",
+      summary: `Removed promo code "${promoCode.code}"`,
+    });
     return null;
   },
 });

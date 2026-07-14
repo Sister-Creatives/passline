@@ -2,6 +2,7 @@ import { mutation, query, type QueryCtx, type MutationCtx } from "./_generated/s
 import { v } from "convex/values";
 import type { Id } from "./_generated/dataModel";
 import { getAuthOrganizerId } from "./auth";
+import { recordAudit } from "./audit";
 
 /** Load an event and enforce that it belongs to the authenticated organizer. */
 async function requireOwnedEvent(ctx: QueryCtx | MutationCtx, eventId: Id<"events">) {
@@ -54,7 +55,7 @@ export const create = mutation({
       }
     }
 
-    return ctx.db.insert("accessCodes", {
+    const id = await ctx.db.insert("accessCodes", {
       eventId: args.eventId,
       organizerId: event.organizerId,
       code,
@@ -62,6 +63,13 @@ export const create = mutation({
       active: true,
       createdAt: Date.now(),
     });
+    await recordAudit(ctx, {
+      organizerId: event.organizerId,
+      eventId: args.eventId,
+      action: "access_code.created",
+      summary: `Created access code "${code}"`,
+    });
+    return id;
   },
 });
 
@@ -79,8 +87,14 @@ export const list = query({
 export const remove = mutation({
   args: { accessCodeId: v.id("accessCodes") },
   handler: async (ctx, { accessCodeId }) => {
-    await requireOwnedAccessCode(ctx, accessCodeId);
+    const { accessCode, event } = await requireOwnedAccessCode(ctx, accessCodeId);
     await ctx.db.delete(accessCodeId);
+    await recordAudit(ctx, {
+      organizerId: event.organizerId,
+      eventId: event._id,
+      action: "access_code.removed",
+      summary: `Removed access code "${accessCode.code}"`,
+    });
     return null;
   },
 });

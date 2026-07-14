@@ -5,6 +5,7 @@ import { getAuthOrganizerId } from "./auth";
 import { slugify } from "./lib/slug";
 import { countSeatsTaken } from "./lib/capacity";
 import { promoteNext } from "./waitlist";
+import { recordAudit } from "./audit";
 
 /**
  * Load an event and verify it belongs to the currently authenticated
@@ -46,8 +47,14 @@ export const createEvent = mutation({
 export const publishEvent = mutation({
   args: { eventId: v.id("events") },
   handler: async (ctx, { eventId }) => {
-    await requireOwnedEvent(ctx, eventId);
+    const event = await requireOwnedEvent(ctx, eventId);
     await ctx.db.patch(eventId, { status: "published" });
+    await recordAudit(ctx, {
+      organizerId: event.organizerId,
+      eventId,
+      action: "event.published",
+      summary: "Published event",
+    });
     return null;
   },
 });
@@ -55,8 +62,14 @@ export const publishEvent = mutation({
 export const unpublishEvent = mutation({
   args: { eventId: v.id("events") },
   handler: async (ctx, { eventId }) => {
-    await requireOwnedEvent(ctx, eventId);
+    const event = await requireOwnedEvent(ctx, eventId);
     await ctx.db.patch(eventId, { status: "draft" });
+    await recordAudit(ctx, {
+      organizerId: event.organizerId,
+      eventId,
+      action: "event.unpublished",
+      summary: "Unpublished event",
+    });
     return null;
   },
 });
@@ -103,6 +116,13 @@ export const updateEvent = mutation({
       }
     }
 
+    await recordAudit(ctx, {
+      organizerId: event.organizerId,
+      eventId,
+      action: "event.updated",
+      summary: "Updated event details",
+    });
+
     return null;
   },
 });
@@ -117,7 +137,16 @@ export const updateEvent = mutation({
 export const deleteEvent = mutation({
   args: { eventId: v.id("events") },
   handler: async (ctx, { eventId }) => {
-    await requireOwnedEvent(ctx, eventId);
+    const event = await requireOwnedEvent(ctx, eventId);
+
+    // Recorded before the delete so the row can reference this (about-to-be
+    // -deleted) event id -- the log is a history and may outlive the event.
+    await recordAudit(ctx, {
+      organizerId: event.organizerId,
+      eventId,
+      action: "event.deleted",
+      summary: `Deleted event "${event.title}"`,
+    });
 
     const rsvps = await ctx.db
       .query("rsvps")
