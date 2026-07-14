@@ -9,6 +9,7 @@
  */
 
 import type * as accessCodes from "../accessCodes.js";
+import type * as addOns from "../addOns.js";
 import type * as analytics from "../analytics.js";
 import type * as apiHttp from "../apiHttp.js";
 import type * as apiKeys from "../apiKeys.js";
@@ -42,6 +43,7 @@ import type {
 
 declare const fullApi: ApiFromModules<{
   accessCodes: typeof accessCodes;
+  addOns: typeof addOns;
   analytics: typeof analytics;
   apiHttp: typeof apiHttp;
   apiKeys: typeof apiKeys;
