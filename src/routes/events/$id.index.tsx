@@ -23,6 +23,7 @@ import { CheckoutQuestionsPanel } from "@/components/CheckoutQuestionsPanel";
 import { EventPagePanel } from "@/components/EventPagePanel";
 import { VirtualHubPanel } from "@/components/VirtualHubPanel";
 import { AccessibilityPanel } from "@/components/AccessibilityPanel";
+import { AuditLogPanel } from "@/components/AuditLogPanel";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
@@ -192,6 +193,7 @@ function EventManageContent({ eventId }: { eventId: Id<"events"> }) {
           <TabsTrigger value="orders">Orders</TabsTrigger>
           <TabsTrigger value="analytics">Analytics</TabsTrigger>
           <TabsTrigger value="marketing">Marketing</TabsTrigger>
+          <TabsTrigger value="activity">Activity</TabsTrigger>
         </TabsList>
         <TabsContent value="details">
           <div className="flex flex-wrap items-center justify-between gap-4">
@@ -334,6 +336,9 @@ function EventManageContent({ eventId }: { eventId: Id<"events"> }) {
         </TabsContent>
         <TabsContent value="marketing">
           <MarketingPanel eventId={event._id} />
+        </TabsContent>
+        <TabsContent value="activity">
+          <AuditLogPanel eventId={event._id} />
         </TabsContent>
       </Tabs>
     </div>
