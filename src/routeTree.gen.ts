@@ -18,6 +18,7 @@ import { Route as SettingsProfileRouteImport } from './routes/settings/profile'
 import { Route as SettingsPaymentsRouteImport } from './routes/settings/payments'
 import { Route as SettingsApiWebhooksRouteImport } from './routes/settings/api-webhooks'
 import { Route as RsvpTokenRouteImport } from './routes/rsvp/$token'
+import { Route as OrdersTokenRouteImport } from './routes/orders/$token'
 import { Route as EventsNewRouteImport } from './routes/events/new'
 import { Route as EventsIdRouteImport } from './routes/events/$id'
 import { Route as ESlugRouteImport } from './routes/e/$slug'
@@ -71,6 +72,11 @@ const RsvpTokenRoute = RsvpTokenRouteImport.update({
   path: '/rsvp/$token',
   getParentRoute: () => rootRouteImport,
 } as any)
+const OrdersTokenRoute = OrdersTokenRouteImport.update({
+  id: '/orders/$token',
+  path: '/orders/$token',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const EventsNewRoute = EventsNewRouteImport.update({
   id: '/events/new',
   path: '/events/new',
@@ -115,6 +121,7 @@ export interface FileRoutesByFullPath {
   '/e/$slug': typeof ESlugRoute
   '/events/$id': typeof EventsIdRouteWithChildren
   '/events/new': typeof EventsNewRoute
+  '/orders/$token': typeof OrdersTokenRoute
   '/rsvp/$token': typeof RsvpTokenRoute
   '/settings/api-webhooks': typeof SettingsApiWebhooksRoute
   '/settings/payments': typeof SettingsPaymentsRoute
@@ -132,6 +139,7 @@ export interface FileRoutesByTo {
   '/claim/$token': typeof ClaimTokenRoute
   '/e/$slug': typeof ESlugRoute
   '/events/new': typeof EventsNewRoute
+  '/orders/$token': typeof OrdersTokenRoute
   '/rsvp/$token': typeof RsvpTokenRoute
   '/settings/api-webhooks': typeof SettingsApiWebhooksRoute
   '/settings/payments': typeof SettingsPaymentsRoute
@@ -151,6 +159,7 @@ export interface FileRoutesById {
   '/e/$slug': typeof ESlugRoute
   '/events/$id': typeof EventsIdRouteWithChildren
   '/events/new': typeof EventsNewRoute
+  '/orders/$token': typeof OrdersTokenRoute
   '/rsvp/$token': typeof RsvpTokenRoute
   '/settings/api-webhooks': typeof SettingsApiWebhooksRoute
   '/settings/payments': typeof SettingsPaymentsRoute
@@ -171,6 +180,7 @@ export interface FileRouteTypes {
     | '/e/$slug'
     | '/events/$id'
     | '/events/new'
+    | '/orders/$token'
     | '/rsvp/$token'
     | '/settings/api-webhooks'
     | '/settings/payments'
@@ -188,6 +198,7 @@ export interface FileRouteTypes {
     | '/claim/$token'
     | '/e/$slug'
     | '/events/new'
+    | '/orders/$token'
     | '/rsvp/$token'
     | '/settings/api-webhooks'
     | '/settings/payments'
@@ -206,6 +217,7 @@ export interface FileRouteTypes {
     | '/e/$slug'
     | '/events/$id'
     | '/events/new'
+    | '/orders/$token'
     | '/rsvp/$token'
     | '/settings/api-webhooks'
     | '/settings/payments'
@@ -225,6 +237,7 @@ export interface RootRouteChildren {
   ESlugRoute: typeof ESlugRoute
   EventsIdRoute: typeof EventsIdRouteWithChildren
   EventsNewRoute: typeof EventsNewRoute
+  OrdersTokenRoute: typeof OrdersTokenRoute
   RsvpTokenRoute: typeof RsvpTokenRoute
   SettingsApiWebhooksRoute: typeof SettingsApiWebhooksRoute
   SettingsPaymentsRoute: typeof SettingsPaymentsRoute
@@ -296,6 +309,13 @@ declare module '@tanstack/react-router' {
       path: '/rsvp/$token'
       fullPath: '/rsvp/$token'
       preLoaderRoute: typeof RsvpTokenRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/orders/$token': {
+      id: '/orders/$token'
+      path: '/orders/$token'
+      fullPath: '/orders/$token'
+      preLoaderRoute: typeof OrdersTokenRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/events/new': {
@@ -374,6 +394,7 @@ const rootRouteChildren: RootRouteChildren = {
   ESlugRoute: ESlugRoute,
   EventsIdRoute: EventsIdRouteWithChildren,
   EventsNewRoute: EventsNewRoute,
+  OrdersTokenRoute: OrdersTokenRoute,
   RsvpTokenRoute: RsvpTokenRoute,
   SettingsApiWebhooksRoute: SettingsApiWebhooksRoute,
   SettingsPaymentsRoute: SettingsPaymentsRoute,

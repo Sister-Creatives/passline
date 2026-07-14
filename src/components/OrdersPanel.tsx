@@ -1,10 +1,13 @@
 import { useQuery } from "@tanstack/react-query";
 import { convexQuery } from "@convex-dev/react-query";
+import { useMutation } from "convex/react";
+import { toast } from "sonner";
 
 import { api } from "../../convex/_generated/api";
 import type { Id } from "../../convex/_generated/dataModel";
 import { formatMoney } from "@/lib/format-money";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Table,
@@ -15,6 +18,17 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Empty, EmptyHeader, EmptyTitle, EmptyDescription } from "@/components/ui/empty";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 
 const STATUS_VARIANT = {
   pending: "secondary",
@@ -40,6 +54,16 @@ export function OrdersPanel({ eventId }: { eventId: Id<"events"> }) {
   const { data: orders, isPending } = useQuery(
     convexQuery(api.orders.listOrdersForEvent, { eventId }),
   );
+  const refundOrder = useMutation(api.orders.refundOrder);
+
+  async function handleRefund(orderId: Id<"orders">) {
+    try {
+      await refundOrder({ orderId });
+      toast.success("Order refunded");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to refund order");
+    }
+  }
 
   if (isPending) {
     return (
@@ -73,6 +97,7 @@ export function OrdersPanel({ eventId }: { eventId: Id<"events"> }) {
           <TableHead className="text-right">Items</TableHead>
           <TableHead className="text-right">Total</TableHead>
           <TableHead className="text-right">Created</TableHead>
+          <TableHead className="text-right">Actions</TableHead>
         </TableRow>
       </TableHeader>
       <TableBody>
@@ -91,6 +116,36 @@ export function OrdersPanel({ eventId }: { eventId: Id<"events"> }) {
             </TableCell>
             <TableCell className="text-right text-muted-foreground">
               {new Date(order.createdAt).toLocaleDateString()}
+            </TableCell>
+            <TableCell className="text-right">
+              {order.status === "paid" && (
+                <AlertDialog>
+                  <AlertDialogTrigger asChild>
+                    <Button variant="ghost" size="sm">
+                      Refund
+                    </Button>
+                  </AlertDialogTrigger>
+                  <AlertDialogContent>
+                    <AlertDialogHeader>
+                      <AlertDialogTitle>Refund this order?</AlertDialogTitle>
+                      <AlertDialogDescription>
+                        Tickets will be cancelled and capacity released. Until payments are live,
+                        the card refund itself is issued separately -- this only updates records
+                        and inventory.
+                      </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                      <AlertDialogCancel>Cancel</AlertDialogCancel>
+                      <AlertDialogAction
+                        variant="destructive"
+                        onClick={() => handleRefund(order._id)}
+                      >
+                        Refund
+                      </AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
+              )}
             </TableCell>
           </TableRow>
         ))}

@@ -330,13 +330,15 @@ export const cancelOrder = mutation({
 });
 
 /**
- * Public order lookup by token, for a buyer's checkout confirmation page.
- * Mirrors rsvps.getRsvpByToken: the token is an unguessable secret minted by
- * `createOrder` and handed only to the buyer who owns it, so an
- * unauthenticated lookup-by-token is the intended design. Returns null (not
- * a throw) when no order has that token. Also returns the order's
- * `orderResponses` (F5 checkout question answers), so a confirmation page
- * can show what the buyer submitted.
+ * Public order lookup by token, for a buyer's checkout confirmation page and
+ * the self-service order page (F6). Mirrors rsvps.getRsvpByToken: the token
+ * is an unguessable secret minted by `createOrder` and handed only to the
+ * buyer who owns it, so an unauthenticated lookup-by-token is the intended
+ * design. Returns null (not a throw) when no order has that token. Also
+ * returns the order's `orderResponses` (F5 checkout question answers) and
+ * its `event` (nullable -- an organizer can delete an event without deleting
+ * its past orders, so an order can outlive its event), so a self-service
+ * page can show the event title without a second round trip.
  */
 export const getOrder = query({
   args: { token: v.string() },
@@ -346,6 +348,7 @@ export const getOrder = query({
       .withIndex("by_token", (q) => q.eq("token", token))
       .unique();
     if (!order) return null;
+    const event = await ctx.db.get(order.eventId);
     const items = await ctx.db
       .query("orderItems")
       .withIndex("by_order", (q) => q.eq("orderId", order._id))
@@ -358,7 +361,7 @@ export const getOrder = query({
       .query("orderResponses")
       .withIndex("by_order", (q) => q.eq("orderId", order._id))
       .collect();
-    return { order, items, tickets, orderResponses };
+    return { order, event, items, tickets, orderResponses };
   },
 });
 
