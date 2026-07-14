@@ -3,7 +3,6 @@ import { convexTest, type TestConvex } from "convex-test";
 import { expect, test } from "vitest";
 import schema from "./schema";
 import { api } from "./_generated/api";
-import { computeReadiness } from "./lib/readiness";
 
 // Passed explicitly for the same pnpm module-resolution reason documented in
 // schema.test.ts.
