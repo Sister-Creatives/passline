@@ -30,6 +30,26 @@ const speakerRowValidator = v.object({
 });
 const faqRowValidator = v.object({ question: v.string(), answer: v.string() });
 
+type Accessibility = {
+  wheelchairAccessible?: boolean;
+  signLanguage?: boolean;
+  closedCaptions?: boolean;
+  hearingLoop?: boolean;
+  accessibleParking?: boolean;
+  assistanceAnimalsWelcome?: boolean;
+  notes?: string;
+};
+
+const accessibilityValidator = v.object({
+  wheelchairAccessible: v.optional(v.boolean()),
+  signLanguage: v.optional(v.boolean()),
+  closedCaptions: v.optional(v.boolean()),
+  hearingLoop: v.optional(v.boolean()),
+  accessibleParking: v.optional(v.boolean()),
+  assistanceAnimalsWelcome: v.optional(v.boolean()),
+  notes: v.optional(v.string()),
+});
+
 const MAX_ROWS = 50;
 
 /** The shape returned in place of a real doc when no `eventContent` row exists yet. */
@@ -74,6 +94,22 @@ function normalizeFaqs(rows: FaqRow[]): FaqRow[] {
     .map((row) => ({ question: row.question.trim(), answer: row.answer.trim() }))
     .filter((row) => row.question.length > 0 && row.answer.length > 0)
     .slice(0, MAX_ROWS);
+}
+
+/** Trim `notes`; an accessibility block with no fields set normalizes to `undefined` (clears it). */
+function normalizeAccessibility(a: Accessibility | undefined): Accessibility | undefined {
+  if (!a) return undefined;
+  const normalized: Accessibility = {
+    wheelchairAccessible: a.wheelchairAccessible,
+    signLanguage: a.signLanguage,
+    closedCaptions: a.closedCaptions,
+    hearingLoop: a.hearingLoop,
+    accessibleParking: a.accessibleParking,
+    assistanceAnimalsWelcome: a.assistanceAnimalsWelcome,
+    notes: normalizeOptionalString(a.notes),
+  };
+  const hasAnyField = Object.values(normalized).some((value) => value !== undefined);
+  return hasAnyField ? normalized : undefined;
 }
 
 /** Owner-only: an event's page content, or an empty default if none has been saved yet. */
@@ -145,6 +181,46 @@ export const update = mutation({
     return await ctx.db.insert("eventContent", {
       eventId: args.eventId,
       organizerId: event.organizerId,
+      ...patch,
+    });
+  },
+});
+
+/**
+ * Owner-only: upsert an event's accessibility info + cover-image alt text.
+ * Patches ONLY `coverImageAlt` + `accessibility`, leaving the F12 page-content
+ * fields (agenda/speakers/faqs/coverImageUrl/brandColor/ctaLabel/videoUrl)
+ * untouched. `notes` is trimmed; an omitted/empty value clears the
+ * corresponding field. If no content doc exists yet, inserts one with empty
+ * page-content arrays plus these fields.
+ */
+export const updateAccessibility = mutation({
+  args: {
+    eventId: v.id("events"),
+    coverImageAlt: v.optional(v.string()),
+    accessibility: v.optional(accessibilityValidator),
+  },
+  handler: async (ctx, args) => {
+    const event = await requireOwnedEvent(ctx, args.eventId);
+
+    const patch = {
+      coverImageAlt: normalizeOptionalString(args.coverImageAlt),
+      accessibility: normalizeAccessibility(args.accessibility),
+    };
+
+    const existing = await ctx.db
+      .query("eventContent")
+      .withIndex("by_event", (q) => q.eq("eventId", args.eventId))
+      .unique();
+
+    if (existing) {
+      await ctx.db.patch(existing._id, patch);
+      return existing._id;
+    }
+    return await ctx.db.insert("eventContent", {
+      eventId: args.eventId,
+      organizerId: event.organizerId,
+      ...emptyContent(),
       ...patch,
     });
   },

@@ -263,6 +263,18 @@ export default defineSchema({
       }),
     ),
     faqs: v.array(v.object({ question: v.string(), answer: v.string() })),
+    coverImageAlt: v.optional(v.string()),
+    accessibility: v.optional(
+      v.object({
+        wheelchairAccessible: v.optional(v.boolean()),
+        signLanguage: v.optional(v.boolean()),
+        closedCaptions: v.optional(v.boolean()),
+        hearingLoop: v.optional(v.boolean()),
+        accessibleParking: v.optional(v.boolean()),
+        assistanceAnimalsWelcome: v.optional(v.boolean()),
+        notes: v.optional(v.string()),
+      }),
+    ),
   }).index("by_event", ["eventId"]),
 
   virtualHubs: defineTable({

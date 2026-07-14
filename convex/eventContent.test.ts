@@ -320,3 +320,147 @@ test("getBySlug returns null for an unknown slug", async () => {
   const content = await t.query(api.eventContent.getBySlug, { slug: "does-not-exist" });
   expect(content).toBeNull();
 });
+
+// --- updateAccessibility ------------------------------------------------
+
+test("updateAccessibility upserts the accessibility block + coverImageAlt without clobbering existing page content", async () => {
+  const t = convexTest(schema, modules);
+  const { as } = await asOrganizer(t, "ada@example.com");
+  await as.mutation(api.organizers.ensureOrganizer, {});
+  const eventId = await makeEvent(as);
+
+  await as.mutation(api.eventContent.update, {
+    eventId,
+    coverImageUrl: "https://example.com/cover.jpg",
+    ctaLabel: "Register",
+    agenda: [{ time: "10:00", title: "Doors open" }],
+    speakers: [{ name: "Ada Lovelace", title: "Keynote" }],
+    faqs: [{ question: "Refunds?", answer: "Yes, within 30 days." }],
+  });
+
+  await as.mutation(api.eventContent.updateAccessibility, {
+    eventId,
+    coverImageAlt: "  A packed auditorium with a speaker on stage  ",
+    accessibility: {
+      wheelchairAccessible: true,
+      signLanguage: false,
+      hearingLoop: true,
+      notes: "  Enter via the north door.  ",
+    },
+  });
+
+  const rows = await t.run((ctx) =>
+    ctx.db.query("eventContent").withIndex("by_event", (q) => q.eq("eventId", eventId)).collect(),
+  );
+  expect(rows).toHaveLength(1);
+  const row = rows[0];
+  // Page content from `update` survives untouched.
+  expect(row.coverImageUrl).toBe("https://example.com/cover.jpg");
+  expect(row.ctaLabel).toBe("Register");
+  expect(row.agenda).toEqual([{ time: "10:00", title: "Doors open", description: undefined }]);
+  expect(row.speakers).toEqual([
+    { name: "Ada Lovelace", title: "Keynote", bio: undefined, imageUrl: undefined },
+  ]);
+  expect(row.faqs).toEqual([{ question: "Refunds?", answer: "Yes, within 30 days." }]);
+  // New accessibility fields are set (and trimmed).
+  expect(row.coverImageAlt).toBe("A packed auditorium with a speaker on stage");
+  expect(row.accessibility).toEqual({
+    wheelchairAccessible: true,
+    signLanguage: false,
+    closedCaptions: undefined,
+    hearingLoop: true,
+    accessibleParking: undefined,
+    assistanceAnimalsWelcome: undefined,
+    notes: "Enter via the north door.",
+  });
+});
+
+test("updateAccessibility inserts a fresh doc (with empty page content) when none exists yet", async () => {
+  const t = convexTest(schema, modules);
+  const { as } = await asOrganizer(t, "ada@example.com");
+  await as.mutation(api.organizers.ensureOrganizer, {});
+  const eventId = await makeEvent(as);
+
+  await as.mutation(api.eventContent.updateAccessibility, {
+    eventId,
+    coverImageAlt: "Cover photo",
+    accessibility: { wheelchairAccessible: true },
+  });
+
+  const rows = await t.run((ctx) =>
+    ctx.db.query("eventContent").withIndex("by_event", (q) => q.eq("eventId", eventId)).collect(),
+  );
+  expect(rows).toHaveLength(1);
+  const row = rows[0];
+  expect(row.agenda).toEqual([]);
+  expect(row.speakers).toEqual([]);
+  expect(row.faqs).toEqual([]);
+  expect(row.coverImageAlt).toBe("Cover photo");
+  expect(row.accessibility).toMatchObject({ wheelchairAccessible: true });
+});
+
+test("updateAccessibility clears coverImageAlt and accessibility when omitted on a later save", async () => {
+  const t = convexTest(schema, modules);
+  const { as } = await asOrganizer(t, "ada@example.com");
+  await as.mutation(api.organizers.ensureOrganizer, {});
+  const eventId = await makeEvent(as);
+
+  await as.mutation(api.eventContent.updateAccessibility, {
+    eventId,
+    coverImageAlt: "Cover photo",
+    accessibility: { wheelchairAccessible: true, notes: "North door." },
+  });
+  await as.mutation(api.eventContent.updateAccessibility, { eventId });
+
+  const rows = await t.run((ctx) =>
+    ctx.db.query("eventContent").withIndex("by_event", (q) => q.eq("eventId", eventId)).collect(),
+  );
+  expect(rows).toHaveLength(1);
+  expect(rows[0].coverImageAlt).toBeUndefined();
+  expect(rows[0].accessibility).toBeUndefined();
+});
+
+test("updateAccessibility is owner-only", async () => {
+  const t = convexTest(schema, modules);
+  const { as: asAda } = await asOrganizer(t, "ada@example.com");
+  await asAda.mutation(api.organizers.ensureOrganizer, {});
+  const { as: asBob } = await asOrganizer(t, "bob@example.com");
+  await asBob.mutation(api.organizers.ensureOrganizer, {});
+  const eventId = await makeEvent(asAda);
+
+  await expect(
+    asBob.mutation(api.eventContent.updateAccessibility, {
+      eventId,
+      coverImageAlt: "Hijacked",
+    }),
+  ).rejects.toThrow();
+
+  const rows = await t.run((ctx) =>
+    ctx.db.query("eventContent").withIndex("by_event", (q) => q.eq("eventId", eventId)).collect(),
+  );
+  expect(rows).toHaveLength(0);
+});
+
+test("getBySlug returns the accessibility fields for a published event", async () => {
+  const t = convexTest(schema, modules);
+  const { as } = await asOrganizer(t, "ada@example.com");
+  await as.mutation(api.organizers.ensureOrganizer, {});
+  const eventId = await makeEvent(as);
+  await as.mutation(api.eventContent.updateAccessibility, {
+    eventId,
+    coverImageAlt: "Cover photo",
+    accessibility: { wheelchairAccessible: true, closedCaptions: true, notes: "See staff at entry." },
+  });
+  const event = await t.run((ctx) => ctx.db.get(eventId));
+  await as.mutation(api.events.publishEvent, { eventId });
+
+  const content = await t.query(api.eventContent.getBySlug, { slug: event!.slug });
+  expect(content).toMatchObject({
+    coverImageAlt: "Cover photo",
+    accessibility: {
+      wheelchairAccessible: true,
+      closedCaptions: true,
+      notes: "See staff at entry.",
+    },
+  });
+});
