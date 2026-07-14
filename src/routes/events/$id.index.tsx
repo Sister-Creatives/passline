@@ -8,9 +8,9 @@ import { toast } from "sonner";
 
 import { api } from "../../../convex/_generated/api";
 import type { Id } from "../../../convex/_generated/dataModel";
-import { EVENT_SECTIONS, isEventSectionKey, type EventSectionKey } from "@/lib/eventSections";
-import { cn } from "@/lib/utils";
+import { isEventSectionKey, type EventSectionKey } from "@/lib/eventSections";
 import { DashboardLayout } from "@/components/DashboardLayout";
+import { EventBuilderNav } from "@/components/EventBuilderNav";
 import { AttendeeTable } from "@/components/AttendeeTable";
 import { EventForm } from "@/components/EventForm";
 import { TicketTypesPanel } from "@/components/TicketTypesPanel";
@@ -123,7 +123,13 @@ function EventManageContent({ eventId }: { eventId: Id<"events"> }) {
 
   return (
     <div className="mx-auto flex max-w-6xl flex-col gap-6 p-4 sm:flex-row sm:p-8">
-      <SectionLinks eventId={eventId} active={section} />
+      <EventBuilderNav
+        eventId={eventId}
+        activeSection={section}
+        isPublished={isPublished}
+        slug={event.slug}
+        onTogglePublish={handleTogglePublish}
+      />
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div>
@@ -155,9 +161,6 @@ function EventManageContent({ eventId }: { eventId: Id<"events"> }) {
                 </AlertDialogFooter>
               </AlertDialogContent>
             </AlertDialog>
-            <Button onClick={handleTogglePublish} variant={isPublished ? "outline" : "default"} size="sm">
-              {isPublished ? "Unpublish" : "Publish"}
-            </Button>
           </div>
         </div>
 
@@ -166,39 +169,6 @@ function EventManageContent({ eventId }: { eventId: Id<"events"> }) {
         </div>
       </div>
     </div>
-  );
-}
-
-/** Plain grouped nav (replaced by EventBuilderNav in Task 4). */
-function SectionLinks({ eventId, active }: { eventId: Id<"events">; active: EventSectionKey }) {
-  const groups = [
-    { title: "Build", items: EVENT_SECTIONS.filter((s) => s.group === "build") },
-    { title: "Manage", items: EVENT_SECTIONS.filter((s) => s.group === "manage") },
-  ];
-  return (
-    <nav className="flex w-full shrink-0 flex-col gap-4 sm:w-52">
-      {groups.map((group) => (
-        <div key={group.title}>
-          <div className="px-2 text-xs font-medium uppercase text-muted-foreground">{group.title}</div>
-          <div className="mt-1 flex flex-col">
-            {group.items.map((s) => (
-              <Link
-                key={s.key}
-                to="/events/$id"
-                params={{ id: eventId }}
-                search={{ section: s.key }}
-                className={cn(
-                  "rounded-md px-2 py-1.5 text-sm hover:bg-accent",
-                  s.key === active && "bg-accent font-medium",
-                )}
-              >
-                {s.label}
-              </Link>
-            ))}
-          </div>
-        </div>
-      ))}
-    </nav>
   );
 }
 
