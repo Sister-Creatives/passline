@@ -19,6 +19,7 @@ import { Route as SettingsPaymentsRouteImport } from './routes/settings/payments
 import { Route as SettingsApiWebhooksRouteImport } from './routes/settings/api-webhooks'
 import { Route as RsvpTokenRouteImport } from './routes/rsvp/$token'
 import { Route as OrdersTokenRouteImport } from './routes/orders/$token'
+import { Route as HostOrganizerIdRouteImport } from './routes/host/$organizerId'
 import { Route as EventsNewRouteImport } from './routes/events/new'
 import { Route as EventsIdRouteImport } from './routes/events/$id'
 import { Route as ESlugRouteImport } from './routes/e/$slug'
@@ -78,6 +79,11 @@ const OrdersTokenRoute = OrdersTokenRouteImport.update({
   path: '/orders/$token',
   getParentRoute: () => rootRouteImport,
 } as any)
+const HostOrganizerIdRoute = HostOrganizerIdRouteImport.update({
+  id: '/host/$organizerId',
+  path: '/host/$organizerId',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const EventsNewRoute = EventsNewRouteImport.update({
   id: '/events/new',
   path: '/events/new',
@@ -127,6 +133,7 @@ export interface FileRoutesByFullPath {
   '/e/$slug': typeof ESlugRouteWithChildren
   '/events/$id': typeof EventsIdRouteWithChildren
   '/events/new': typeof EventsNewRoute
+  '/host/$organizerId': typeof HostOrganizerIdRoute
   '/orders/$token': typeof OrdersTokenRoute
   '/rsvp/$token': typeof RsvpTokenRoute
   '/settings/api-webhooks': typeof SettingsApiWebhooksRoute
@@ -146,6 +153,7 @@ export interface FileRoutesByTo {
   '/claim/$token': typeof ClaimTokenRoute
   '/e/$slug': typeof ESlugRouteWithChildren
   '/events/new': typeof EventsNewRoute
+  '/host/$organizerId': typeof HostOrganizerIdRoute
   '/orders/$token': typeof OrdersTokenRoute
   '/rsvp/$token': typeof RsvpTokenRoute
   '/settings/api-webhooks': typeof SettingsApiWebhooksRoute
@@ -167,6 +175,7 @@ export interface FileRoutesById {
   '/e/$slug': typeof ESlugRouteWithChildren
   '/events/$id': typeof EventsIdRouteWithChildren
   '/events/new': typeof EventsNewRoute
+  '/host/$organizerId': typeof HostOrganizerIdRoute
   '/orders/$token': typeof OrdersTokenRoute
   '/rsvp/$token': typeof RsvpTokenRoute
   '/settings/api-webhooks': typeof SettingsApiWebhooksRoute
@@ -189,6 +198,7 @@ export interface FileRouteTypes {
     | '/e/$slug'
     | '/events/$id'
     | '/events/new'
+    | '/host/$organizerId'
     | '/orders/$token'
     | '/rsvp/$token'
     | '/settings/api-webhooks'
@@ -208,6 +218,7 @@ export interface FileRouteTypes {
     | '/claim/$token'
     | '/e/$slug'
     | '/events/new'
+    | '/host/$organizerId'
     | '/orders/$token'
     | '/rsvp/$token'
     | '/settings/api-webhooks'
@@ -228,6 +239,7 @@ export interface FileRouteTypes {
     | '/e/$slug'
     | '/events/$id'
     | '/events/new'
+    | '/host/$organizerId'
     | '/orders/$token'
     | '/rsvp/$token'
     | '/settings/api-webhooks'
@@ -249,6 +261,7 @@ export interface RootRouteChildren {
   ESlugRoute: typeof ESlugRouteWithChildren
   EventsIdRoute: typeof EventsIdRouteWithChildren
   EventsNewRoute: typeof EventsNewRoute
+  HostOrganizerIdRoute: typeof HostOrganizerIdRoute
   OrdersTokenRoute: typeof OrdersTokenRoute
   RsvpTokenRoute: typeof RsvpTokenRoute
   SettingsApiWebhooksRoute: typeof SettingsApiWebhooksRoute
@@ -328,6 +341,13 @@ declare module '@tanstack/react-router' {
       path: '/orders/$token'
       fullPath: '/orders/$token'
       preLoaderRoute: typeof OrdersTokenRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/host/$organizerId': {
+      id: '/host/$organizerId'
+      path: '/host/$organizerId'
+      fullPath: '/host/$organizerId'
+      preLoaderRoute: typeof HostOrganizerIdRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/events/new': {
@@ -423,6 +443,7 @@ const rootRouteChildren: RootRouteChildren = {
   ESlugRoute: ESlugRouteWithChildren,
   EventsIdRoute: EventsIdRouteWithChildren,
   EventsNewRoute: EventsNewRoute,
+  HostOrganizerIdRoute: HostOrganizerIdRoute,
   OrdersTokenRoute: OrdersTokenRoute,
   RsvpTokenRoute: RsvpTokenRoute,
   SettingsApiWebhooksRoute: SettingsApiWebhooksRoute,

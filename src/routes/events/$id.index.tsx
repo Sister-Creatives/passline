@@ -3,7 +3,7 @@ import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useSuspenseQuery } from "@tanstack/react-query";
 import { convexQuery } from "@convex-dev/react-query";
 import { useMutation } from "convex/react";
-import { Download, Pencil, QrCode, ScanLine, Trash2 } from "lucide-react";
+import { Copy, Download, Pencil, QrCode, ScanLine, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { api } from "../../../convex/_generated/api";
@@ -92,6 +92,7 @@ function EventManageContent({ eventId }: { eventId: Id<"events"> }) {
   const unpublishEvent = useMutation(api.events.unpublishEvent);
   const cancelRsvp = useMutation(api.rsvps.cancelRsvp);
   const deleteEvent = useMutation(api.events.deleteEvent);
+  const duplicateEvent = useMutation(api.events.duplicateEvent);
 
   const isPublished = event.status === "published";
   // Matches the backend's countSeatsTaken: confirmed + confirmed_pending_claim
@@ -130,6 +131,16 @@ function EventManageContent({ eventId }: { eventId: Id<"events"> }) {
       navigate({ to: "/events" });
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Failed to delete event");
+    }
+  }
+
+  async function handleDuplicate() {
+    try {
+      const newEventId = await duplicateEvent({ eventId });
+      toast.success("Event duplicated");
+      navigate({ to: "/events/$id", params: { id: newEventId } });
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to duplicate event");
     }
   }
 
@@ -214,6 +225,9 @@ function EventManageContent({ eventId }: { eventId: Id<"events"> }) {
                   <EventForm event={event} onDone={() => setEditOpen(false)} />
                 </DialogContent>
               </Dialog>
+              <Button variant="outline" onClick={handleDuplicate}>
+                <Copy /> Duplicate
+              </Button>
               <AlertDialog>
                 <AlertDialogTrigger asChild>
                   <Button variant="destructive">
