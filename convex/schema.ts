@@ -221,4 +221,22 @@ export default defineSchema({
     recipientCount: v.number(),
     createdAt: v.number(),
   }).index("by_event", ["eventId"]),
+
+  addOns: defineTable({
+    eventId: v.id("events"),
+    organizerId: v.id("organizers"),
+    name: v.string(),
+    priceCents: v.number(), // integer cents, > 0 (add-ons are paid)
+    capacity: v.optional(v.number()), // per-add-on cap; undefined = uncapped
+    sold: v.number(),
+    sortOrder: v.number(),
+    active: v.boolean(),
+  }).index("by_event", ["eventId"]),
+
+  orderAddOns: defineTable({
+    orderId: v.id("orders"),
+    addOnId: v.id("addOns"),
+    quantity: v.number(),
+    unitPriceCents: v.number(), // snapshot at purchase
+  }).index("by_order", ["orderId"]),
 });
