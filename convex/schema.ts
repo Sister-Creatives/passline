@@ -264,4 +264,16 @@ export default defineSchema({
     ),
     faqs: v.array(v.object({ question: v.string(), answer: v.string() })),
   }).index("by_event", ["eventId"]),
+
+  virtualHubs: defineTable({
+    eventId: v.id("events"),
+    organizerId: v.id("organizers"),
+    enabled: v.boolean(),
+    heading: v.optional(v.string()),
+    description: v.optional(v.string()),
+    videoUrl: v.optional(v.string()), // YouTube/Vimeo, via parseVideoEmbed
+    meetingUrl: v.optional(v.string()), // organizer-supplied https link (Zoom/Meet/…) — rendered as a link (href), never script
+    resources: v.array(v.object({ title: v.string(), url: v.string() })),
+    accessPassword: v.optional(v.string()), // optional shared password for non-ticket-holders
+  }).index("by_event", ["eventId"]),
 });
