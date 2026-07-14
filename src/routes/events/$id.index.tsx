@@ -14,6 +14,7 @@ import { EventForm } from "@/components/EventForm";
 import { TicketTypesPanel } from "@/components/TicketTypesPanel";
 import { OrdersPanel } from "@/components/OrdersPanel";
 import { AnalyticsPanel } from "@/components/AnalyticsPanel";
+import { MarketingPanel } from "@/components/MarketingPanel";
 import { PromoCodesPanel } from "@/components/PromoCodesPanel";
 import { AccessCodesPanel } from "@/components/AccessCodesPanel";
 import { csvField } from "@/lib/csv";
@@ -167,6 +168,7 @@ function EventManageContent({ eventId }: { eventId: Id<"events"> }) {
           <TabsTrigger value="questions">Questions</TabsTrigger>
           <TabsTrigger value="orders">Orders</TabsTrigger>
           <TabsTrigger value="analytics">Analytics</TabsTrigger>
+          <TabsTrigger value="marketing">Marketing</TabsTrigger>
         </TabsList>
         <TabsContent value="details">
           <div className="flex flex-wrap items-center justify-between gap-4">
@@ -291,6 +293,9 @@ function EventManageContent({ eventId }: { eventId: Id<"events"> }) {
         </TabsContent>
         <TabsContent value="analytics">
           <AnalyticsPanel eventId={event._id} />
+        </TabsContent>
+        <TabsContent value="marketing">
+          <MarketingPanel eventId={event._id} />
         </TabsContent>
       </Tabs>
     </div>

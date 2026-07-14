@@ -6,6 +6,7 @@ import { convexQuery } from "@convex-dev/react-query";
 import { api } from "../../../convex/_generated/api";
 import type { Doc } from "../../../convex/_generated/dataModel";
 import { RsvpForm } from "@/components/RsvpForm";
+import { TrackingPixels } from "@/components/TrackingPixels";
 import { formatEventDateRange } from "@/lib/format-event-date";
 
 // PUBLIC route: no AuthGuard. Anyone with the link can view a published
@@ -77,6 +78,11 @@ function EventDetails({ slug, event }: { slug: string; event: Doc<"events"> }) {
 
   return (
     <div className="mx-auto max-w-2xl p-4 sm:p-8">
+      <TrackingPixels
+        metaPixelId={event.metaPixelId}
+        googleAnalyticsId={event.googleAnalyticsId}
+        gtmId={event.gtmId}
+      />
       {/* Authors may embed inline <i>/<em>/<br>/<strong> in the title. */}
       <h1
         className="text-2xl font-semibold sm:text-3xl"
