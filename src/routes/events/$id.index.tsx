@@ -9,7 +9,7 @@ import { toast } from "sonner";
 
 import { api } from "../../../convex/_generated/api";
 import type { Id } from "../../../convex/_generated/dataModel";
-import { isEventSectionKey, type EventSectionKey } from "@/lib/eventSections";
+import { EVENT_SECTIONS, isEventSectionKey, type EventSectionKey } from "@/lib/eventSections";
 import { DashboardLayout } from "@/components/DashboardLayout";
 import { EventBuilderNav } from "@/components/EventBuilderNav";
 import { AttendeeTable } from "@/components/AttendeeTable";
@@ -170,7 +170,26 @@ function EventManageContent({ eventId }: { eventId: Id<"events"> }) {
         <div className="mt-6">
           <SectionContent section={section} event={event} seatsTaken={seatsTaken} rsvps={data} />
         </div>
+        <ContinueFooter eventId={eventId} section={section} />
       </div>
+    </div>
+  );
+}
+
+function ContinueFooter({ eventId, section }: { eventId: Id<"events">; section: EventSectionKey }) {
+  const editSections = EVENT_SECTIONS.filter((s) => s.group === "edit");
+  const index = editSections.findIndex((s) => s.key === section);
+  if (index === -1) return null;
+  const next = editSections[index + 1];
+  if (!next) return null;
+
+  return (
+    <div className="sticky bottom-0 mt-6 flex justify-end border-t bg-background py-4">
+      <Button asChild>
+        <Link to="/events/$id" params={{ id: eventId }} search={{ section: next.key }}>
+          Continue
+        </Link>
+      </Button>
     </div>
   );
 }
@@ -208,6 +227,7 @@ function DetailsSection({ event, seatsTaken }: { event: EventWithRsvps["event"];
   const capacityPercent = Math.min(100, (seatsTaken / event.capacity) * 100);
   return (
     <div className="flex max-w-2xl flex-col gap-6">
+      <h2 className="text-lg font-semibold">Event information</h2>
       <div>
         <div className="flex items-center justify-between text-sm">
           <span className="font-medium">Capacity</span>
@@ -215,6 +235,12 @@ function DetailsSection({ event, seatsTaken }: { event: EventWithRsvps["event"];
         </div>
         <div className="mt-2 h-2 w-full overflow-hidden rounded-full bg-muted">
           <div className="h-full rounded-full bg-primary transition-all" style={{ width: `${capacityPercent}%` }} />
+        </div>
+      </div>
+      <div>
+        <span className="text-sm font-medium">Event page URL</span>
+        <div className="mt-1 flex h-9 w-full items-center rounded-md border bg-muted px-3 text-sm text-muted-foreground">
+          /e/{event.slug}
         </div>
       </div>
       <EventForm event={event} />

@@ -1,4 +1,4 @@
-export type EventSectionGroup = "build" | "manage";
+export type EventSectionGroup = "edit" | "manage";
 
 // Kept in sync by hand with `SectionKey` in `convex/lib/readiness.ts` — backend
 // code can't import from `src/`, so update both when adding/removing a section.
@@ -9,23 +9,28 @@ export type EventSectionKey =
 
 export type EventSection = { key: EventSectionKey; label: string; group: EventSectionGroup };
 
-/** Ordered nav: BUILD sections (setup) then MANAGE sections (post-publish ops). */
+export const EVENT_SECTION_GROUPS: { key: EventSectionGroup; label: string }[] = [
+  { key: "edit", label: "Edit event" },
+  { key: "manage", label: "Manage event" },
+];
+
+/** Ordered nav: EDIT sections (setup) then MANAGE sections (post-publish ops). */
 export const EVENT_SECTIONS: EventSection[] = [
-  { key: "details", label: "Details", group: "build" },
-  { key: "tickets", label: "Ticket types", group: "build" },
-  { key: "sessions", label: "Sessions", group: "build" },
-  { key: "seating", label: "Seating", group: "build" },
-  { key: "addons", label: "Add-ons", group: "build" },
-  { key: "promo", label: "Promo codes", group: "build" },
-  { key: "access", label: "Access codes", group: "build" },
-  { key: "questions", label: "Questions", group: "build" },
-  { key: "page", label: "Page & design", group: "build" },
-  { key: "hub", label: "Virtual hub", group: "build" },
-  { key: "accessibility", label: "Accessibility", group: "build" },
+  { key: "details", label: "Details", group: "edit" },
+  { key: "tickets", label: "Ticket types", group: "edit" },
+  { key: "sessions", label: "Sessions", group: "edit" },
+  { key: "seating", label: "Seating", group: "edit" },
+  { key: "addons", label: "Add-ons", group: "edit" },
+  { key: "promo", label: "Promo codes", group: "edit" },
+  { key: "access", label: "Access codes", group: "edit" },
+  { key: "questions", label: "Questions", group: "edit" },
+  { key: "page", label: "Page & design", group: "edit" },
+  { key: "hub", label: "Virtual hub", group: "edit" },
+  { key: "accessibility", label: "Accessibility", group: "edit" },
   { key: "orders", label: "Orders", group: "manage" },
   { key: "attendees", label: "Attendees", group: "manage" },
   { key: "analytics", label: "Analytics", group: "manage" },
-  { key: "marketing", label: "Marketing", group: "manage" },
+  { key: "marketing", label: "Promote", group: "manage" },
   { key: "activity", label: "Activity", group: "manage" },
 ];
 

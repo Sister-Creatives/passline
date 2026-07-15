@@ -1,15 +1,16 @@
 import { Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { convexQuery } from "@convex-dev/react-query";
-import { Check, CircleAlert, Circle, Dot, ExternalLink } from "lucide-react";
+import { Check, CircleAlert, Circle, ChevronRight, Dot, ExternalLink } from "lucide-react";
 
 import { api } from "../../convex/_generated/api";
 import type { Id } from "../../convex/_generated/dataModel";
-import { EVENT_SECTIONS, type EventSectionKey } from "@/lib/eventSections";
+import { EVENT_SECTION_GROUPS, EVENT_SECTIONS, type EventSectionKey } from "@/lib/eventSections";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 
 type SectionStatus = "complete" | "warning" | "incomplete";
 
@@ -34,35 +35,44 @@ export function EventBuilderNav({
   const blockers = (readiness?.rules ?? []).filter((r) => r.severity === "required" && r.status === "fail");
   const suggestions = (readiness?.rules ?? []).filter((r) => r.severity === "recommended" && r.status === "fail");
 
-  const groups: { title: string; items: typeof EVENT_SECTIONS }[] = [
-    { title: "Build", items: EVENT_SECTIONS.filter((s) => s.group === "build") },
-    { title: "Manage", items: EVENT_SECTIONS.filter((s) => s.group === "manage") },
-  ];
+  const groups = EVENT_SECTION_GROUPS.map((group) => ({
+    ...group,
+    items: EVENT_SECTIONS.filter((s) => s.group === group.key),
+  }));
 
   return (
     <nav className="flex w-full shrink-0 flex-col gap-4 sm:w-56">
-      {groups.map((group) => (
-        <div key={group.title}>
-          <div className="px-2 text-xs font-medium uppercase text-muted-foreground">{group.title}</div>
-          <div className="mt-1 flex flex-col">
-            {group.items.map((s) => (
-              <Link
-                key={s.key}
-                to="/events/$id"
-                params={{ id: eventId }}
-                search={{ section: s.key }}
-                className={cn(
-                  "flex items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-accent",
-                  s.key === activeSection && "bg-accent font-medium",
-                )}
-              >
-                {group.title === "Build" ? <StatusGlyph status={sectionStatus[s.key]} /> : null}
-                <span>{s.label}</span>
-              </Link>
-            ))}
-          </div>
-        </div>
-      ))}
+      {groups.map((group) => {
+        const defaultOpen =
+          group.key === "edit"
+            ? true
+            : group.items.some((s) => s.key === activeSection);
+        return (
+          <Collapsible key={group.key} defaultOpen={defaultOpen} className="group/collapsible">
+            <CollapsibleTrigger className="flex w-full items-center justify-between rounded-md px-2 py-1 text-xs font-medium uppercase text-muted-foreground hover:bg-accent">
+              <span>{group.label}</span>
+              <ChevronRight className="size-3.5 transition-transform group-data-[state=open]/collapsible:rotate-90" />
+            </CollapsibleTrigger>
+            <CollapsibleContent className="mt-1 flex flex-col">
+              {group.items.map((s) => (
+                <Link
+                  key={s.key}
+                  to="/events/$id"
+                  params={{ id: eventId }}
+                  search={{ section: s.key }}
+                  className={cn(
+                    "flex items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-accent",
+                    s.key === activeSection && "bg-accent font-medium",
+                  )}
+                >
+                  {group.key === "edit" ? <StatusGlyph status={sectionStatus[s.key]} /> : null}
+                  <span>{s.label}</span>
+                </Link>
+              ))}
+            </CollapsibleContent>
+          </Collapsible>
+        );
+      })}
 
       <div className="mt-2 rounded-lg border p-3">
         {readiness === undefined ? (
