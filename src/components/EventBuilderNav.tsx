@@ -15,8 +15,8 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 type SectionStatus = "complete" | "warning" | "incomplete";
 
 function StatusGlyph({ status }: { status: SectionStatus | undefined }) {
-  if (status === "complete") return <Check className="size-4 text-green-600" role="img" aria-label="Complete" />;
-  if (status === "warning") return <CircleAlert className="size-4 text-amber-500" role="img" aria-label="Has suggestions" />;
+  if (status === "complete") return <Check className="size-4 text-success" role="img" aria-label="Complete" />;
+  if (status === "warning") return <CircleAlert className="size-4 text-warning" role="img" aria-label="Has suggestions" />;
   if (status === "incomplete") return <Circle className="size-4 text-muted-foreground" role="img" aria-label="Incomplete" />;
   return <Dot className="size-4 text-muted-foreground/50" aria-hidden />;
 }
