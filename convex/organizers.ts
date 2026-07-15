@@ -29,6 +29,26 @@ export const ensureOrganizer = mutation({
   },
 });
 
+/**
+ * Update the signed-in organizer's own profile (name + optional logo/avatar
+ * URL). Name is required and trimmed; an empty image clears it, mirroring the
+ * optional-field clearing pattern used across the codebase.
+ */
+export const updateProfile = mutation({
+  args: { name: v.string(), image: v.optional(v.string()) },
+  handler: async (ctx, { name, image }) => {
+    const organizerId = await getAuthOrganizerId(ctx);
+    if (!organizerId) throw new Error("Not authenticated");
+    const trimmedName = name.trim();
+    if (!trimmedName) throw new Error("Name is required");
+    const trimmedImage = image?.trim();
+    await ctx.db.patch(organizerId, {
+      name: trimmedName,
+      image: trimmedImage ? trimmedImage : undefined,
+    });
+  },
+});
+
 export const getMe = query({
   args: {},
   handler: async (ctx) => {

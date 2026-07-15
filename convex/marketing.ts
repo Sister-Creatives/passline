@@ -151,6 +151,42 @@ export const listCampaigns = query({
   },
 });
 
+/**
+ * Every email campaign across all of the organizer's events, newest first, with
+ * the event title attached -- powers the cross-event Marketing page.
+ */
+export const listAllCampaigns = query({
+  args: {},
+  handler: async (ctx) => {
+    const organizerId = await getAuthOrganizerId(ctx);
+    if (!organizerId) return [];
+
+    const events = await ctx.db
+      .query("events")
+      .withIndex("by_organizer", (q) => q.eq("organizerId", organizerId))
+      .collect();
+
+    const perEvent = await Promise.all(
+      events.map(async (event) => {
+        const campaigns = await ctx.db
+          .query("emailCampaigns")
+          .withIndex("by_event", (q) => q.eq("eventId", event._id))
+          .collect();
+        return campaigns.map((c) => ({
+          _id: c._id,
+          subject: c.subject,
+          recipientCount: c.recipientCount,
+          createdAt: c.createdAt,
+          eventId: event._id,
+          eventTitle: event.title,
+        }));
+      }),
+    );
+
+    return perEvent.flat().sort((a, b) => b.createdAt - a.createdAt);
+  },
+});
+
 /** Owner-only: the event's current tracking-pixel configuration. */
 export const getEventMarketing = query({
   args: { eventId: v.id("events") },
