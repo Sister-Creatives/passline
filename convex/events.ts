@@ -152,12 +152,13 @@ export const updateEvent = mutation({
     eventCategory: v.optional(v.string()),
     keywords: v.optional(v.array(v.string())),
     sharingDescription: v.optional(v.string()),
+    hostProfileId: v.optional(v.union(v.id("hostProfiles"), v.null())),
   },
   handler: async (
     ctx,
     {
       eventId, title, description, startsAt, endsAt, location, capacity,
-      currency, slug, eventType, eventCategory, keywords, sharingDescription,
+      currency, slug, eventType, eventCategory, keywords, sharingDescription, hostProfileId,
     },
   ) => {
     const event = await requireOwnedEvent(ctx, eventId);
@@ -178,6 +179,7 @@ export const updateEvent = mutation({
       eventCategory?: string | undefined;
       keywords?: string[] | undefined;
       sharingDescription?: string | undefined;
+      hostProfileId?: Id<"hostProfiles"> | undefined;
     } = {};
 
     if (currency !== undefined) {
@@ -226,6 +228,18 @@ export const updateEvent = mutation({
         throw new Error("Sharing description must be 160 characters or fewer");
       }
       extraPatch.sharingDescription = normalizeOptionalString(sharingDescription);
+    }
+
+    if (hostProfileId !== undefined) {
+      if (hostProfileId === null) {
+        extraPatch.hostProfileId = undefined;
+      } else {
+        const profile = await ctx.db.get(hostProfileId);
+        if (!profile || profile.organizerId !== event.organizerId) {
+          throw new Error("Host profile not found");
+        }
+        extraPatch.hostProfileId = hostProfileId;
+      }
     }
 
     await ctx.db.patch(eventId, { title, description, startsAt, endsAt, location, capacity, ...extraPatch });

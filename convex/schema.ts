@@ -39,6 +39,7 @@ export default defineSchema({
     eventType: v.optional(v.string()),          // one of EVENT_TYPES
     eventCategory: v.optional(v.string()),      // one of EVENT_CATEGORIES
     keywords: v.optional(v.array(v.string())),  // <= 10, trimmed, de-duped, non-empty
+    hostProfileId: v.optional(v.id("hostProfiles")),
   })
     .index("by_organizer", ["organizerId"])
     .index("by_slug", ["slug"]),
@@ -328,6 +329,15 @@ export default defineSchema({
     summary: v.string(), // human-readable, e.g. 'Created ticket type "Adult"'
     createdAt: v.number(),
   }).index("by_event", ["eventId"]),
+
+  hostProfiles: defineTable({
+    organizerId: v.id("organizers"),
+    name: v.string(),
+    bio: v.optional(v.string()), // <= 600 chars
+    logoUrl: v.optional(v.string()), // https URL (validated)
+    websiteUrl: v.optional(v.string()), // https URL (validated)
+    createdAt: v.number(),
+  }).index("by_organizer", ["organizerId"]),
 
   virtualHubs: defineTable({
     eventId: v.id("events"),

@@ -1105,6 +1105,153 @@ test("updateEvent leaves omitted new fields untouched on a subsequent call", asy
   expect(afterSecond?.eventType).toBe("Conference");
 });
 
+test("updateEvent assigns an owned hostProfileId", async () => {
+  const t = convexTest(schema, modules);
+  const { as } = await asOrganizer(t, "ada@example.com");
+  await as.mutation(api.organizers.ensureOrganizer, {});
+
+  const eventId = await as.mutation(api.events.createEvent, {
+    title: "Original Title",
+    description: "x",
+    startsAt: 100,
+    endsAt: 200,
+    location: "x",
+    capacity: 10,
+  });
+  const hostProfileId = await as.mutation(api.hostProfiles.create, { name: "Ada's Events" });
+
+  await as.mutation(api.events.updateEvent, {
+    eventId,
+    title: "Original Title",
+    description: "x",
+    startsAt: 100,
+    endsAt: 200,
+    location: "x",
+    capacity: 10,
+    hostProfileId,
+  });
+
+  const updated = await t.run((ctx) => ctx.db.get(eventId));
+  expect(updated?.hostProfileId).toEqual(hostProfileId);
+});
+
+test("updateEvent rejects a hostProfileId owned by another organizer", async () => {
+  const t = convexTest(schema, modules);
+  const { as: asAda } = await asOrganizer(t, "ada@example.com");
+  await asAda.mutation(api.organizers.ensureOrganizer, {});
+  const { as: asBob } = await asOrganizer(t, "bob@example.com");
+  await asBob.mutation(api.organizers.ensureOrganizer, {});
+
+  const eventId = await asAda.mutation(api.events.createEvent, {
+    title: "Ada's Gala",
+    description: "Ada's own event.",
+    startsAt: 10,
+    endsAt: 20,
+    location: "Ballroom",
+    capacity: 40,
+  });
+  const bobsHostProfileId = await asBob.mutation(api.hostProfiles.create, { name: "Bob's Events" });
+
+  await expect(
+    asAda.mutation(api.events.updateEvent, {
+      eventId,
+      title: "Ada's Gala",
+      description: "Ada's own event.",
+      startsAt: 10,
+      endsAt: 20,
+      location: "Ballroom",
+      capacity: 40,
+      hostProfileId: bobsHostProfileId,
+    }),
+  ).rejects.toThrow();
+
+  const stillUntouched = await t.run((ctx) => ctx.db.get(eventId));
+  expect(stillUntouched?.hostProfileId).toBeUndefined();
+});
+
+test("updateEvent clears hostProfileId to undefined when passed null", async () => {
+  const t = convexTest(schema, modules);
+  const { as } = await asOrganizer(t, "ada@example.com");
+  await as.mutation(api.organizers.ensureOrganizer, {});
+
+  const eventId = await as.mutation(api.events.createEvent, {
+    title: "Original Title",
+    description: "x",
+    startsAt: 100,
+    endsAt: 200,
+    location: "x",
+    capacity: 10,
+  });
+  const hostProfileId = await as.mutation(api.hostProfiles.create, { name: "Ada's Events" });
+
+  await as.mutation(api.events.updateEvent, {
+    eventId,
+    title: "Original Title",
+    description: "x",
+    startsAt: 100,
+    endsAt: 200,
+    location: "x",
+    capacity: 10,
+    hostProfileId,
+  });
+
+  await as.mutation(api.events.updateEvent, {
+    eventId,
+    title: "Original Title",
+    description: "x",
+    startsAt: 100,
+    endsAt: 200,
+    location: "x",
+    capacity: 10,
+    hostProfileId: null,
+  });
+
+  const updated = await t.run((ctx) => ctx.db.get(eventId));
+  expect(updated?.hostProfileId).toBeUndefined();
+});
+
+test("updateEvent omitting hostProfileId leaves it untouched", async () => {
+  const t = convexTest(schema, modules);
+  const { as } = await asOrganizer(t, "ada@example.com");
+  await as.mutation(api.organizers.ensureOrganizer, {});
+
+  const eventId = await as.mutation(api.events.createEvent, {
+    title: "Original Title",
+    description: "x",
+    startsAt: 100,
+    endsAt: 200,
+    location: "x",
+    capacity: 10,
+  });
+  const hostProfileId = await as.mutation(api.hostProfiles.create, { name: "Ada's Events" });
+
+  await as.mutation(api.events.updateEvent, {
+    eventId,
+    title: "Original Title",
+    description: "x",
+    startsAt: 100,
+    endsAt: 200,
+    location: "x",
+    capacity: 10,
+    hostProfileId,
+  });
+
+  // Second call omits hostProfileId but changes title -- hostProfileId must survive.
+  await as.mutation(api.events.updateEvent, {
+    eventId,
+    title: "Updated Title",
+    description: "x",
+    startsAt: 100,
+    endsAt: 200,
+    location: "x",
+    capacity: 10,
+  });
+
+  const updated = await t.run((ctx) => ctx.db.get(eventId));
+  expect(updated?.title).toBe("Updated Title");
+  expect(updated?.hostProfileId).toEqual(hostProfileId);
+});
+
 test("getPublicProfile returns an organizer's name/image, or null when not found", async () => {
   const t = convexTest(schema, modules);
   const { as } = await asOrganizer(t, "ada@example.com");
