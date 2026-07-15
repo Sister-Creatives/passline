@@ -229,6 +229,39 @@ export const remove = mutation({
   },
 });
 
+/**
+ * Public storefront query: the active + visible ticket types of a *published*
+ * event, sorted by sortOrder. No auth / no ownership check (mirrors the public
+ * checkoutQuestions.listForEvent). Returns all kinds -- the storefront shows
+ * paid/donation tiers as "coming soon" while only free ones are purchasable
+ * this slice. Hidden/archived types and draft events never leak.
+ */
+export const listPublicForEvent = query({
+  args: { eventId: v.id("events") },
+  handler: async (ctx, { eventId }) => {
+    const event = await ctx.db.get(eventId);
+    if (!event || event.status !== "published") return [];
+    const types = await ctx.db
+      .query("ticketTypes")
+      .withIndex("by_event", (q) => q.eq("eventId", eventId))
+      .collect();
+    return types
+      .filter((t) => t.status === "active" && t.visibility === "visible")
+      .sort((a, b) => a.sortOrder - b.sortOrder)
+      .map((t) => ({
+        _id: t._id,
+        name: t.name,
+        kind: t.kind,
+        priceCents: t.priceCents,
+        capacity: t.capacity,
+        sold: t.sold,
+        badge: t.badge,
+        minPerOrder: t.minPerOrder,
+        maxPerOrder: t.maxPerOrder,
+      }));
+  },
+});
+
 export const reorder = mutation({
   args: { eventId: v.id("events"), orderedIds: v.array(v.id("ticketTypes")) },
   handler: async (ctx, { eventId, orderedIds }) => {

@@ -258,3 +258,42 @@ test("reorder rejects duplicate ids", async () => {
   await as.mutation(api.ticketTypes.create, { eventId, name: "B", kind: "paid", priceCents: 200 });
   await expect(as.mutation(api.ticketTypes.reorder, { eventId, orderedIds: [a, a] })).rejects.toThrow();
 });
+
+test("listPublicForEvent returns active+visible types of a published event, sorted; excludes hidden/archived", async () => {
+  const t = convexTest(schema, modules);
+  const { as } = await asOrganizer(t, "ada@example.com");
+  await as.mutation(api.organizers.ensureOrganizer, {});
+  const eventId = await makeEvent(as);
+  const freeId = await as.mutation(api.ticketTypes.create, { eventId, name: "GA", kind: "free", priceCents: 0 });
+  const paidId = await as.mutation(api.ticketTypes.create, { eventId, name: "VIP", kind: "paid", priceCents: 5000 });
+  const hiddenId = await as.mutation(api.ticketTypes.create, { eventId, name: "Secret", kind: "paid", priceCents: 9000, visibility: "hidden" });
+  // Archive one via update (visibility visible, but status archived through remove? use a direct patch).
+  await t.run((ctx) => ctx.db.patch(hiddenId, { status: "active" })); // keep hidden+active
+  // Publish (F19 gate passes: there is a visible active type).
+  await as.mutation(api.events.publishEvent, { eventId });
+
+  const list = await t.query(api.ticketTypes.listPublicForEvent, { eventId });
+  const ids = list.map((x) => x._id);
+  expect(ids).toContain(freeId);
+  expect(ids).toContain(paidId);
+  expect(ids).not.toContain(hiddenId); // hidden excluded
+  // sorted by sortOrder (GA created first -> before VIP)
+  expect(list.findIndex((x) => x._id === freeId)).toBeLessThan(list.findIndex((x) => x._id === paidId));
+  // shape: kind/price present, no internal-only fields required
+  const ga = list.find((x) => x._id === freeId)!;
+  expect(ga).toMatchObject({ name: "GA", kind: "free", priceCents: 0, sold: 0 });
+});
+
+test("listPublicForEvent returns [] for an unpublished (draft) event and is callable without auth", async () => {
+  const t = convexTest(schema, modules);
+  const { as } = await asOrganizer(t, "ada@example.com");
+  await as.mutation(api.organizers.ensureOrganizer, {});
+  const eventId = await makeEvent(as);
+  await as.mutation(api.ticketTypes.create, { eventId, name: "GA", kind: "free", priceCents: 0 });
+  // Not published yet:
+  expect(await t.query(api.ticketTypes.listPublicForEvent, { eventId })).toEqual([]);
+  // Publish, then an anonymous caller (no withIdentity) can read it:
+  await as.mutation(api.events.publishEvent, { eventId });
+  const anon = await t.query(api.ticketTypes.listPublicForEvent, { eventId });
+  expect(anon.map((x) => x.name)).toEqual(["GA"]);
+});
