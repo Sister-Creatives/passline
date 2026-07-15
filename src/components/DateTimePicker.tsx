@@ -5,9 +5,8 @@ import { CalendarIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { TimePicker } from "@/components/TimePicker";
 
 /** Used to seed the time field the first time a date is picked on a blank form. */
 const DEFAULT_TIME = "18:00";
@@ -108,20 +107,15 @@ export const DateTimePicker = React.forwardRef<HTMLButtonElement, DateTimePicker
           <Calendar mode="single" selected={date} onSelect={handleDateChange} />
         </PopoverContent>
       </Popover>
-      <div className="flex flex-col gap-1.5">
-        <Label htmlFor={timeId} className="sr-only">
-          Time
-        </Label>
-        <Input
-          id={timeId}
-          type="time"
-          aria-invalid={rest["aria-invalid"]}
-          value={date ? time || DEFAULT_TIME : ""}
-          disabled={!date}
-          onChange={(event) => handleTimeChange(event.target.value)}
-          className="w-[120px]"
-        />
-      </div>
+      <TimePicker
+        id={timeId}
+        aria-label="Time"
+        aria-invalid={rest["aria-invalid"]}
+        value={date ? time || DEFAULT_TIME : ""}
+        disabled={!date}
+        onChange={handleTimeChange}
+        className="w-[124px]"
+      />
     </div>
   );
   },
