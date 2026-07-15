@@ -18,14 +18,24 @@ function fromUtcDateString(dateStr: string): number {
   return Date.UTC(year, month - 1, day);
 }
 
-type TimeseriesBucket = { date: string; registrations: number; revenueCents: number };
+type TimeseriesBucket = {
+  date: string;
+  registrations: number;
+  checkIns: number;
+  revenueCents: number;
+};
 
 /** The last 30 UTC-day buckets (including today), zero-filled, oldest first. */
 function buildEmptyTimeseries(now: number): TimeseriesBucket[] {
   const todayMs = fromUtcDateString(toUtcDateString(now));
   const buckets: TimeseriesBucket[] = [];
   for (let i = TIMESERIES_DAYS - 1; i >= 0; i--) {
-    buckets.push({ date: toUtcDateString(todayMs - i * MS_PER_DAY), registrations: 0, revenueCents: 0 });
+    buckets.push({
+      date: toUtcDateString(todayMs - i * MS_PER_DAY),
+      registrations: 0,
+      checkIns: 0,
+      revenueCents: 0,
+    });
   }
   return buckets;
 }
@@ -38,6 +48,7 @@ function zeroedOverview(now: number) {
     timeseries: buildEmptyTimeseries(now),
     deltas: {
       registrations: { current: 0, previous: 0, pct: null as number | null },
+      checkIns: { current: 0, previous: 0, pct: null as number | null },
       revenue: { current: 0, previous: 0, pct: null as number | null },
     },
     upcomingEvents: [] as never[],
@@ -126,6 +137,16 @@ export const getOverview = query({
       const bucket = bucketByDate.get(toUtcDateString(o.paidAt ?? o.createdAt));
       if (bucket) bucket.revenueCents += o.payoutCents;
     }
+    for (const r of allRsvps) {
+      if (r.checkedInAt === undefined) continue;
+      const bucket = bucketByDate.get(toUtcDateString(r.checkedInAt));
+      if (bucket) bucket.checkIns += 1;
+    }
+    for (const t of allTickets) {
+      if (t.checkedInAt === undefined) continue;
+      const bucket = bucketByDate.get(toUtcDateString(t.checkedInAt));
+      if (bucket) bucket.checkIns += 1;
+    }
 
     // Period-over-period deltas: last 30 days vs the 30 days before it.
     const windowMs = TIMESERIES_DAYS * MS_PER_DAY;
@@ -139,6 +160,12 @@ export const getOverview = query({
     const regPrevious =
       allRsvps.filter((r) => inPrevious(r._creationTime)).length +
       allTickets.filter((t) => inPrevious(t._creationTime)).length;
+    const ciCurrent =
+      allRsvps.filter((r) => r.checkedInAt !== undefined && inCurrent(r.checkedInAt)).length +
+      allTickets.filter((t) => t.checkedInAt !== undefined && inCurrent(t.checkedInAt)).length;
+    const ciPrevious =
+      allRsvps.filter((r) => r.checkedInAt !== undefined && inPrevious(r.checkedInAt)).length +
+      allTickets.filter((t) => t.checkedInAt !== undefined && inPrevious(t.checkedInAt)).length;
     const revCurrent = paidOrders
       .filter((o) => inCurrent(o.paidAt ?? o.createdAt))
       .reduce((sum, o) => sum + o.payoutCents, 0);
@@ -153,6 +180,7 @@ export const getOverview = query({
         previous: regPrevious,
         pct: pctChange(regCurrent, regPrevious),
       },
+      checkIns: { current: ciCurrent, previous: ciPrevious, pct: pctChange(ciCurrent, ciPrevious) },
       revenue: { current: revCurrent, previous: revPrevious, pct: pctChange(revCurrent, revPrevious) },
     };
 

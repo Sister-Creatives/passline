@@ -32,8 +32,10 @@ export const Route = createFileRoute("/dashboard")({ component: OverviewPage });
 
 function OverviewPage() {
   return (
-    <DashboardLayout>
-      <OverviewContent />
+    <DashboardLayout wide>
+      <div className="p-4 md:p-6">
+        <OverviewContent />
+      </div>
     </DashboardLayout>
   );
 }
@@ -76,17 +78,19 @@ function formatRelative(ms: number): string {
 }
 
 /**
- * A "big number + trend badge + gradient area chart" card, mirroring the
- * dashboard-5 VisitorsChart aesthetic, but wired to real 30-day data.
+ * A "big number + trend badge + gradient area chart" metric card (the
+ * dashboard-5 aesthetic), wired to real 30-day data. Falls back to a dashed
+ * placeholder when the metric has no activity in the window.
  */
-function TrendCard({
+function MetricChartCard({
   headline,
   description,
   deltaPct,
   data,
   dataKey,
   color,
-  className,
+  isEmpty,
+  emptyLabel,
 }: {
   headline: string;
   description: string;
@@ -94,66 +98,72 @@ function TrendCard({
   data: Array<Record<string, number | string>>;
   dataKey: string;
   color: string;
-  className?: string;
+  isEmpty: boolean;
+  emptyLabel: string;
 }) {
   const gradientId = `trend-${useId().replace(/:/g, "")}`;
   const config: ChartConfig = { [dataKey]: { label: description, color } };
   return (
-    <Card className={className}>
+    <Card>
       <CardHeader className="flex flex-row items-start justify-between">
-        <div className="flex flex-col gap-1.5">
+        <div className="flex flex-col gap-1">
           <CardTitle className="font-mono text-2xl tabular-nums">{headline}</CardTitle>
           <CardDescription className="text-pretty">{description}</CardDescription>
         </div>
-        {deltaPct !== null && (
+        {!isEmpty && deltaPct !== null && (
           <Delta value={Math.round(deltaPct)} variant="badge">
             <DeltaIcon variant="trend" />
             <DeltaValue suffix="%" />
-            <span>vs prior 30 days</span>
           </Delta>
         )}
       </CardHeader>
       <CardContent>
-        <ChartContainer className="aspect-auto h-56 w-full" config={config}>
-          <AreaChart accessibilityLayer data={data} margin={{ left: 12, right: 12 }}>
-            <defs>
-              <linearGradient id={gradientId} x1="0" x2="0" y1="0" y2="1">
-                <stop offset="0%" stopColor={`var(--color-${dataKey})`} stopOpacity={0.35} />
-                <stop offset="100%" stopColor={`var(--color-${dataKey})`} stopOpacity={0} />
-              </linearGradient>
-            </defs>
-            <CartesianGrid vertical={false} />
-            <XAxis
-              dataKey="date"
-              axisLine={false}
-              tickLine={false}
-              tickMargin={8}
-              minTickGap={28}
-              tickFormatter={(value) => formatDayTick(String(value))}
-            />
-            <ChartTooltip
-              content={
-                <ChartTooltipContent
-                  indicator="dashed"
-                  labelFormatter={(value) => formatDayTick(String(value))}
-                />
-              }
-              cursor={{
-                stroke: `var(--color-${dataKey})`,
-                strokeDasharray: "3 3",
-                strokeLinecap: "round",
-              }}
-              wrapperStyle={{ outline: "none" }}
-            />
-            <Area
-              dataKey={dataKey}
-              type="natural"
-              fill={`url(#${gradientId})`}
-              stroke={`var(--color-${dataKey})`}
-              strokeWidth={2}
-            />
-          </AreaChart>
-        </ChartContainer>
+        {isEmpty ? (
+          <div className="flex h-40 items-center justify-center rounded-lg border border-dashed px-4 text-center text-sm text-muted-foreground">
+            {emptyLabel}
+          </div>
+        ) : (
+          <ChartContainer className="aspect-auto h-40 w-full" config={config}>
+            <AreaChart accessibilityLayer data={data} margin={{ left: 12, right: 12 }}>
+              <defs>
+                <linearGradient id={gradientId} x1="0" x2="0" y1="0" y2="1">
+                  <stop offset="0%" stopColor={`var(--color-${dataKey})`} stopOpacity={0.35} />
+                  <stop offset="100%" stopColor={`var(--color-${dataKey})`} stopOpacity={0} />
+                </linearGradient>
+              </defs>
+              <CartesianGrid vertical={false} />
+              <XAxis
+                dataKey="date"
+                axisLine={false}
+                tickLine={false}
+                tickMargin={8}
+                minTickGap={32}
+                tickFormatter={(value) => formatDayTick(String(value))}
+              />
+              <ChartTooltip
+                content={
+                  <ChartTooltipContent
+                    indicator="dashed"
+                    labelFormatter={(value) => formatDayTick(String(value))}
+                  />
+                }
+                cursor={{
+                  stroke: `var(--color-${dataKey})`,
+                  strokeDasharray: "3 3",
+                  strokeLinecap: "round",
+                }}
+                wrapperStyle={{ outline: "none" }}
+              />
+              <Area
+                dataKey={dataKey}
+                type="natural"
+                fill={`url(#${gradientId})`}
+                stroke={`var(--color-${dataKey})`}
+                strokeWidth={2}
+              />
+            </AreaChart>
+          </ChartContainer>
+        )}
       </CardContent>
     </Card>
   );
@@ -166,12 +176,16 @@ function OverviewContent() {
     return (
       <div className="flex flex-col gap-4">
         <Skeleton className="h-8 w-40" />
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-          {Array.from({ length: 4 }).map((_, i) => (
-            <Skeleton key={i} className="h-28 w-full" />
+        <div className="grid gap-3 lg:grid-cols-3">
+          {Array.from({ length: 3 }).map((_, i) => (
+            <Skeleton key={i} className="h-64 w-full" />
           ))}
         </div>
-        <Skeleton className="h-72 w-full" />
+        <div className="grid gap-3 grid-cols-2 md:grid-cols-5">
+          {Array.from({ length: 5 }).map((_, i) => (
+            <Skeleton key={i} className="h-24 w-full" />
+          ))}
+        </div>
       </div>
     );
   }
@@ -194,9 +208,10 @@ function OverviewContent() {
 
   const { events, attendance, sales, timeseries, deltas, upcomingEvents, recentActivity } = data;
   const totalRegistrations = timeseries.reduce((sum, d) => sum + d.registrations, 0);
+  const totalCheckIns = timeseries.reduce((sum, d) => sum + d.checkIns, 0);
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-center justify-between gap-4">
         <h1 className="text-2xl font-semibold">Overview</h1>
         <Button asChild>
@@ -206,7 +221,40 @@ function OverviewContent() {
         </Button>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-3 lg:grid-cols-3">
+        <MetricChartCard
+          headline={formatInteger(deltas.registrations.current)}
+          description="Registrations · last 30 days"
+          deltaPct={deltas.registrations.pct}
+          data={timeseries}
+          dataKey="registrations"
+          color="var(--chart-1)"
+          isEmpty={totalRegistrations === 0}
+          emptyLabel="No registrations yet — the trend appears as people sign up."
+        />
+        <MetricChartCard
+          headline={formatInteger(deltas.checkIns.current)}
+          description="Check-ins · last 30 days"
+          deltaPct={deltas.checkIns.pct}
+          data={timeseries}
+          dataKey="checkIns"
+          color="var(--chart-4)"
+          isEmpty={totalCheckIns === 0}
+          emptyLabel="No check-ins yet — scans at the door show up here."
+        />
+        <MetricChartCard
+          headline={formatMoney(deltas.revenue.current, sales.currency)}
+          description="Revenue · last 30 days"
+          deltaPct={deltas.revenue.pct}
+          data={timeseries.map((d) => ({ date: d.date, revenue: Math.round(d.revenueCents / 100) }))}
+          dataKey="revenue"
+          color="var(--chart-2)"
+          isEmpty={sales.revenueCents === 0}
+          emptyLabel="No sales yet — online payments are coming soon."
+        />
+      </div>
+
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
         <Stat
           label="Events"
           value={events.total}
@@ -214,59 +262,11 @@ function OverviewContent() {
         />
         <Stat label="Upcoming" value={events.upcoming} />
         <Stat label="Attendees" value={attendance.attendees} />
-        <Stat label="Check-ins" value={attendance.checkedIn} />
+        <Stat label="Orders" value={sales.orders} />
+        <Stat label="Tickets sold" value={sales.ticketsSold} />
       </div>
 
-      {totalRegistrations > 0 ? (
-        <TrendCard
-          headline={formatInteger(deltas.registrations.current)}
-          description="Registrations in the last 30 days"
-          deltaPct={deltas.registrations.pct}
-          data={timeseries}
-          dataKey="registrations"
-          color="var(--chart-1)"
-        />
-      ) : (
-        <Card>
-          <CardHeader>
-            <CardTitle className="font-mono text-2xl tabular-nums">0</CardTitle>
-            <CardDescription>Registrations in the last 30 days</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="flex h-40 items-center justify-center rounded-lg border border-dashed text-center text-sm text-muted-foreground">
-              No registrations yet — the trend will appear here as people sign up.
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      <section className="flex flex-col gap-4">
-        <h2 className="text-lg font-medium">Sales</h2>
-        <div className="grid gap-4 md:grid-cols-3">
-          <Stat label="Revenue" value={formatMoney(sales.revenueCents, sales.currency)} />
-          <Stat label="Orders" value={sales.orders} />
-          <Stat label="Tickets sold" value={sales.ticketsSold} />
-        </div>
-        {sales.revenueCents > 0 ? (
-          <TrendCard
-            headline={formatMoney(deltas.revenue.current, sales.currency)}
-            description="Revenue in the last 30 days"
-            deltaPct={deltas.revenue.pct}
-            data={timeseries.map((d) => ({
-              date: d.date,
-              revenue: Math.round(d.revenueCents / 100),
-            }))}
-            dataKey="revenue"
-            color="var(--chart-2)"
-          />
-        ) : (
-          <p className="text-sm text-muted-foreground">
-            No sales yet &mdash; online payments are coming soon.
-          </p>
-        )}
-      </section>
-
-      <div className="grid gap-4 lg:grid-cols-2">
+      <div className="grid gap-3 lg:grid-cols-2">
         <Card>
           <CardHeader>
             <CardTitle className="text-base">Upcoming events</CardTitle>
