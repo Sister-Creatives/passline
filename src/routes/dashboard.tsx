@@ -1,3 +1,4 @@
+import { useId } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { convexQuery } from "@convex-dev/react-query";
@@ -7,6 +8,8 @@ import { Area, AreaChart, CartesianGrid, XAxis } from "recharts";
 import { api } from "../../convex/_generated/api";
 import { DashboardLayout } from "@/components/DashboardLayout";
 import { formatMoney } from "@/lib/format-money";
+import { formatInteger } from "@/lib/formater";
+import { Delta, DeltaIcon, DeltaValue } from "@/components/delta";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -46,6 +49,11 @@ function formatShortDate(ms: number): string {
   });
 }
 
+/** "Jul 20" tick label from a "YYYY-MM-DD" bucket date. */
+function formatDayTick(date: string): string {
+  return new Date(date).toLocaleDateString(undefined, { month: "short", day: "numeric" });
+}
+
 const RELATIVE_UNITS: [Intl.RelativeTimeFormatUnit, number][] = [
   ["year", 1000 * 60 * 60 * 24 * 365],
   ["month", 1000 * 60 * 60 * 24 * 30],
@@ -67,49 +75,87 @@ function formatRelative(ms: number): string {
   return "just now";
 }
 
-/** "Jul 20" tick label from a "YYYY-MM-DD" bucket date. */
-function formatDayTick(date: string): string {
-  return new Date(date).toLocaleDateString(undefined, { month: "short", day: "numeric" });
-}
-
-/** A 30-day area trend chart (shadcn Chart + Recharts) keyed on `date`. */
-function TrendChart({
+/**
+ * A "big number + trend badge + gradient area chart" card, mirroring the
+ * dashboard-5 VisitorsChart aesthetic, but wired to real 30-day data.
+ */
+function TrendCard({
+  headline,
+  description,
+  deltaPct,
   data,
   dataKey,
-  label,
   color,
+  className,
 }: {
+  headline: string;
+  description: string;
+  deltaPct: number | null;
   data: Array<Record<string, number | string>>;
   dataKey: string;
-  label: string;
   color: string;
+  className?: string;
 }) {
-  const config: ChartConfig = { [dataKey]: { label, color } };
+  const gradientId = `trend-${useId().replace(/:/g, "")}`;
+  const config: ChartConfig = { [dataKey]: { label: description, color } };
   return (
-    <ChartContainer config={config} className="h-[220px] w-full">
-      <AreaChart data={data} margin={{ left: 12, right: 12, top: 8 }}>
-        <CartesianGrid vertical={false} />
-        <XAxis
-          dataKey="date"
-          tickLine={false}
-          axisLine={false}
-          tickMargin={8}
-          minTickGap={28}
-          tickFormatter={(value) => formatDayTick(String(value))}
-        />
-        <ChartTooltip
-          cursor={false}
-          content={<ChartTooltipContent labelFormatter={(value) => formatDayTick(String(value))} />}
-        />
-        <Area
-          dataKey={dataKey}
-          type="natural"
-          stroke={`var(--color-${dataKey})`}
-          fill={`var(--color-${dataKey})`}
-          fillOpacity={0.25}
-        />
-      </AreaChart>
-    </ChartContainer>
+    <Card className={className}>
+      <CardHeader className="flex flex-row items-start justify-between">
+        <div className="flex flex-col gap-1.5">
+          <CardTitle className="font-mono text-2xl tabular-nums">{headline}</CardTitle>
+          <CardDescription className="text-pretty">{description}</CardDescription>
+        </div>
+        {deltaPct !== null && (
+          <Delta value={Math.round(deltaPct)} variant="badge">
+            <DeltaIcon variant="trend" />
+            <DeltaValue suffix="%" />
+            <span>vs prior 30 days</span>
+          </Delta>
+        )}
+      </CardHeader>
+      <CardContent>
+        <ChartContainer className="aspect-auto h-56 w-full" config={config}>
+          <AreaChart accessibilityLayer data={data} margin={{ left: 12, right: 12 }}>
+            <defs>
+              <linearGradient id={gradientId} x1="0" x2="0" y1="0" y2="1">
+                <stop offset="0%" stopColor={`var(--color-${dataKey})`} stopOpacity={0.35} />
+                <stop offset="100%" stopColor={`var(--color-${dataKey})`} stopOpacity={0} />
+              </linearGradient>
+            </defs>
+            <CartesianGrid vertical={false} />
+            <XAxis
+              dataKey="date"
+              axisLine={false}
+              tickLine={false}
+              tickMargin={8}
+              minTickGap={28}
+              tickFormatter={(value) => formatDayTick(String(value))}
+            />
+            <ChartTooltip
+              content={
+                <ChartTooltipContent
+                  indicator="dashed"
+                  labelFormatter={(value) => formatDayTick(String(value))}
+                />
+              }
+              cursor={{
+                stroke: `var(--color-${dataKey})`,
+                strokeDasharray: "3 3",
+                strokeLinecap: "round",
+              }}
+              wrapperStyle={{ outline: "none" }}
+            />
+            <Area
+              dataKey={dataKey}
+              type="natural"
+              fill={`url(#${gradientId})`}
+              stroke={`var(--color-${dataKey})`}
+              strokeWidth={2}
+            />
+          </AreaChart>
+        </ChartContainer>
+      </CardContent>
+    </Card>
   );
 }
 
@@ -118,14 +164,14 @@ function OverviewContent() {
 
   if (isPending || !data) {
     return (
-      <div className="flex flex-col gap-6">
+      <div className="flex flex-col gap-4">
         <Skeleton className="h-8 w-40" />
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
           {Array.from({ length: 4 }).map((_, i) => (
             <Skeleton key={i} className="h-28 w-full" />
           ))}
         </div>
-        <Skeleton className="h-64 w-full" />
+        <Skeleton className="h-72 w-full" />
       </div>
     );
   }
@@ -146,11 +192,10 @@ function OverviewContent() {
     );
   }
 
-  const { events, attendance, sales, timeseries, upcomingEvents, recentActivity } = data;
-  const totalRegistrations = timeseries.reduce((sum, d) => sum + d.registrations, 0);
+  const { events, attendance, sales, timeseries, deltas, upcomingEvents, recentActivity } = data;
 
   return (
-    <div className="flex flex-col gap-8">
+    <div className="flex flex-col gap-6">
       <div className="flex flex-wrap items-center justify-between gap-4">
         <h1 className="text-2xl font-semibold">Overview</h1>
         <Button asChild>
@@ -160,7 +205,7 @@ function OverviewContent() {
         </Button>
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         <Stat
           label="Events"
           value={events.total}
@@ -171,50 +216,34 @@ function OverviewContent() {
         <Stat label="Check-ins" value={attendance.checkedIn} />
       </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Registrations</CardTitle>
-          <CardDescription>New registrations in the last 30 days.</CardDescription>
-        </CardHeader>
-        <CardContent>
-          {totalRegistrations === 0 ? (
-            <p className="py-10 text-center text-sm text-muted-foreground">No registrations yet.</p>
-          ) : (
-            <TrendChart
-              data={timeseries}
-              dataKey="registrations"
-              label="Registrations"
-              color="var(--chart-1)"
-            />
-          )}
-        </CardContent>
-      </Card>
+      <TrendCard
+        headline={formatInteger(deltas.registrations.current)}
+        description="Registrations in the last 30 days"
+        deltaPct={deltas.registrations.pct}
+        data={timeseries}
+        dataKey="registrations"
+        color="var(--chart-1)"
+      />
 
       <section className="flex flex-col gap-4">
         <h2 className="text-lg font-medium">Sales</h2>
-        <div className="grid gap-4 sm:grid-cols-3">
+        <div className="grid gap-4 md:grid-cols-3">
           <Stat label="Revenue" value={formatMoney(sales.revenueCents, sales.currency)} />
           <Stat label="Orders" value={sales.orders} />
           <Stat label="Tickets sold" value={sales.ticketsSold} />
         </div>
         {sales.revenueCents > 0 ? (
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">Revenue</CardTitle>
-              <CardDescription>Revenue in the last 30 days.</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <TrendChart
-                data={timeseries.map((d) => ({
-                  date: d.date,
-                  revenue: Math.round(d.revenueCents / 100),
-                }))}
-                dataKey="revenue"
-                label="Revenue"
-                color="var(--chart-2)"
-              />
-            </CardContent>
-          </Card>
+          <TrendCard
+            headline={formatMoney(deltas.revenue.current, sales.currency)}
+            description="Revenue in the last 30 days"
+            deltaPct={deltas.revenue.pct}
+            data={timeseries.map((d) => ({
+              date: d.date,
+              revenue: Math.round(d.revenueCents / 100),
+            }))}
+            dataKey="revenue"
+            color="var(--chart-2)"
+          />
         ) : (
           <p className="text-sm text-muted-foreground">
             No sales yet &mdash; online payments are coming soon.
@@ -222,7 +251,7 @@ function OverviewContent() {
         )}
       </section>
 
-      <div className="grid gap-6 lg:grid-cols-2">
+      <div className="grid gap-4 lg:grid-cols-2">
         <Card>
           <CardHeader>
             <CardTitle className="text-base">Upcoming events</CardTitle>
@@ -308,7 +337,7 @@ function Stat({
     <Card>
       <CardHeader>
         <CardDescription>{label}</CardDescription>
-        <CardTitle className="text-3xl tabular-nums">{value}</CardTitle>
+        <CardTitle className="font-mono text-3xl tabular-nums">{value}</CardTitle>
       </CardHeader>
       {sub && <CardContent className="text-xs text-muted-foreground">{sub}</CardContent>}
     </Card>
