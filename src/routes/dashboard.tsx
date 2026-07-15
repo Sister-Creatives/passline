@@ -225,6 +225,18 @@ function OverviewContent() {
         </Button>
       </div>
 
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
+        <Stat
+          label="Events"
+          value={events.total}
+          sub={`${events.published} published · ${events.draft} draft`}
+        />
+        <Stat label="Upcoming" value={events.upcoming} />
+        <Stat label="Attendees" value={attendance.attendees} />
+        <Stat label="Orders" value={sales.orders} />
+        <Stat label="Tickets sold" value={sales.ticketsSold} />
+      </div>
+
       <MetricChartCard
         headline={formatInteger(deltas.registrations.current)}
         description="Registrations · last 30 days"
@@ -258,18 +270,6 @@ function OverviewContent() {
           isEmpty={sales.revenueCents === 0}
           emptyLabel="No sales yet — online payments are coming soon."
         />
-      </div>
-
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
-        <Stat
-          label="Events"
-          value={events.total}
-          sub={`${events.published} published · ${events.draft} draft`}
-        />
-        <Stat label="Upcoming" value={events.upcoming} />
-        <Stat label="Attendees" value={attendance.attendees} />
-        <Stat label="Orders" value={sales.orders} />
-        <Stat label="Tickets sold" value={sales.ticketsSold} />
       </div>
 
       <div className="grid gap-3 lg:grid-cols-2">
