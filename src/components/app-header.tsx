@@ -35,7 +35,12 @@ export function AppHeader() {
       </div>
 
       <div className="ml-auto flex items-center gap-0.5">
-        <ThemeSwitcher />
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <ThemeSwitcher />
+          </TooltipTrigger>
+          <TooltipContent>Toggle theme</TooltipContent>
+        </Tooltip>
         <Tooltip>
           <TooltipTrigger asChild>
             <Button

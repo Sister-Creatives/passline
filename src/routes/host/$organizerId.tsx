@@ -113,7 +113,7 @@ function HostDirectoryContent({ organizerId }: { organizerId: Id<"organizers"> }
           {profile.image && <AvatarImage src={profile.image} alt={profile.name} />}
           <AvatarFallback>{initials(profile.name)}</AvatarFallback>
         </Avatar>
-        <h1 className="text-2xl font-semibold">{profile.name}</h1>
+        <h1 className="text-2xl font-semibold sm:text-3xl">{profile.name}</h1>
       </div>
 
       {events.length === 0 ? (

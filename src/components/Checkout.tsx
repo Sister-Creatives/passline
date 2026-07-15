@@ -164,12 +164,12 @@ export function Checkout({ event }: { event: Doc<"events"> }) {
                   </div>
                   {isFree ? (
                     <div className="flex items-center gap-2">
-                      <Button type="button" variant="outline" size="icon-sm" aria-label="Decrease"
+                      <Button type="button" variant="outline" size="icon-sm" aria-label={`Decrease quantity for ${t.name}`}
                         disabled={n <= 0} onClick={() => setQty(t._id, Math.max(0, n - 1))}>
                         <Minus />
                       </Button>
                       <span className="w-6 text-center tabular-nums">{n}</span>
-                      <Button type="button" variant="outline" size="icon-sm" aria-label="Increase"
+                      <Button type="button" variant="outline" size="icon-sm" aria-label={`Increase quantity for ${t.name}`}
                         disabled={soldOut || n >= max} onClick={() => setQty(t._id, n + 1)}>
                         <Plus />
                       </Button>
@@ -201,12 +201,13 @@ export function Checkout({ event }: { event: Doc<"events"> }) {
             <div className="grid gap-3">
               {questions.map((q) => (
                 <div key={q._id} className="grid gap-1.5">
-                  <Label>
+                  <Label htmlFor={q.kind === "checkbox" ? undefined : `q-${q._id}`}>
                     {q.label}
                     {q.required && <span className="text-destructive"> *</span>}
                   </Label>
                   {q.kind === "text" && (
                     <Textarea
+                      id={`q-${q._id}`}
                       value={answers[q._id] ?? ""}
                       onChange={(e) => setAnswers((a) => ({ ...a, [q._id]: e.target.value }))}
                     />
@@ -216,7 +217,7 @@ export function Checkout({ event }: { event: Doc<"events"> }) {
                       value={answers[q._id] ?? ""}
                       onValueChange={(val) => setAnswers((a) => ({ ...a, [q._id]: val }))}
                     >
-                      <SelectTrigger><SelectValue placeholder="Choose an option" /></SelectTrigger>
+                      <SelectTrigger id={`q-${q._id}`}><SelectValue placeholder="Choose an option" /></SelectTrigger>
                       <SelectContent>
                         {(q.options ?? []).map((opt) => (
                           <SelectItem key={opt} value={opt}>{opt}</SelectItem>

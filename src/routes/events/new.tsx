@@ -30,7 +30,7 @@ function NewEventPage() {
         </p>
         <Card className="mt-6">
           <CardHeader>
-            <CardTitle className="text-base">Event basics</CardTitle>
+            <CardTitle>Event basics</CardTitle>
             <CardDescription>
               This creates a draft. Nothing goes public until you publish from the builder.
             </CardDescription>

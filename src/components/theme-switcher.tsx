@@ -19,7 +19,7 @@ export function ThemeSwitcher() {
 			variant="ghost"
 		>
 			<svg
-				className="size-4.5"
+				className="size-4"
 				fill="none"
 				height="24"
 				stroke="currentColor"

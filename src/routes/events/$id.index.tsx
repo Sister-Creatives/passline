@@ -54,6 +54,11 @@ const STATUS_LABEL: Record<string, string> = {
   cancelled: "Cancelled",
 };
 
+const EVENT_STATUS_LABEL: Record<string, string> = {
+  draft: "Draft",
+  published: "Published",
+};
+
 function EventManagePage() {
   const { id } = Route.useParams();
   const eventId = id as Id<"events">;
@@ -137,7 +142,7 @@ function EventManageContent({ eventId }: { eventId: Id<"events"> }) {
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div>
             <h1 className="text-2xl font-semibold">{event.title}</h1>
-            <Badge variant={isPublished ? "default" : "secondary"} className="mt-2">{event.status}</Badge>
+            <Badge variant={isPublished ? "default" : "secondary"} className="mt-2">{EVENT_STATUS_LABEL[event.status] ?? event.status}</Badge>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <Button asChild variant="outline" size="sm">
@@ -233,7 +238,14 @@ function DetailsSection({ event, seatsTaken }: { event: EventWithRsvps["event"];
           <span className="font-medium">Capacity</span>
           <span className="text-muted-foreground">{seatsTaken} / {event.capacity} seats taken</span>
         </div>
-        <div className="mt-2 h-2 w-full overflow-hidden rounded-full bg-muted">
+        <div
+          className="mt-2 h-2 w-full overflow-hidden rounded-full bg-muted"
+          role="progressbar"
+          aria-valuenow={Math.round(capacityPercent)}
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-label="Capacity"
+        >
           <div className="h-full rounded-full bg-primary transition-all" style={{ width: `${capacityPercent}%` }} />
         </div>
       </div>

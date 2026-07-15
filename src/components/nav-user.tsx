@@ -22,7 +22,7 @@ export function NavUser() {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <button className="flex w-full items-center gap-2 rounded-md p-1 text-left hover:bg-sidebar-accent">
+        <button className="flex w-full items-center gap-2 rounded-md p-1 text-left hover:bg-sidebar-accent focus-visible:ring-2 focus-visible:ring-sidebar-ring focus-visible:outline-hidden">
           <Avatar className="size-8">
             {me?.image ? <AvatarImage src={me.image} /> : null}
             <AvatarFallback>{name.charAt(0).toUpperCase()}</AvatarFallback>

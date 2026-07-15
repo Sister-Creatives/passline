@@ -282,7 +282,7 @@ export function HostProfilesPanel() {
               <TableCell className="max-w-xs truncate text-muted-foreground">
                 {profile.bio ?? "—"}
               </TableCell>
-              <TableCell className="text-muted-foreground">
+              <TableCell className="max-w-xs truncate text-muted-foreground">
                 {profile.websiteUrl ?? "—"}
               </TableCell>
               <TableCell className="text-right">

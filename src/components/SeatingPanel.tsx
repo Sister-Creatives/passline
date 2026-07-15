@@ -265,7 +265,7 @@ export function SeatingPanel({ eventId }: { eventId: Id<"events"> }) {
   async function handleRemove(section: string) {
     try {
       await removeSection({ eventId, section });
-      toast.success("Section removed");
+      toast.success("Section deleted");
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Failed to remove section");
     }
@@ -331,7 +331,7 @@ export function SeatingPanel({ eventId }: { eventId: Id<"events"> }) {
                     <Button
                       variant="ghost"
                       size="icon-sm"
-                      aria-label="Remove section"
+                      aria-label="Delete section"
                       disabled={soldCount > 0}
                     >
                       <Trash2 />
@@ -339,7 +339,7 @@ export function SeatingPanel({ eventId }: { eventId: Id<"events"> }) {
                   </AlertDialogTrigger>
                   <AlertDialogContent>
                     <AlertDialogHeader>
-                      <AlertDialogTitle>Remove &ldquo;{section}&rdquo;?</AlertDialogTitle>
+                      <AlertDialogTitle>Delete &ldquo;{section}&rdquo;?</AlertDialogTitle>
                       <AlertDialogDescription>
                         This deletes all {sectionSeats.length} seats in this section. This cannot
                         be undone.
@@ -351,7 +351,7 @@ export function SeatingPanel({ eventId }: { eventId: Id<"events"> }) {
                         variant="destructive"
                         onClick={() => handleRemove(section)}
                       >
-                        Remove
+                        Delete
                       </AlertDialogAction>
                     </AlertDialogFooter>
                   </AlertDialogContent>

@@ -258,7 +258,7 @@ export function SessionsPanel({ eventId }: { eventId: Id<"events"> }) {
           <TableRow>
             <TableHead>Date range</TableHead>
             <TableHead>Label</TableHead>
-            <TableHead className="text-right">Capacity</TableHead>
+            <TableHead className="text-right">Cap</TableHead>
             <TableHead className="text-right">Sold</TableHead>
             <TableHead className="text-right">Remaining</TableHead>
             <TableHead className="text-right">Actions</TableHead>

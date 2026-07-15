@@ -151,7 +151,7 @@ function OrderPageContent({ token }: { token: string }) {
         </div>
       )}
 
-      <h2 className="mt-8 text-lg font-medium">Tickets</h2>
+      <h2 className="mt-8 text-lg font-semibold">Tickets</h2>
       <div className="mt-4 flex flex-col gap-3">
         {tickets.length === 0 ? (
           <p className="text-sm text-muted-foreground">No tickets on this order yet.</p>
@@ -168,7 +168,7 @@ function TicketRow({ token, ticket }: { token: string; ticket: Doc<"tickets"> })
   return (
     <Card>
       <CardContent className="flex items-center justify-between gap-4">
-        <div>
+        <div className="min-w-0">
           <div className="flex items-center gap-2">
             <Badge variant={TICKET_STATUS_VARIANT[ticket.status]}>
               {TICKET_STATUS_LABEL[ticket.status]}

@@ -68,7 +68,7 @@ export function AuditLogPanel({ eventId }: { eventId: Id<"events"> }) {
             <TableCell>
               <Badge variant="secondary">{entry.action}</Badge>
             </TableCell>
-            <TableCell>{entry.summary}</TableCell>
+            <TableCell className="max-w-md whitespace-normal">{entry.summary}</TableCell>
           </TableRow>
         ))}
       </TableBody>
