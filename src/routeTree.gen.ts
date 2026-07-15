@@ -9,8 +9,11 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as ReportsRouteImport } from './routes/reports'
+import { Route as MarketingRouteImport } from './routes/marketing'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as DashboardRouteImport } from './routes/dashboard'
+import { Route as AttendeesRouteImport } from './routes/attendees'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as EventsIndexRouteImport } from './routes/events/index'
 import { Route as SettingsTeamRouteImport } from './routes/settings/team'
@@ -29,6 +32,16 @@ import { Route as EventsIdScanRouteImport } from './routes/events/$id.scan'
 import { Route as EventsIdDoorRouteImport } from './routes/events/$id.door'
 import { Route as ESlugWatchRouteImport } from './routes/e/$slug.watch'
 
+const ReportsRoute = ReportsRouteImport.update({
+  id: '/reports',
+  path: '/reports',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const MarketingRoute = MarketingRouteImport.update({
+  id: '/marketing',
+  path: '/marketing',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const LoginRoute = LoginRouteImport.update({
   id: '/login',
   path: '/login',
@@ -37,6 +50,11 @@ const LoginRoute = LoginRouteImport.update({
 const DashboardRoute = DashboardRouteImport.update({
   id: '/dashboard',
   path: '/dashboard',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AttendeesRoute = AttendeesRouteImport.update({
+  id: '/attendees',
+  path: '/attendees',
   getParentRoute: () => rootRouteImport,
 } as any)
 const IndexRoute = IndexRouteImport.update({
@@ -127,8 +145,11 @@ const ESlugWatchRoute = ESlugWatchRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/attendees': typeof AttendeesRoute
   '/dashboard': typeof DashboardRoute
   '/login': typeof LoginRoute
+  '/marketing': typeof MarketingRoute
+  '/reports': typeof ReportsRoute
   '/claim/$token': typeof ClaimTokenRoute
   '/e/$slug': typeof ESlugRouteWithChildren
   '/events/$id': typeof EventsIdRouteWithChildren
@@ -148,8 +169,11 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/attendees': typeof AttendeesRoute
   '/dashboard': typeof DashboardRoute
   '/login': typeof LoginRoute
+  '/marketing': typeof MarketingRoute
+  '/reports': typeof ReportsRoute
   '/claim/$token': typeof ClaimTokenRoute
   '/e/$slug': typeof ESlugRouteWithChildren
   '/events/new': typeof EventsNewRoute
@@ -169,8 +193,11 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/attendees': typeof AttendeesRoute
   '/dashboard': typeof DashboardRoute
   '/login': typeof LoginRoute
+  '/marketing': typeof MarketingRoute
+  '/reports': typeof ReportsRoute
   '/claim/$token': typeof ClaimTokenRoute
   '/e/$slug': typeof ESlugRouteWithChildren
   '/events/$id': typeof EventsIdRouteWithChildren
@@ -192,8 +219,11 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/attendees'
     | '/dashboard'
     | '/login'
+    | '/marketing'
+    | '/reports'
     | '/claim/$token'
     | '/e/$slug'
     | '/events/$id'
@@ -213,8 +243,11 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/attendees'
     | '/dashboard'
     | '/login'
+    | '/marketing'
+    | '/reports'
     | '/claim/$token'
     | '/e/$slug'
     | '/events/new'
@@ -233,8 +266,11 @@ export interface FileRouteTypes {
   id:
     | '__root__'
     | '/'
+    | '/attendees'
     | '/dashboard'
     | '/login'
+    | '/marketing'
+    | '/reports'
     | '/claim/$token'
     | '/e/$slug'
     | '/events/$id'
@@ -255,8 +291,11 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  AttendeesRoute: typeof AttendeesRoute
   DashboardRoute: typeof DashboardRoute
   LoginRoute: typeof LoginRoute
+  MarketingRoute: typeof MarketingRoute
+  ReportsRoute: typeof ReportsRoute
   ClaimTokenRoute: typeof ClaimTokenRoute
   ESlugRoute: typeof ESlugRouteWithChildren
   EventsIdRoute: typeof EventsIdRouteWithChildren
@@ -273,6 +312,20 @@ export interface RootRouteChildren {
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/reports': {
+      id: '/reports'
+      path: '/reports'
+      fullPath: '/reports'
+      preLoaderRoute: typeof ReportsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/marketing': {
+      id: '/marketing'
+      path: '/marketing'
+      fullPath: '/marketing'
+      preLoaderRoute: typeof MarketingRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/login': {
       id: '/login'
       path: '/login'
@@ -285,6 +338,13 @@ declare module '@tanstack/react-router' {
       path: '/dashboard'
       fullPath: '/dashboard'
       preLoaderRoute: typeof DashboardRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/attendees': {
+      id: '/attendees'
+      path: '/attendees'
+      fullPath: '/attendees'
+      preLoaderRoute: typeof AttendeesRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/': {
@@ -437,8 +497,11 @@ const EventsIdRouteWithChildren = EventsIdRoute._addFileChildren(
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  AttendeesRoute: AttendeesRoute,
   DashboardRoute: DashboardRoute,
   LoginRoute: LoginRoute,
+  MarketingRoute: MarketingRoute,
+  ReportsRoute: ReportsRoute,
   ClaimTokenRoute: ClaimTokenRoute,
   ESlugRoute: ESlugRouteWithChildren,
   EventsIdRoute: EventsIdRouteWithChildren,
