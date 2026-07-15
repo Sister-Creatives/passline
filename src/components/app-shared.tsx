@@ -11,6 +11,7 @@ import {
   UsersIcon,
   PlugIcon,
   PlusIcon,
+  IdCardIcon,
 } from "lucide-react";
 
 export type SidebarNavItem = { title: string; path: string; icon?: ReactNode; isActive?: boolean };
@@ -39,6 +40,7 @@ export const settingsGroup = {
     { title: "Organization profile", path: "/settings/profile", icon: <UserIcon /> },
     { title: "Payments", path: "/settings/payments", icon: <CreditCardIcon /> },
     { title: "Team", path: "/settings/team", icon: <UsersIcon /> },
+    { title: "Host profiles", path: "/settings/host-profiles", icon: <IdCardIcon /> },
     { title: "API & webhooks", path: "/settings/api-webhooks", icon: <PlugIcon /> },
   ] satisfies SidebarNavItem[],
 };

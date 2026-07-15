@@ -19,6 +19,7 @@ import { Route as EventsIndexRouteImport } from './routes/events/index'
 import { Route as SettingsTeamRouteImport } from './routes/settings/team'
 import { Route as SettingsProfileRouteImport } from './routes/settings/profile'
 import { Route as SettingsPaymentsRouteImport } from './routes/settings/payments'
+import { Route as SettingsHostProfilesRouteImport } from './routes/settings/host-profiles'
 import { Route as SettingsApiWebhooksRouteImport } from './routes/settings/api-webhooks'
 import { Route as RsvpTokenRouteImport } from './routes/rsvp/$token'
 import { Route as OrdersTokenRouteImport } from './routes/orders/$token'
@@ -80,6 +81,11 @@ const SettingsProfileRoute = SettingsProfileRouteImport.update({
 const SettingsPaymentsRoute = SettingsPaymentsRouteImport.update({
   id: '/settings/payments',
   path: '/settings/payments',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SettingsHostProfilesRoute = SettingsHostProfilesRouteImport.update({
+  id: '/settings/host-profiles',
+  path: '/settings/host-profiles',
   getParentRoute: () => rootRouteImport,
 } as any)
 const SettingsApiWebhooksRoute = SettingsApiWebhooksRouteImport.update({
@@ -158,6 +164,7 @@ export interface FileRoutesByFullPath {
   '/orders/$token': typeof OrdersTokenRoute
   '/rsvp/$token': typeof RsvpTokenRoute
   '/settings/api-webhooks': typeof SettingsApiWebhooksRoute
+  '/settings/host-profiles': typeof SettingsHostProfilesRoute
   '/settings/payments': typeof SettingsPaymentsRoute
   '/settings/profile': typeof SettingsProfileRoute
   '/settings/team': typeof SettingsTeamRoute
@@ -181,6 +188,7 @@ export interface FileRoutesByTo {
   '/orders/$token': typeof OrdersTokenRoute
   '/rsvp/$token': typeof RsvpTokenRoute
   '/settings/api-webhooks': typeof SettingsApiWebhooksRoute
+  '/settings/host-profiles': typeof SettingsHostProfilesRoute
   '/settings/payments': typeof SettingsPaymentsRoute
   '/settings/profile': typeof SettingsProfileRoute
   '/settings/team': typeof SettingsTeamRoute
@@ -206,6 +214,7 @@ export interface FileRoutesById {
   '/orders/$token': typeof OrdersTokenRoute
   '/rsvp/$token': typeof RsvpTokenRoute
   '/settings/api-webhooks': typeof SettingsApiWebhooksRoute
+  '/settings/host-profiles': typeof SettingsHostProfilesRoute
   '/settings/payments': typeof SettingsPaymentsRoute
   '/settings/profile': typeof SettingsProfileRoute
   '/settings/team': typeof SettingsTeamRoute
@@ -232,6 +241,7 @@ export interface FileRouteTypes {
     | '/orders/$token'
     | '/rsvp/$token'
     | '/settings/api-webhooks'
+    | '/settings/host-profiles'
     | '/settings/payments'
     | '/settings/profile'
     | '/settings/team'
@@ -255,6 +265,7 @@ export interface FileRouteTypes {
     | '/orders/$token'
     | '/rsvp/$token'
     | '/settings/api-webhooks'
+    | '/settings/host-profiles'
     | '/settings/payments'
     | '/settings/profile'
     | '/settings/team'
@@ -279,6 +290,7 @@ export interface FileRouteTypes {
     | '/orders/$token'
     | '/rsvp/$token'
     | '/settings/api-webhooks'
+    | '/settings/host-profiles'
     | '/settings/payments'
     | '/settings/profile'
     | '/settings/team'
@@ -304,6 +316,7 @@ export interface RootRouteChildren {
   OrdersTokenRoute: typeof OrdersTokenRoute
   RsvpTokenRoute: typeof RsvpTokenRoute
   SettingsApiWebhooksRoute: typeof SettingsApiWebhooksRoute
+  SettingsHostProfilesRoute: typeof SettingsHostProfilesRoute
   SettingsPaymentsRoute: typeof SettingsPaymentsRoute
   SettingsProfileRoute: typeof SettingsProfileRoute
   SettingsTeamRoute: typeof SettingsTeamRoute
@@ -380,6 +393,13 @@ declare module '@tanstack/react-router' {
       path: '/settings/payments'
       fullPath: '/settings/payments'
       preLoaderRoute: typeof SettingsPaymentsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/settings/host-profiles': {
+      id: '/settings/host-profiles'
+      path: '/settings/host-profiles'
+      fullPath: '/settings/host-profiles'
+      preLoaderRoute: typeof SettingsHostProfilesRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/settings/api-webhooks': {
@@ -510,6 +530,7 @@ const rootRouteChildren: RootRouteChildren = {
   OrdersTokenRoute: OrdersTokenRoute,
   RsvpTokenRoute: RsvpTokenRoute,
   SettingsApiWebhooksRoute: SettingsApiWebhooksRoute,
+  SettingsHostProfilesRoute: SettingsHostProfilesRoute,
   SettingsPaymentsRoute: SettingsPaymentsRoute,
   SettingsProfileRoute: SettingsProfileRoute,
   SettingsTeamRoute: SettingsTeamRoute,
