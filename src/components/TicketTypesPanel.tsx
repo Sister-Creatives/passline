@@ -17,12 +17,13 @@ import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import {
-  Sheet,
-  SheetContent,
-  SheetHeader,
-  SheetTitle,
-  SheetTrigger,
-} from "@/components/ui/sheet";
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 import {
   Table,
   TableBody,
@@ -383,19 +384,22 @@ export function TicketTypesPanel({
   const header = (
     <div className="mb-4 flex items-center justify-between">
       <h2 className="text-lg font-medium">Ticket types</h2>
-      <Sheet open={creating} onOpenChange={setCreating}>
-        <SheetTrigger asChild>
+      <Dialog open={creating} onOpenChange={setCreating}>
+        <DialogTrigger asChild>
           <Button size="sm">
             <Plus /> New ticket type
           </Button>
-        </SheetTrigger>
-        <SheetContent>
-          <SheetHeader>
-            <SheetTitle>New ticket type</SheetTitle>
-          </SheetHeader>
+        </DialogTrigger>
+        <DialogContent className="sm:max-w-lg max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>New ticket type</DialogTitle>
+            <DialogDescription>
+              Configure pricing, capacity, and visibility for this ticket type.
+            </DialogDescription>
+          </DialogHeader>
           <TicketTypeEditor eventId={eventId} onDone={() => setCreating(false)} />
-        </SheetContent>
-      </Sheet>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 
@@ -472,26 +476,29 @@ export function TicketTypesPanel({
                   >
                     <ChevronDown />
                   </Button>
-                  <Sheet
+                  <Dialog
                     open={editing?._id === tt._id}
                     onOpenChange={(open) => setEditing(open ? tt : null)}
                   >
-                    <SheetTrigger asChild>
+                    <DialogTrigger asChild>
                       <Button variant="outline" size="sm">
                         Edit
                       </Button>
-                    </SheetTrigger>
-                    <SheetContent>
-                      <SheetHeader>
-                        <SheetTitle>Edit ticket type</SheetTitle>
-                      </SheetHeader>
+                    </DialogTrigger>
+                    <DialogContent className="sm:max-w-lg max-h-[85vh] overflow-y-auto">
+                      <DialogHeader>
+                        <DialogTitle>Edit ticket type</DialogTitle>
+                        <DialogDescription>
+                          Update pricing, capacity, and visibility for this ticket type.
+                        </DialogDescription>
+                      </DialogHeader>
                       <TicketTypeEditor
                         eventId={eventId}
                         ticketType={tt}
                         onDone={() => setEditing(null)}
                       />
-                    </SheetContent>
-                  </Sheet>
+                    </DialogContent>
+                  </Dialog>
                   <AlertDialog>
                     <AlertDialogTrigger asChild>
                       <Button variant="ghost" size="icon-sm" aria-label="Delete">

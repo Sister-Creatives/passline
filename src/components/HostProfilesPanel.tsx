@@ -15,12 +15,13 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
-  Sheet,
-  SheetContent,
-  SheetHeader,
-  SheetTitle,
-  SheetTrigger,
-} from "@/components/ui/sheet";
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 import {
   Table,
   TableBody,
@@ -195,7 +196,7 @@ function HostProfileEditor({
 
 /**
  * Host profiles settings panel: a Table of the organizer's reusable host
- * profiles (name, bio preview, website), a create Sheet, per-row edit Sheet,
+ * profiles (name, bio preview, website), a create Dialog, per-row edit Dialog,
  * and AlertDialog-confirmed removal. Mirrors TicketTypesPanel/
  * CheckoutQuestionsPanel's Skeleton/Empty/Table shape.
  */
@@ -231,19 +232,22 @@ export function HostProfilesPanel() {
   const header = (
     <div className="mb-4 flex items-center justify-between">
       <h2 className="text-lg font-medium">Host profiles</h2>
-      <Sheet open={creating} onOpenChange={setCreating}>
-        <SheetTrigger asChild>
+      <Dialog open={creating} onOpenChange={setCreating}>
+        <DialogTrigger asChild>
           <Button size="sm">
             <Plus /> New host profile
           </Button>
-        </SheetTrigger>
-        <SheetContent>
-          <SheetHeader>
-            <SheetTitle>New host profile</SheetTitle>
-          </SheetHeader>
+        </DialogTrigger>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>New host profile</DialogTitle>
+            <DialogDescription>
+              Create a reusable host profile to attach to your events.
+            </DialogDescription>
+          </DialogHeader>
           <HostProfileEditor onDone={() => setCreating(false)} />
-        </SheetContent>
-      </Sheet>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 
@@ -287,25 +291,26 @@ export function HostProfilesPanel() {
               </TableCell>
               <TableCell className="text-right">
                 <div className="flex items-center justify-end gap-1">
-                  <Sheet
+                  <Dialog
                     open={editing?._id === profile._id}
                     onOpenChange={(open) => setEditing(open ? profile : null)}
                   >
-                    <SheetTrigger asChild>
+                    <DialogTrigger asChild>
                       <Button variant="outline" size="sm">
                         Edit
                       </Button>
-                    </SheetTrigger>
-                    <SheetContent>
-                      <SheetHeader>
-                        <SheetTitle>Edit host profile</SheetTitle>
-                      </SheetHeader>
+                    </DialogTrigger>
+                    <DialogContent className="sm:max-w-lg">
+                      <DialogHeader>
+                        <DialogTitle>Edit host profile</DialogTitle>
+                        <DialogDescription>Update this host profile's details.</DialogDescription>
+                      </DialogHeader>
                       <HostProfileEditor
                         hostProfile={profile}
                         onDone={() => setEditing(null)}
                       />
-                    </SheetContent>
-                  </Sheet>
+                    </DialogContent>
+                  </Dialog>
                   <AlertDialog>
                     <AlertDialogTrigger asChild>
                       <Button variant="ghost" size="icon-sm" aria-label="Delete">
