@@ -23,6 +23,11 @@ import {
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import {
+  InputGroup,
+  InputGroupAddon,
+  InputGroupInput,
+} from "@/components/ui/input-group";
+import {
   Select,
   SelectContent,
   SelectGroup,
@@ -303,15 +308,12 @@ export function EventForm({ event, onDone }: EventFormProps) {
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>Event page URL</FormLabel>
-                  <FormControl>
-                    <div className="flex h-8 items-center rounded-lg border border-input bg-transparent transition-colors focus-within:border-ring focus-within:ring-3 focus-within:ring-ring/50">
-                      <span className="pl-2.5 text-sm text-muted-foreground">/e/</span>
-                      <Input
-                        className="h-full flex-1 border-0 bg-transparent pl-1 shadow-none focus-visible:ring-0"
-                        {...field}
-                      />
-                    </div>
-                  </FormControl>
+                  <InputGroup>
+                    <InputGroupAddon align="inline-start">/e/</InputGroupAddon>
+                    <FormControl>
+                      <InputGroupInput placeholder="my-event" {...field} />
+                    </FormControl>
+                  </InputGroup>
                   <FormMessage />
                 </FormItem>
               )}
