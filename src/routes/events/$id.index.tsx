@@ -184,7 +184,7 @@ function ContinueFooter({ eventId, section }: { eventId: Id<"events">; section: 
   if (!next) return null;
 
   return (
-    <div className="sticky bottom-0 mt-6 flex justify-end border-t bg-background py-4">
+    <div className="sticky bottom-0 mt-6 flex justify-end border-t bg-muted py-4 dark:bg-background">
       <Button asChild>
         <Link to="/events/$id" params={{ id: eventId }} search={{ section: next.key }}>
           Continue
