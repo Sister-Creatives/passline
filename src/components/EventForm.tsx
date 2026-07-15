@@ -3,12 +3,14 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useMutation } from "convex/react";
-import { useNavigate } from "@tanstack/react-router";
+import { useQuery } from "@tanstack/react-query";
+import { convexQuery } from "@convex-dev/react-query";
+import { Link, useNavigate } from "@tanstack/react-router";
 import { LoaderCircle, X } from "lucide-react";
 import { toast } from "sonner";
 
 import { api } from "../../convex/_generated/api";
-import type { Doc } from "../../convex/_generated/dataModel";
+import type { Doc, Id } from "../../convex/_generated/dataModel";
 import { EVENT_TYPES, EVENT_CATEGORIES, isValidSlug } from "../../convex/lib/eventTaxonomy";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -75,6 +77,7 @@ function buildEventFormSchema(isEditMode: boolean) {
       currency: z.string(),
       eventType: z.string(),
       eventCategory: z.string(),
+      hostProfileId: z.string(),
       sharingDescription: z
         .string()
         .max(MAX_SHARING_DESCRIPTION_LENGTH, "Sharing description must be 160 characters or fewer"),
@@ -133,6 +136,7 @@ export function EventForm({ event, onDone }: EventFormProps) {
   const updateEvent = useMutation(api.events.updateEvent);
   const isEditMode = event !== undefined;
   const [keywordInput, setKeywordInput] = useState("");
+  const { data: hostProfiles } = useQuery(convexQuery(api.hostProfiles.listMine, {}));
 
   const form = useForm<EventFormValues>({
     resolver: zodResolver(buildEventFormSchema(isEditMode)),
@@ -148,6 +152,7 @@ export function EventForm({ event, onDone }: EventFormProps) {
           currency: event.currency ?? "USD",
           eventType: event.eventType ?? NONE_VALUE,
           eventCategory: event.eventCategory ?? NONE_VALUE,
+          hostProfileId: event.hostProfileId ?? NONE_VALUE,
           sharingDescription: event.sharingDescription ?? "",
           keywords: event.keywords ?? [],
         }
@@ -162,6 +167,7 @@ export function EventForm({ event, onDone }: EventFormProps) {
           currency: "USD",
           eventType: NONE_VALUE,
           eventCategory: NONE_VALUE,
+          hostProfileId: NONE_VALUE,
           sharingDescription: "",
           keywords: [],
         },
@@ -194,6 +200,8 @@ export function EventForm({ event, onDone }: EventFormProps) {
           currency: values.currency,
           eventType: values.eventType === NONE_VALUE ? "" : values.eventType,
           eventCategory: values.eventCategory === NONE_VALUE ? "" : values.eventCategory,
+          hostProfileId:
+            values.hostProfileId === NONE_VALUE ? null : (values.hostProfileId as Id<"hostProfiles">),
           keywords: values.keywords,
           sharingDescription: values.sharingDescription,
         });
@@ -464,6 +472,41 @@ export function EventForm({ event, onDone }: EventFormProps) {
                       Add
                     </Button>
                   </div>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name="hostProfileId"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Host profile</FormLabel>
+                  <Select value={field.value} onValueChange={field.onChange}>
+                    <FormControl>
+                      <SelectTrigger className="w-full">
+                        <SelectValue />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent>
+                      <SelectGroup>
+                        <SelectItem value={NONE_VALUE}>None</SelectItem>
+                        {(hostProfiles ?? []).map((profile) => (
+                          <SelectItem key={profile._id} value={profile._id}>
+                            {profile.name}
+                          </SelectItem>
+                        ))}
+                      </SelectGroup>
+                    </SelectContent>
+                  </Select>
+                  {hostProfiles?.length === 0 && (
+                    <p className="text-xs text-muted-foreground">
+                      <Link to="/settings/host-profiles" className="underline">
+                        Create a host profile in Settings
+                      </Link>{" "}
+                      to show a "Hosted by" block on your event page.
+                    </p>
+                  )}
                   <FormMessage />
                 </FormItem>
               )}

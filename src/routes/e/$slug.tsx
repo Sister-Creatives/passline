@@ -121,6 +121,9 @@ function EventDetails({ slug, event }: { slug: string; event: Doc<"events"> }) {
   const { data: ticketTypes } = useSuspenseQuery(
     convexQuery(api.ticketTypes.listPublicForEvent, { eventId: event._id }),
   );
+  const { data: host } = useSuspenseQuery(
+    convexQuery(api.hostProfiles.getForEvent, { eventId: event._id }),
+  );
   const content = rawContent as PublicEventContent | null;
   const isFull = publicState.seatsTaken >= publicState.capacity;
 
@@ -269,6 +272,34 @@ function EventDetails({ slug, event }: { slug: string; event: Doc<"events"> }) {
           {accessibilityNotes && (
             <p className="mt-3 text-sm whitespace-pre-line">{accessibilityNotes}</p>
           )}
+        </section>
+      )}
+
+      {host && (
+        <section className="mt-8">
+          <h2 className="text-lg font-semibold">Hosted by</h2>
+          <Card className="mt-3">
+            <CardContent className="flex gap-3">
+              <Avatar size="lg">
+                {host.logoUrl && <AvatarImage src={host.logoUrl} alt={host.name} />}
+                <AvatarFallback>{initials(host.name)}</AvatarFallback>
+              </Avatar>
+              <div>
+                <p className="text-sm font-medium">{host.name}</p>
+                {host.bio && <p className="mt-1 text-sm whitespace-pre-line">{host.bio}</p>}
+                {host.websiteUrl && (
+                  <a
+                    href={host.websiteUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="mt-1 inline-block text-sm text-muted-foreground underline"
+                  >
+                    {host.websiteUrl}
+                  </a>
+                )}
+              </div>
+            </CardContent>
+          </Card>
         </section>
       )}
 
