@@ -36,6 +36,10 @@ function zeroedOverview(now: number) {
     attendance: { attendees: 0, checkedIn: 0 },
     sales: { revenueCents: 0, orders: 0, ticketsSold: 0, currency: "USD" },
     timeseries: buildEmptyTimeseries(now),
+    deltas: {
+      registrations: { current: 0, previous: 0, pct: null as number | null },
+      revenue: { current: 0, previous: 0, pct: null as number | null },
+    },
     upcomingEvents: [] as never[],
     recentActivity: [] as never[],
   };
@@ -123,6 +127,35 @@ export const getOverview = query({
       if (bucket) bucket.revenueCents += o.payoutCents;
     }
 
+    // Period-over-period deltas: last 30 days vs the 30 days before it.
+    const windowMs = TIMESERIES_DAYS * MS_PER_DAY;
+    const currentStart = now - windowMs;
+    const prevStart = now - 2 * windowMs;
+    const inCurrent = (ms: number) => ms >= currentStart;
+    const inPrevious = (ms: number) => ms >= prevStart && ms < currentStart;
+    const regCurrent =
+      allRsvps.filter((r) => inCurrent(r._creationTime)).length +
+      allTickets.filter((t) => inCurrent(t._creationTime)).length;
+    const regPrevious =
+      allRsvps.filter((r) => inPrevious(r._creationTime)).length +
+      allTickets.filter((t) => inPrevious(t._creationTime)).length;
+    const revCurrent = paidOrders
+      .filter((o) => inCurrent(o.paidAt ?? o.createdAt))
+      .reduce((sum, o) => sum + o.payoutCents, 0);
+    const revPrevious = paidOrders
+      .filter((o) => inPrevious(o.paidAt ?? o.createdAt))
+      .reduce((sum, o) => sum + o.payoutCents, 0);
+    const pctChange = (current: number, previous: number): number | null =>
+      previous === 0 ? null : ((current - previous) / previous) * 100;
+    const deltas = {
+      registrations: {
+        current: regCurrent,
+        previous: regPrevious,
+        pct: pctChange(regCurrent, regPrevious),
+      },
+      revenue: { current: revCurrent, previous: revPrevious, pct: pctChange(revCurrent, revPrevious) },
+    };
+
     const upcomingSorted = upcomingEventDocs.slice().sort((a, b) => a.startsAt - b.startsAt).slice(0, UPCOMING_LIMIT);
     const upcomingEvents = await Promise.all(
       upcomingSorted.map(async (e) => ({
@@ -161,6 +194,7 @@ export const getOverview = query({
       attendance: { attendees, checkedIn },
       sales: { revenueCents, orders: paidOrders.length, ticketsSold, currency },
       timeseries,
+      deltas,
       upcomingEvents,
       recentActivity,
     };
