@@ -262,7 +262,7 @@ export function Checkout({ event }: { event: Doc<"events"> }) {
                         </FormLabel>
                         {q.kind === "text" && (
                           <FormControl>
-                            <Textarea {...field} />
+                            <Textarea {...field} value={field.value ?? ""} />
                           </FormControl>
                         )}
                         {q.kind === "select" && (

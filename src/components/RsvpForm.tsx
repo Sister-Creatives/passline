@@ -7,6 +7,7 @@ import { LoaderCircle } from "lucide-react";
 import { toast } from "sonner";
 
 import { api } from "../../convex/_generated/api";
+import { readableTextColor } from "@/lib/contrast";
 import { Button } from "@/components/ui/button";
 import {
   Form,
@@ -106,7 +107,15 @@ export function RsvpForm({ slug, isFull, ctaLabel, accentColor }: RsvpFormProps)
         <Button
           type="submit"
           disabled={isSubmitting}
-          style={!isFull && accentColor ? { backgroundColor: accentColor, borderColor: accentColor } : undefined}
+          style={
+            !isFull && accentColor
+              ? {
+                  backgroundColor: accentColor,
+                  borderColor: accentColor,
+                  color: readableTextColor(accentColor),
+                }
+              : undefined
+          }
         >
           {isSubmitting && <LoaderCircle className="animate-spin" />}
           {isFull ? "Join the waitlist" : (ctaLabel ?? "RSVP")}

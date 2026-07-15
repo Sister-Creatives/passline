@@ -484,7 +484,7 @@ function ApiKeysSection() {
                   {key.lastUsedAt ? new Date(key.lastUsedAt).toLocaleDateString() : "Never"}
                 </TableCell>
                 <TableCell>
-                  <Badge variant={revoked ? "outline" : "secondary"}>
+                  <Badge variant={revoked ? "outline" : "default"}>
                     {revoked ? "Revoked" : "Active"}
                   </Badge>
                 </TableCell>
@@ -568,7 +568,7 @@ function WebhooksSection() {
                 </div>
               </TableCell>
               <TableCell>
-                <Badge variant={webhook.active ? "secondary" : "outline"}>
+                <Badge variant={webhook.active ? "default" : "outline"}>
                   {webhook.active ? "Active" : "Inactive"}
                 </Badge>
               </TableCell>
