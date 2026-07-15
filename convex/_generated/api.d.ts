@@ -17,6 +17,7 @@ import type * as audit from "../audit.js";
 import type * as auth from "../auth.js";
 import type * as checkoutQuestions from "../checkoutQuestions.js";
 import type * as crons from "../crons.js";
+import type * as dashboard from "../dashboard.js";
 import type * as email from "../email.js";
 import type * as eventContent from "../eventContent.js";
 import type * as eventSessions from "../eventSessions.js";
@@ -60,6 +61,7 @@ declare const fullApi: ApiFromModules<{
   auth: typeof auth;
   checkoutQuestions: typeof checkoutQuestions;
   crons: typeof crons;
+  dashboard: typeof dashboard;
   email: typeof email;
   eventContent: typeof eventContent;
   eventSessions: typeof eventSessions;

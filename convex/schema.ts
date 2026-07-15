@@ -328,7 +328,9 @@ export default defineSchema({
     action: v.string(), // stable code, e.g. "event.published", "ticket_type.created"
     summary: v.string(), // human-readable, e.g. 'Created ticket type "Adult"'
     createdAt: v.number(),
-  }).index("by_event", ["eventId"]),
+  })
+    .index("by_event", ["eventId"])
+    .index("by_organizer", ["organizerId"]),
 
   hostProfiles: defineTable({
     organizerId: v.id("organizers"),
