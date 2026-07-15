@@ -21,6 +21,7 @@ import {
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
+import { Empty, EmptyHeader, EmptyTitle, EmptyDescription } from "@/components/ui/empty";
 
 // PUBLIC route: no AuthGuard. Anyone with the link can view a published
 // event and RSVP -- this is the attendee-facing surface, not the organizer's.
@@ -81,10 +82,14 @@ function EventPageContent({ slug }: { slug: string }) {
   if (!event) {
     return (
       <div className="mx-auto flex min-h-svh max-w-md flex-col items-center justify-center p-4 text-center">
-        <h1 className="text-2xl font-semibold">Event not found</h1>
-        <p className="mt-2 text-sm text-muted-foreground">
-          This event does not exist or is no longer published.
-        </p>
+        <Empty>
+          <EmptyHeader>
+            <EmptyTitle>Event not found</EmptyTitle>
+            <EmptyDescription>
+              This event does not exist or is no longer published.
+            </EmptyDescription>
+          </EmptyHeader>
+        </Empty>
       </div>
     );
   }

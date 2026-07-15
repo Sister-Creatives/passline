@@ -232,7 +232,7 @@ function DetailsSection({ event, seatsTaken }: { event: EventWithRsvps["event"];
   const capacityPercent = Math.min(100, (seatsTaken / event.capacity) * 100);
   return (
     <div className="flex max-w-2xl flex-col gap-6">
-      <h2 className="text-lg font-semibold">Event information</h2>
+      <h2 className="text-lg font-medium">Event information</h2>
       <div>
         <div className="flex items-center justify-between text-sm">
           <span className="font-medium">Capacity</span>
@@ -305,7 +305,25 @@ function AttendeesSection({
         attendees={confirmed}
         emptyMessage="No confirmed attendees yet."
         renderAction={(a: EventWithRsvps["confirmed"][number]) => (
-          <Button variant="outline" size="sm" onClick={() => handleCancel(a.token)}>Cancel</Button>
+          <AlertDialog>
+            <AlertDialogTrigger asChild>
+              <Button variant="outline" size="sm">Cancel</Button>
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Cancel this RSVP?</AlertDialogTitle>
+                <AlertDialogDescription>
+                  This frees the seat and cannot be undone.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                <AlertDialogAction variant="destructive" onClick={() => handleCancel(a.token)}>
+                  Cancel RSVP
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
         )}
       />
       <AttendeeTable title={`Pending claim (${pendingClaim.length})`} attendees={pendingClaim} emptyMessage="No one is currently claiming a seat." />

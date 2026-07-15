@@ -37,41 +37,49 @@ export function AuditLogPanel({ eventId }: { eventId: Id<"events"> }) {
 
   const rows = entries ?? [];
 
+  const header = <h2 className="mb-4 text-lg font-medium">Activity</h2>;
+
   if (rows.length === 0) {
     return (
-      <Empty className="mt-6">
-        <EmptyHeader>
-          <EmptyTitle>No activity yet</EmptyTitle>
-          <EmptyDescription>
-            Changes to this event, like publishing or editing ticket types, will show up here.
-          </EmptyDescription>
-        </EmptyHeader>
-      </Empty>
+      <div>
+        {header}
+        <Empty className="mt-6">
+          <EmptyHeader>
+            <EmptyTitle>No activity yet</EmptyTitle>
+            <EmptyDescription>
+              Changes to this event, like publishing or editing ticket types, will show up here.
+            </EmptyDescription>
+          </EmptyHeader>
+        </Empty>
+      </div>
     );
   }
 
   return (
-    <Table>
-      <TableHeader>
-        <TableRow>
-          <TableHead>When</TableHead>
-          <TableHead>Action</TableHead>
-          <TableHead>Summary</TableHead>
-        </TableRow>
-      </TableHeader>
-      <TableBody>
-        {rows.map((entry: Doc<"auditLogs">) => (
-          <TableRow key={entry._id}>
-            <TableCell className="whitespace-nowrap text-muted-foreground">
-              {new Date(entry.createdAt).toLocaleString()}
-            </TableCell>
-            <TableCell>
-              <Badge variant="secondary">{entry.action}</Badge>
-            </TableCell>
-            <TableCell className="max-w-md whitespace-normal">{entry.summary}</TableCell>
+    <div>
+      {header}
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>When</TableHead>
+            <TableHead>Action</TableHead>
+            <TableHead>Summary</TableHead>
           </TableRow>
-        ))}
-      </TableBody>
-    </Table>
+        </TableHeader>
+        <TableBody>
+          {rows.map((entry: Doc<"auditLogs">) => (
+            <TableRow key={entry._id}>
+              <TableCell className="whitespace-nowrap text-muted-foreground">
+                {new Date(entry.createdAt).toLocaleString()}
+              </TableCell>
+              <TableCell>
+                <Badge variant="secondary">{entry.action}</Badge>
+              </TableCell>
+              <TableCell className="max-w-md whitespace-normal">{entry.summary}</TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+    </div>
   );
 }

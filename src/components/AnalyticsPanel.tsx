@@ -128,7 +128,7 @@ export function AnalyticsPanel({ eventId }: { eventId: Id<"events"> }) {
     <div className="flex flex-col gap-6">
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
-          <h2 className="text-lg font-semibold">Analytics</h2>
+          <h2 className="text-lg font-medium">Analytics</h2>
           <p className="text-sm text-muted-foreground">
             Revenue, sales, and check-in activity for this event.
           </p>

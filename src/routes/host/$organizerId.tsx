@@ -68,7 +68,7 @@ function HostDirectorySkeleton() {
 // `v.id("organizers")` arg validator before the query ever runs).
 function HostNotFound() {
   return (
-    <div className="mx-auto max-w-2xl p-4 sm:p-8">
+    <div className="mx-auto flex min-h-svh max-w-md flex-col items-center justify-center p-4 text-center">
       <Empty>
         <EmptyHeader>
           <EmptyTitle>Host not found</EmptyTitle>
@@ -146,7 +146,12 @@ function EventSection({
     <section className="mt-8">
       <h2 className="text-lg font-semibold">{title}</h2>
       {events.length === 0 ? (
-        <p className="mt-2 text-sm text-muted-foreground">{emptyMessage}</p>
+        <Empty className="mt-2">
+          <EmptyHeader>
+            <EmptyTitle>{title}</EmptyTitle>
+            <EmptyDescription>{emptyMessage}</EmptyDescription>
+          </EmptyHeader>
+        </Empty>
       ) : (
         <div className="mt-3 grid gap-3">
           {events.map((event) => (

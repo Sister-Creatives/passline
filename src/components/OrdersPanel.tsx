@@ -77,79 +77,87 @@ export function OrdersPanel({ eventId }: { eventId: Id<"events"> }) {
 
   const rows = orders ?? [];
 
+  const header = <h2 className="mb-4 text-lg font-medium">Orders</h2>;
+
   if (rows.length === 0) {
     return (
-      <Empty className="mt-6">
-        <EmptyHeader>
-          <EmptyTitle>No orders yet</EmptyTitle>
-          <EmptyDescription>Orders will show up here once buyers check out.</EmptyDescription>
-        </EmptyHeader>
-      </Empty>
+      <div>
+        {header}
+        <Empty className="mt-6">
+          <EmptyHeader>
+            <EmptyTitle>No orders yet</EmptyTitle>
+            <EmptyDescription>Orders will show up here once buyers check out.</EmptyDescription>
+          </EmptyHeader>
+        </Empty>
+      </div>
     );
   }
 
   return (
-    <Table>
-      <TableHeader>
-        <TableRow>
-          <TableHead>Buyer</TableHead>
-          <TableHead>Status</TableHead>
-          <TableHead className="text-right">Items</TableHead>
-          <TableHead className="text-right">Total</TableHead>
-          <TableHead className="text-right">Created</TableHead>
-          <TableHead className="text-right">Actions</TableHead>
-        </TableRow>
-      </TableHeader>
-      <TableBody>
-        {rows.map((order) => (
-          <TableRow key={order._id}>
-            <TableCell>
-              <div className="font-medium">{order.buyerName}</div>
-              <div className="text-sm text-muted-foreground">{order.buyerEmail}</div>
-            </TableCell>
-            <TableCell>
-              <Badge variant={STATUS_VARIANT[order.status]}>{STATUS_LABEL[order.status]}</Badge>
-            </TableCell>
-            <TableCell className="text-right tabular-nums">{order.itemCount}</TableCell>
-            <TableCell className="text-right tabular-nums">
-              {formatMoney(order.totalCents, order.currency)}
-            </TableCell>
-            <TableCell className="text-right text-muted-foreground">
-              {new Date(order.createdAt).toLocaleDateString()}
-            </TableCell>
-            <TableCell className="text-right">
-              {order.status === "paid" && (
-                <AlertDialog>
-                  <AlertDialogTrigger asChild>
-                    <Button variant="ghost" size="sm">
-                      Refund
-                    </Button>
-                  </AlertDialogTrigger>
-                  <AlertDialogContent>
-                    <AlertDialogHeader>
-                      <AlertDialogTitle>Refund this order?</AlertDialogTitle>
-                      <AlertDialogDescription>
-                        Tickets will be cancelled and capacity released. Until payments are live,
-                        the card refund itself is issued separately -- this only updates records
-                        and inventory.
-                      </AlertDialogDescription>
-                    </AlertDialogHeader>
-                    <AlertDialogFooter>
-                      <AlertDialogCancel>Cancel</AlertDialogCancel>
-                      <AlertDialogAction
-                        variant="destructive"
-                        onClick={() => handleRefund(order._id)}
-                      >
-                        Refund
-                      </AlertDialogAction>
-                    </AlertDialogFooter>
-                  </AlertDialogContent>
-                </AlertDialog>
-              )}
-            </TableCell>
+    <div>
+      {header}
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>Buyer</TableHead>
+            <TableHead>Status</TableHead>
+            <TableHead className="text-right">Items</TableHead>
+            <TableHead className="text-right">Total</TableHead>
+            <TableHead className="text-right">Created</TableHead>
+            <TableHead className="text-right">Actions</TableHead>
           </TableRow>
-        ))}
-      </TableBody>
-    </Table>
+        </TableHeader>
+        <TableBody>
+          {rows.map((order) => (
+            <TableRow key={order._id}>
+              <TableCell>
+                <div className="font-medium">{order.buyerName}</div>
+                <div className="text-sm text-muted-foreground">{order.buyerEmail}</div>
+              </TableCell>
+              <TableCell>
+                <Badge variant={STATUS_VARIANT[order.status]}>{STATUS_LABEL[order.status]}</Badge>
+              </TableCell>
+              <TableCell className="text-right tabular-nums">{order.itemCount}</TableCell>
+              <TableCell className="text-right tabular-nums">
+                {formatMoney(order.totalCents, order.currency)}
+              </TableCell>
+              <TableCell className="text-right text-muted-foreground">
+                {new Date(order.createdAt).toLocaleDateString()}
+              </TableCell>
+              <TableCell className="text-right">
+                {order.status === "paid" && (
+                  <AlertDialog>
+                    <AlertDialogTrigger asChild>
+                      <Button variant="ghost" size="sm">
+                        Refund
+                      </Button>
+                    </AlertDialogTrigger>
+                    <AlertDialogContent>
+                      <AlertDialogHeader>
+                        <AlertDialogTitle>Refund this order?</AlertDialogTitle>
+                        <AlertDialogDescription>
+                          Tickets will be cancelled and capacity released. Until payments are
+                          live, the card refund itself is issued separately -- this only updates
+                          records and inventory.
+                        </AlertDialogDescription>
+                      </AlertDialogHeader>
+                      <AlertDialogFooter>
+                        <AlertDialogCancel>Cancel</AlertDialogCancel>
+                        <AlertDialogAction
+                          variant="destructive"
+                          onClick={() => handleRefund(order._id)}
+                        >
+                          Refund
+                        </AlertDialogAction>
+                      </AlertDialogFooter>
+                    </AlertDialogContent>
+                  </AlertDialog>
+                )}
+              </TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+    </div>
   );
 }

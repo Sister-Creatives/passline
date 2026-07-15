@@ -6,7 +6,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { toast } from "sonner";
-import { ChevronDown, ChevronUp, Plus, Trash2 } from "lucide-react";
+import { ChevronDown, ChevronUp, LoaderCircle, Plus, Trash2 } from "lucide-react";
 
 import { api } from "../../convex/_generated/api";
 import type { Doc, Id } from "../../convex/_generated/dataModel";
@@ -157,6 +157,7 @@ function SessionForm({ eventId, onDone }: { eventId: Id<"events">; onDone: () =>
           )}
         />
         <Button type="submit" disabled={form.formState.isSubmitting}>
+          {form.formState.isSubmitting && <LoaderCircle className="animate-spin" />}
           Create session
         </Button>
       </form>

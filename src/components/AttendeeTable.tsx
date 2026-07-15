@@ -6,6 +6,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { Empty, EmptyHeader, EmptyTitle, EmptyDescription } from "@/components/ui/empty";
 
 interface AttendeeRow {
   _id: string;
@@ -34,9 +35,14 @@ export function AttendeeTable<T extends AttendeeRow>({
 }: AttendeeTableProps<T>) {
   return (
     <section>
-      <h2 className="text-lg font-semibold">{title}</h2>
+      <h2 className="text-lg font-medium">{title}</h2>
       {attendees.length === 0 ? (
-        <p className="mt-2 text-sm text-muted-foreground">{emptyMessage}</p>
+        <Empty className="mt-2">
+          <EmptyHeader>
+            <EmptyTitle>No attendees</EmptyTitle>
+            <EmptyDescription>{emptyMessage}</EmptyDescription>
+          </EmptyHeader>
+        </Empty>
       ) : (
         <Table>
           <TableHeader>

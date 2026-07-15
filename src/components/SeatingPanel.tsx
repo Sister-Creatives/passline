@@ -6,7 +6,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { toast } from "sonner";
-import { Plus, Trash2 } from "lucide-react";
+import { LoaderCircle, Plus, Trash2 } from "lucide-react";
 
 import { api } from "../../convex/_generated/api";
 import type { Doc, Id } from "../../convex/_generated/dataModel";
@@ -178,6 +178,7 @@ function SectionForm({
           />
         </div>
         <Button type="submit" disabled={form.formState.isSubmitting || ticketTypes.length === 0}>
+          {form.formState.isSubmitting && <LoaderCircle className="animate-spin" />}
           Generate section
         </Button>
       </form>

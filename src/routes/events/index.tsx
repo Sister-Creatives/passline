@@ -19,6 +19,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { Empty, EmptyHeader, EmptyTitle, EmptyDescription } from "@/components/ui/empty";
 
 export const Route = createFileRoute("/events/")({ component: EventsIndexPage });
 
@@ -65,9 +66,12 @@ function EventsListContent() {
 
       <div className="mt-6">
         {events.length === 0 ? (
-          <p className="text-sm text-muted-foreground">
-            No events yet. Create your first event to get started.
-          </p>
+          <Empty className="mt-6">
+            <EmptyHeader>
+              <EmptyTitle>No events yet</EmptyTitle>
+              <EmptyDescription>Create your first event to get started.</EmptyDescription>
+            </EmptyHeader>
+          </Empty>
         ) : (
           <Table>
             <TableCaption>A list of your events.</TableCaption>
