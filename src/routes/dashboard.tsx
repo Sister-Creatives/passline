@@ -91,6 +91,7 @@ function MetricChartCard({
   color,
   isEmpty,
   emptyLabel,
+  heightClass = "h-40",
 }: {
   headline: string;
   description: string;
@@ -100,6 +101,7 @@ function MetricChartCard({
   color: string;
   isEmpty: boolean;
   emptyLabel: string;
+  heightClass?: string;
 }) {
   const gradientId = `trend-${useId().replace(/:/g, "")}`;
   const config: ChartConfig = { [dataKey]: { label: description, color } };
@@ -119,11 +121,13 @@ function MetricChartCard({
       </CardHeader>
       <CardContent>
         {isEmpty ? (
-          <div className="flex h-40 items-center justify-center rounded-lg border border-dashed px-4 text-center text-sm text-muted-foreground">
+          <div
+            className={`flex ${heightClass} items-center justify-center rounded-lg border border-dashed px-4 text-center text-sm text-muted-foreground`}
+          >
             {emptyLabel}
           </div>
         ) : (
-          <ChartContainer className="aspect-auto h-40 w-full" config={config}>
+          <ChartContainer className={`aspect-auto ${heightClass} w-full`} config={config}>
             <AreaChart accessibilityLayer data={data} margin={{ left: 12, right: 12 }}>
               <defs>
                 <linearGradient id={gradientId} x1="0" x2="0" y1="0" y2="1">
@@ -221,17 +225,19 @@ function OverviewContent() {
         </Button>
       </div>
 
-      <div className="grid gap-3 lg:grid-cols-3">
-        <MetricChartCard
-          headline={formatInteger(deltas.registrations.current)}
-          description="Registrations · last 30 days"
-          deltaPct={deltas.registrations.pct}
-          data={timeseries}
-          dataKey="registrations"
-          color="var(--chart-1)"
-          isEmpty={totalRegistrations === 0}
-          emptyLabel="No registrations yet — the trend appears as people sign up."
-        />
+      <MetricChartCard
+        headline={formatInteger(deltas.registrations.current)}
+        description="Registrations · last 30 days"
+        deltaPct={deltas.registrations.pct}
+        data={timeseries}
+        dataKey="registrations"
+        color="var(--chart-1)"
+        isEmpty={totalRegistrations === 0}
+        emptyLabel="No registrations yet — the trend appears as people sign up."
+        heightClass="h-72"
+      />
+
+      <div className="grid gap-3 md:grid-cols-2">
         <MetricChartCard
           headline={formatInteger(deltas.checkIns.current)}
           description="Check-ins · last 30 days"
