@@ -35,6 +35,10 @@ export default defineSchema({
     metaPixelId: v.optional(v.string()),
     googleAnalyticsId: v.optional(v.string()),
     gtmId: v.optional(v.string()),
+    sharingDescription: v.optional(v.string()), // <= 160 chars; search/social meta
+    eventType: v.optional(v.string()),          // one of EVENT_TYPES
+    eventCategory: v.optional(v.string()),      // one of EVENT_CATEGORIES
+    keywords: v.optional(v.array(v.string())),  // <= 10, trimmed, de-duped, non-empty
   })
     .index("by_organizer", ["organizerId"])
     .index("by_slug", ["slug"]),

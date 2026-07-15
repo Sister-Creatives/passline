@@ -7,6 +7,30 @@ import { countSeatsTaken } from "./lib/capacity";
 import { promoteNext } from "./waitlist";
 import { recordAudit } from "./audit";
 import { computeReadiness } from "./lib/readiness";
+import { isEventCategory, isEventType, isValidSlug } from "./lib/eventTaxonomy";
+
+const CURRENCY_RE = /^[A-Z]{3}$/;
+const MAX_KEYWORDS = 10;
+const MAX_SHARING_DESCRIPTION_LENGTH = 160;
+
+/** Trim a string; an empty (or omitted) value normalizes to `undefined` (i.e. "clear this field"), matching the `eventContent.ts` idiom. */
+function normalizeOptionalString(s: string | undefined): string | undefined {
+  const trimmed = s?.trim();
+  return trimmed ? trimmed : undefined;
+}
+
+/** Trim every entry, drop empties, de-dupe (case-sensitive, first occurrence wins). */
+function cleanKeywords(raw: string[]): string[] {
+  const seen = new Set<string>();
+  const cleaned: string[] = [];
+  for (const keyword of raw) {
+    const trimmed = keyword.trim();
+    if (!trimmed || seen.has(trimmed)) continue;
+    seen.add(trimmed);
+    cleaned.push(trimmed);
+  }
+  return cleaned;
+}
 
 /**
  * Load an event and verify it belongs to the currently authenticated
@@ -122,8 +146,20 @@ export const updateEvent = mutation({
     endsAt: v.number(),
     location: v.string(),
     capacity: v.number(),
+    currency: v.optional(v.string()),
+    slug: v.optional(v.string()),
+    eventType: v.optional(v.string()),
+    eventCategory: v.optional(v.string()),
+    keywords: v.optional(v.array(v.string())),
+    sharingDescription: v.optional(v.string()),
   },
-  handler: async (ctx, { eventId, title, description, startsAt, endsAt, location, capacity }) => {
+  handler: async (
+    ctx,
+    {
+      eventId, title, description, startsAt, endsAt, location, capacity,
+      currency, slug, eventType, eventCategory, keywords, sharingDescription,
+    },
+  ) => {
     const event = await requireOwnedEvent(ctx, eventId);
     if (capacity < 1) throw new Error("Capacity must be at least 1");
 
@@ -132,7 +168,67 @@ export const updateEvent = mutation({
       throw new Error(`Capacity cannot be below the ${seatsTaken} seats already taken`);
     }
 
-    await ctx.db.patch(eventId, { title, description, startsAt, endsAt, location, capacity });
+    // Only fields the caller actually provided end up as keys here -- an
+    // omitted arg must leave the stored value untouched, while an explicit
+    // empty string/array (where applicable) clears the field to `undefined`.
+    const extraPatch: {
+      currency?: string;
+      slug?: string;
+      eventType?: string | undefined;
+      eventCategory?: string | undefined;
+      keywords?: string[] | undefined;
+      sharingDescription?: string | undefined;
+    } = {};
+
+    if (currency !== undefined) {
+      if (!CURRENCY_RE.test(currency)) throw new Error("Invalid currency code");
+      extraPatch.currency = currency;
+    }
+
+    if (slug !== undefined && slug !== event.slug) {
+      if (!isValidSlug(slug)) throw new Error("Invalid URL slug");
+      const existing = await ctx.db
+        .query("events")
+        .withIndex("by_slug", (q) => q.eq("slug", slug))
+        .unique();
+      if (existing && existing._id !== eventId) throw new Error("That URL is already taken");
+      extraPatch.slug = slug;
+    }
+
+    if (eventType !== undefined) {
+      if (eventType === "") {
+        extraPatch.eventType = undefined;
+      } else if (!isEventType(eventType)) {
+        throw new Error("Invalid event type");
+      } else {
+        extraPatch.eventType = eventType;
+      }
+    }
+
+    if (eventCategory !== undefined) {
+      if (eventCategory === "") {
+        extraPatch.eventCategory = undefined;
+      } else if (!isEventCategory(eventCategory)) {
+        throw new Error("Invalid event category");
+      } else {
+        extraPatch.eventCategory = eventCategory;
+      }
+    }
+
+    if (keywords !== undefined) {
+      const cleaned = cleanKeywords(keywords);
+      if (cleaned.length > MAX_KEYWORDS) throw new Error(`Too many keywords (max ${MAX_KEYWORDS})`);
+      extraPatch.keywords = cleaned.length > 0 ? cleaned : undefined;
+    }
+
+    if (sharingDescription !== undefined) {
+      if (sharingDescription.length > MAX_SHARING_DESCRIPTION_LENGTH) {
+        throw new Error("Sharing description must be 160 characters or fewer");
+      }
+      extraPatch.sharingDescription = normalizeOptionalString(sharingDescription);
+    }
+
+    await ctx.db.patch(eventId, { title, description, startsAt, endsAt, location, capacity, ...extraPatch });
 
     if (capacity > event.capacity) {
       while ((await promoteNext(ctx, eventId, Date.now())) !== null) {

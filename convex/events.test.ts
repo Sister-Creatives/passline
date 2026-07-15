@@ -761,6 +761,350 @@ test("a zero-ticket RSVP draft still publishes (past dates allowed)", async () =
   expect(ev?.status).toBe("published");
 });
 
+test("updateEvent sets eventType/eventCategory/keywords/sharingDescription/currency together", async () => {
+  const t = convexTest(schema, modules);
+  const { as } = await asOrganizer(t, "ada@example.com");
+  await as.mutation(api.organizers.ensureOrganizer, {});
+
+  const eventId = await as.mutation(api.events.createEvent, {
+    title: "Original Title",
+    description: "Original description.",
+    startsAt: 100,
+    endsAt: 200,
+    location: "Original Location",
+    capacity: 10,
+  });
+
+  await as.mutation(api.events.updateEvent, {
+    eventId,
+    title: "Original Title",
+    description: "Original description.",
+    startsAt: 100,
+    endsAt: 200,
+    location: "Original Location",
+    capacity: 10,
+    eventType: "Conference",
+    eventCategory: "Business & professional",
+    keywords: ["music", "live"],
+    sharingDescription: "Come join us for a great time.",
+    currency: "EUR",
+  });
+
+  const updated = await t.run((ctx) => ctx.db.get(eventId));
+  expect(updated?.eventType).toBe("Conference");
+  expect(updated?.eventCategory).toBe("Business & professional");
+  expect(updated?.keywords).toEqual(["music", "live"]);
+  expect(updated?.sharingDescription).toBe("Come join us for a great time.");
+  expect(updated?.currency).toBe("EUR");
+});
+
+test("updateEvent rejects an invalid slug", async () => {
+  const t = convexTest(schema, modules);
+  const { as } = await asOrganizer(t, "ada@example.com");
+  await as.mutation(api.organizers.ensureOrganizer, {});
+
+  const eventId = await as.mutation(api.events.createEvent, {
+    title: "Original Title",
+    description: "x",
+    startsAt: 100,
+    endsAt: 200,
+    location: "x",
+    capacity: 10,
+  });
+
+  await expect(
+    as.mutation(api.events.updateEvent, {
+      eventId,
+      title: "Original Title",
+      description: "x",
+      startsAt: 100,
+      endsAt: 200,
+      location: "x",
+      capacity: 10,
+      slug: "Has Spaces",
+    }),
+  ).rejects.toThrow();
+
+  await expect(
+    as.mutation(api.events.updateEvent, {
+      eventId,
+      title: "Original Title",
+      description: "x",
+      startsAt: 100,
+      endsAt: 200,
+      location: "x",
+      capacity: 10,
+      slug: "-leading",
+    }),
+  ).rejects.toThrow();
+});
+
+test("updateEvent rejects a slug already used by another event, but allows keeping the event's own current slug", async () => {
+  const t = convexTest(schema, modules);
+  const { as } = await asOrganizer(t, "ada@example.com");
+  await as.mutation(api.organizers.ensureOrganizer, {});
+
+  const eventId = await as.mutation(api.events.createEvent, {
+    title: "First Event",
+    description: "x",
+    startsAt: 100,
+    endsAt: 200,
+    location: "x",
+    capacity: 10,
+  });
+  const otherEventId = await as.mutation(api.events.createEvent, {
+    title: "Second Event",
+    description: "x",
+    startsAt: 100,
+    endsAt: 200,
+    location: "x",
+    capacity: 10,
+  });
+  const other = await t.run((ctx) => ctx.db.get(otherEventId));
+
+  await expect(
+    as.mutation(api.events.updateEvent, {
+      eventId,
+      title: "First Event",
+      description: "x",
+      startsAt: 100,
+      endsAt: 200,
+      location: "x",
+      capacity: 10,
+      slug: other!.slug,
+    }),
+  ).rejects.toThrow();
+
+  const own = await t.run((ctx) => ctx.db.get(eventId));
+
+  // Keeping the event's own current slug unchanged must not throw.
+  await as.mutation(api.events.updateEvent, {
+    eventId,
+    title: "First Event",
+    description: "x",
+    startsAt: 100,
+    endsAt: 200,
+    location: "x",
+    capacity: 10,
+    slug: own!.slug,
+  });
+
+  const stillOwn = await t.run((ctx) => ctx.db.get(eventId));
+  expect(stillOwn?.slug).toBe(own!.slug);
+});
+
+test("updateEvent rejects an invalid eventType and an invalid eventCategory", async () => {
+  const t = convexTest(schema, modules);
+  const { as } = await asOrganizer(t, "ada@example.com");
+  await as.mutation(api.organizers.ensureOrganizer, {});
+
+  const eventId = await as.mutation(api.events.createEvent, {
+    title: "Original Title",
+    description: "x",
+    startsAt: 100,
+    endsAt: 200,
+    location: "x",
+    capacity: 10,
+  });
+
+  await expect(
+    as.mutation(api.events.updateEvent, {
+      eventId,
+      title: "Original Title",
+      description: "x",
+      startsAt: 100,
+      endsAt: 200,
+      location: "x",
+      capacity: 10,
+      eventType: "Not A Type",
+    }),
+  ).rejects.toThrow();
+
+  await expect(
+    as.mutation(api.events.updateEvent, {
+      eventId,
+      title: "Original Title",
+      description: "x",
+      startsAt: 100,
+      endsAt: 200,
+      location: "x",
+      capacity: 10,
+      eventCategory: "Not A Category",
+    }),
+  ).rejects.toThrow();
+});
+
+test("updateEvent rejects more than 10 keywords", async () => {
+  const t = convexTest(schema, modules);
+  const { as } = await asOrganizer(t, "ada@example.com");
+  await as.mutation(api.organizers.ensureOrganizer, {});
+
+  const eventId = await as.mutation(api.events.createEvent, {
+    title: "Original Title",
+    description: "x",
+    startsAt: 100,
+    endsAt: 200,
+    location: "x",
+    capacity: 10,
+  });
+
+  const tooMany = Array.from({ length: 11 }, (_, i) => `keyword-${i}`);
+
+  await expect(
+    as.mutation(api.events.updateEvent, {
+      eventId,
+      title: "Original Title",
+      description: "x",
+      startsAt: 100,
+      endsAt: 200,
+      location: "x",
+      capacity: 10,
+      keywords: tooMany,
+    }),
+  ).rejects.toThrow();
+});
+
+test("updateEvent rejects a sharingDescription longer than 160 characters", async () => {
+  const t = convexTest(schema, modules);
+  const { as } = await asOrganizer(t, "ada@example.com");
+  await as.mutation(api.organizers.ensureOrganizer, {});
+
+  const eventId = await as.mutation(api.events.createEvent, {
+    title: "Original Title",
+    description: "x",
+    startsAt: 100,
+    endsAt: 200,
+    location: "x",
+    capacity: 10,
+  });
+
+  await expect(
+    as.mutation(api.events.updateEvent, {
+      eventId,
+      title: "Original Title",
+      description: "x",
+      startsAt: 100,
+      endsAt: 200,
+      location: "x",
+      capacity: 10,
+      sharingDescription: "x".repeat(161),
+    }),
+  ).rejects.toThrow();
+});
+
+test("updateEvent trims and de-dupes keywords (case-sensitive)", async () => {
+  const t = convexTest(schema, modules);
+  const { as } = await asOrganizer(t, "ada@example.com");
+  await as.mutation(api.organizers.ensureOrganizer, {});
+
+  const eventId = await as.mutation(api.events.createEvent, {
+    title: "Original Title",
+    description: "x",
+    startsAt: 100,
+    endsAt: 200,
+    location: "x",
+    capacity: 10,
+  });
+
+  await as.mutation(api.events.updateEvent, {
+    eventId,
+    title: "Original Title",
+    description: "x",
+    startsAt: 100,
+    endsAt: 200,
+    location: "x",
+    capacity: 10,
+    keywords: ["music", " Music ", "music", "live"],
+  });
+
+  const updated = await t.run((ctx) => ctx.db.get(eventId));
+  expect(updated?.keywords).toEqual(["music", "Music", "live"]);
+});
+
+test("updateEvent rejects a non-owner setting the new fields on another organizer's event", async () => {
+  const t = convexTest(schema, modules);
+  const { as: asAda } = await asOrganizer(t, "ada@example.com");
+  await asAda.mutation(api.organizers.ensureOrganizer, {});
+  const { as: asBob } = await asOrganizer(t, "bob@example.com");
+  await asBob.mutation(api.organizers.ensureOrganizer, {});
+
+  const eventId = await asAda.mutation(api.events.createEvent, {
+    title: "Ada's Gala",
+    description: "Ada's own event.",
+    startsAt: 10,
+    endsAt: 20,
+    location: "Ballroom",
+    capacity: 40,
+  });
+
+  await expect(
+    asBob.mutation(api.events.updateEvent, {
+      eventId,
+      title: "Ada's Gala",
+      description: "Ada's own event.",
+      startsAt: 10,
+      endsAt: 20,
+      location: "Ballroom",
+      capacity: 40,
+      eventType: "Conference",
+      eventCategory: "Music",
+      keywords: ["hijack"],
+      sharingDescription: "Hijacked",
+      currency: "USD",
+    }),
+  ).rejects.toThrow();
+
+  const stillUntouched = await t.run((ctx) => ctx.db.get(eventId));
+  expect(stillUntouched?.eventType).toBeUndefined();
+  expect(stillUntouched?.eventCategory).toBeUndefined();
+  expect(stillUntouched?.keywords).toBeUndefined();
+  expect(stillUntouched?.sharingDescription).toBeUndefined();
+});
+
+test("updateEvent leaves omitted new fields untouched on a subsequent call", async () => {
+  const t = convexTest(schema, modules);
+  const { as } = await asOrganizer(t, "ada@example.com");
+  await as.mutation(api.organizers.ensureOrganizer, {});
+
+  const eventId = await as.mutation(api.events.createEvent, {
+    title: "Original Title",
+    description: "x",
+    startsAt: 100,
+    endsAt: 200,
+    location: "x",
+    capacity: 10,
+  });
+
+  await as.mutation(api.events.updateEvent, {
+    eventId,
+    title: "Original Title",
+    description: "x",
+    startsAt: 100,
+    endsAt: 200,
+    location: "x",
+    capacity: 10,
+    eventType: "Conference",
+  });
+
+  const afterFirst = await t.run((ctx) => ctx.db.get(eventId));
+  expect(afterFirst?.eventType).toBe("Conference");
+
+  // Second call omits eventType but changes title -- eventType must survive.
+  await as.mutation(api.events.updateEvent, {
+    eventId,
+    title: "Updated Title",
+    description: "x",
+    startsAt: 100,
+    endsAt: 200,
+    location: "x",
+    capacity: 10,
+  });
+
+  const afterSecond = await t.run((ctx) => ctx.db.get(eventId));
+  expect(afterSecond?.title).toBe("Updated Title");
+  expect(afterSecond?.eventType).toBe("Conference");
+});
+
 test("getPublicProfile returns an organizer's name/image, or null when not found", async () => {
   const t = convexTest(schema, modules);
   const { as } = await asOrganizer(t, "ada@example.com");
