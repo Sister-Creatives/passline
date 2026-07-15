@@ -2,6 +2,7 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { convexQuery } from "@convex-dev/react-query";
 import { PlusIcon } from "lucide-react";
+import { Area, AreaChart, CartesianGrid, XAxis } from "recharts";
 
 import { api } from "../../convex/_generated/api";
 import { DashboardLayout } from "@/components/DashboardLayout";
@@ -15,6 +16,12 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import {
+  type ChartConfig,
+  ChartContainer,
+  ChartTooltip,
+  ChartTooltipContent,
+} from "@/components/ui/chart";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Empty, EmptyHeader, EmptyTitle, EmptyDescription } from "@/components/ui/empty";
 
@@ -60,6 +67,52 @@ function formatRelative(ms: number): string {
   return "just now";
 }
 
+/** "Jul 20" tick label from a "YYYY-MM-DD" bucket date. */
+function formatDayTick(date: string): string {
+  return new Date(date).toLocaleDateString(undefined, { month: "short", day: "numeric" });
+}
+
+/** A 30-day area trend chart (shadcn Chart + Recharts) keyed on `date`. */
+function TrendChart({
+  data,
+  dataKey,
+  label,
+  color,
+}: {
+  data: Array<Record<string, number | string>>;
+  dataKey: string;
+  label: string;
+  color: string;
+}) {
+  const config: ChartConfig = { [dataKey]: { label, color } };
+  return (
+    <ChartContainer config={config} className="h-[220px] w-full">
+      <AreaChart data={data} margin={{ left: 12, right: 12, top: 8 }}>
+        <CartesianGrid vertical={false} />
+        <XAxis
+          dataKey="date"
+          tickLine={false}
+          axisLine={false}
+          tickMargin={8}
+          minTickGap={28}
+          tickFormatter={(value) => formatDayTick(String(value))}
+        />
+        <ChartTooltip
+          cursor={false}
+          content={<ChartTooltipContent labelFormatter={(value) => formatDayTick(String(value))} />}
+        />
+        <Area
+          dataKey={dataKey}
+          type="natural"
+          stroke={`var(--color-${dataKey})`}
+          fill={`var(--color-${dataKey})`}
+          fillOpacity={0.25}
+        />
+      </AreaChart>
+    </ChartContainer>
+  );
+}
+
 function OverviewContent() {
   const { data, isPending } = useQuery(convexQuery(api.dashboard.getOverview, {}));
 
@@ -93,7 +146,8 @@ function OverviewContent() {
     );
   }
 
-  const { events, attendance, sales, upcomingEvents, recentActivity } = data;
+  const { events, attendance, sales, timeseries, upcomingEvents, recentActivity } = data;
+  const totalRegistrations = timeseries.reduce((sum, d) => sum + d.registrations, 0);
 
   return (
     <div className="flex flex-col gap-8">
@@ -117,6 +171,25 @@ function OverviewContent() {
         <Stat label="Check-ins" value={attendance.checkedIn} />
       </div>
 
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Registrations</CardTitle>
+          <CardDescription>New registrations in the last 30 days.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          {totalRegistrations === 0 ? (
+            <p className="py-10 text-center text-sm text-muted-foreground">No registrations yet.</p>
+          ) : (
+            <TrendChart
+              data={timeseries}
+              dataKey="registrations"
+              label="Registrations"
+              color="var(--chart-1)"
+            />
+          )}
+        </CardContent>
+      </Card>
+
       <section className="flex flex-col gap-4">
         <h2 className="text-lg font-medium">Sales</h2>
         <div className="grid gap-4 sm:grid-cols-3">
@@ -124,8 +197,25 @@ function OverviewContent() {
           <Stat label="Orders" value={sales.orders} />
           <Stat label="Tickets sold" value={sales.ticketsSold} />
         </div>
-        {/* F22 Task 3 inserts the registrations + sales charts here. */}
-        {sales.revenueCents === 0 && (
+        {sales.revenueCents > 0 ? (
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Revenue</CardTitle>
+              <CardDescription>Revenue in the last 30 days.</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <TrendChart
+                data={timeseries.map((d) => ({
+                  date: d.date,
+                  revenue: Math.round(d.revenueCents / 100),
+                }))}
+                dataKey="revenue"
+                label="Revenue"
+                color="var(--chart-2)"
+              />
+            </CardContent>
+          </Card>
+        ) : (
           <p className="text-sm text-muted-foreground">
             No sales yet &mdash; online payments are coming soon.
           </p>
