@@ -237,12 +237,6 @@ function DetailsSection({ event, seatsTaken }: { event: EventWithRsvps["event"];
           <div className="h-full rounded-full bg-primary transition-all" style={{ width: `${capacityPercent}%` }} />
         </div>
       </div>
-      <div>
-        <span className="text-sm font-medium">Event page URL</span>
-        <div className="mt-1 flex h-9 w-full items-center rounded-md border bg-muted px-3 text-sm text-muted-foreground">
-          /e/{event.slug}
-        </div>
-      </div>
       <EventForm event={event} />
     </div>
   );

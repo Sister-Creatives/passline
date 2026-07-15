@@ -1,13 +1,16 @@
+import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useMutation } from "convex/react";
 import { useNavigate } from "@tanstack/react-router";
-import { LoaderCircle } from "lucide-react";
+import { LoaderCircle, X } from "lucide-react";
 import { toast } from "sonner";
 
 import { api } from "../../convex/_generated/api";
 import type { Doc } from "../../convex/_generated/dataModel";
+import { EVENT_TYPES, EVENT_CATEGORIES, isValidSlug } from "../../convex/lib/eventTaxonomy";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { DateTimePicker } from "@/components/DateTimePicker";
 import {
@@ -19,30 +22,70 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 
-const eventFormSchema = z
-  .object({
-    title: z.string().min(1, "Title is required"),
-    description: z.string().min(1, "Description is required"),
-    location: z.string().min(1, "Location is required"),
-    // Kept as a string, like startsAt/endsAt below, and converted at submit
-    // time -- avoids the react-hook-form/zod coerce generic mismatch.
-    capacity: z
-      .string()
-      .min(1, "Capacity is required")
-      .refine((value) => Number.isInteger(Number(value)) && Number(value) >= 1, {
-        message: "Capacity must be a whole number of at least 1",
-      }),
-    startsAt: z.string().min(1, "Start date and time is required"),
-    endsAt: z.string().min(1, "End date and time is required"),
-  })
-  .refine((values) => new Date(values.endsAt).getTime() > new Date(values.startsAt).getTime(), {
-    message: "End time must be after start time",
-    path: ["endsAt"],
-  });
+// Common ISO 4217 currency codes offered in the edit-mode Currency select.
+const CURRENCY_CODES = ["USD", "EUR", "GBP", "AUD", "CAD", "NZD", "JPY"] as const;
 
-type EventFormValues = z.infer<typeof eventFormSchema>;
+// Sentinel used by the event type/category selects to represent "no
+// selection" -- Radix `Select.Item` rejects an empty-string value, and an
+// empty string is what clears the field server-side, so this is translated
+// to `""` on submit.
+const NONE_VALUE = "none";
+
+const MAX_KEYWORDS = 10;
+const MAX_SHARING_DESCRIPTION_LENGTH = 160;
+
+/**
+ * Builds the form's zod schema. The slug field is only meaningful (and only
+ * rendered) in edit mode, so its format check is gated on `isEditMode` --
+ * otherwise create mode's unused default slug value would fail validation.
+ */
+function buildEventFormSchema(isEditMode: boolean) {
+  return z
+    .object({
+      title: z.string().min(1, "Title is required"),
+      description: z.string().min(1, "Description is required"),
+      location: z.string().min(1, "Location is required"),
+      // Kept as a string, like startsAt/endsAt below, and converted at submit
+      // time -- avoids the react-hook-form/zod coerce generic mismatch.
+      capacity: z
+        .string()
+        .min(1, "Capacity is required")
+        .refine((value) => Number.isInteger(Number(value)) && Number(value) >= 1, {
+          message: "Capacity must be a whole number of at least 1",
+        }),
+      startsAt: z.string().min(1, "Start date and time is required"),
+      endsAt: z.string().min(1, "End date and time is required"),
+      // Edit-only fields (see EventForm's edit-mode block below).
+      slug: z.string(),
+      currency: z.string(),
+      eventType: z.string(),
+      eventCategory: z.string(),
+      sharingDescription: z
+        .string()
+        .max(MAX_SHARING_DESCRIPTION_LENGTH, "Sharing description must be 160 characters or fewer"),
+      keywords: z.array(z.string()),
+    })
+    .refine((values) => new Date(values.endsAt).getTime() > new Date(values.startsAt).getTime(), {
+      message: "End time must be after start time",
+      path: ["endsAt"],
+    })
+    .refine((values) => !isEditMode || isValidSlug(values.slug), {
+      message: "Use lowercase letters, numbers, and hyphens only",
+      path: ["slug"],
+    });
+}
+
+type EventFormValues = z.infer<ReturnType<typeof buildEventFormSchema>>;
 
 /**
  * Converts epoch milliseconds to the local-time string a `datetime-local`
@@ -73,15 +116,21 @@ interface EventFormProps {
  * and a start/end window (as `datetime-local` inputs), converts the two
  * dates to epoch milliseconds, and submits either `api.events.createEvent`
  * (no `event` prop) or `api.events.updateEvent` (`event` prop supplied).
+ *
+ * In edit mode only, also surfaces the F21b "Event information" fields --
+ * URL slug, currency, event type/category, sharing description, and
+ * keywords -- which are passed to `updateEvent` alongside the base fields.
+ * Create mode stays minimal (F19 model) and never renders or submits them.
  */
 export function EventForm({ event, onDone }: EventFormProps) {
   const navigate = useNavigate();
   const createEvent = useMutation(api.events.createEvent);
   const updateEvent = useMutation(api.events.updateEvent);
   const isEditMode = event !== undefined;
+  const [keywordInput, setKeywordInput] = useState("");
 
   const form = useForm<EventFormValues>({
-    resolver: zodResolver(eventFormSchema),
+    resolver: zodResolver(buildEventFormSchema(isEditMode)),
     defaultValues: event
       ? {
           title: event.title,
@@ -90,6 +139,12 @@ export function EventForm({ event, onDone }: EventFormProps) {
           capacity: String(event.capacity),
           startsAt: toDatetimeLocal(event.startsAt),
           endsAt: toDatetimeLocal(event.endsAt),
+          slug: event.slug,
+          currency: event.currency ?? "USD",
+          eventType: event.eventType ?? NONE_VALUE,
+          eventCategory: event.eventCategory ?? NONE_VALUE,
+          sharingDescription: event.sharingDescription ?? "",
+          keywords: event.keywords ?? [],
         }
       : {
           title: "",
@@ -98,10 +153,26 @@ export function EventForm({ event, onDone }: EventFormProps) {
           capacity: "1",
           startsAt: "",
           endsAt: "",
+          slug: "",
+          currency: "USD",
+          eventType: NONE_VALUE,
+          eventCategory: NONE_VALUE,
+          sharingDescription: "",
+          keywords: [],
         },
   });
 
   const isSubmitting = form.formState.isSubmitting;
+
+  function addKeyword(current: string[], onChange: (value: string[]) => void) {
+    const trimmed = keywordInput.trim();
+    if (!trimmed || current.length >= MAX_KEYWORDS || current.includes(trimmed)) {
+      setKeywordInput("");
+      return;
+    }
+    onChange([...current, trimmed]);
+    setKeywordInput("");
+  }
 
   async function onSubmit(values: EventFormValues) {
     try {
@@ -114,6 +185,12 @@ export function EventForm({ event, onDone }: EventFormProps) {
           capacity: Number(values.capacity),
           startsAt: new Date(values.startsAt).getTime(),
           endsAt: new Date(values.endsAt).getTime(),
+          slug: values.slug,
+          currency: values.currency,
+          eventType: values.eventType === NONE_VALUE ? "" : values.eventType,
+          eventCategory: values.eventCategory === NONE_VALUE ? "" : values.eventCategory,
+          keywords: values.keywords,
+          sharingDescription: values.sharingDescription,
         });
         toast.success("Event updated");
         onDone?.();
@@ -218,6 +295,179 @@ export function EventForm({ event, onDone }: EventFormProps) {
             </FormItem>
           )}
         />
+        {isEditMode && (
+          <>
+            <FormField
+              control={form.control}
+              name="slug"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Event page URL</FormLabel>
+                  <FormControl>
+                    <div className="flex h-8 items-center rounded-lg border border-input bg-transparent transition-colors focus-within:border-ring focus-within:ring-3 focus-within:ring-ring/50">
+                      <span className="pl-2.5 text-sm text-muted-foreground">/e/</span>
+                      <Input
+                        className="h-full flex-1 border-0 bg-transparent pl-1 shadow-none focus-visible:ring-0"
+                        {...field}
+                      />
+                    </div>
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name="currency"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Currency</FormLabel>
+                  <Select value={field.value} onValueChange={field.onChange}>
+                    <FormControl>
+                      <SelectTrigger className="w-full">
+                        <SelectValue />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent>
+                      <SelectGroup>
+                        {CURRENCY_CODES.map((code) => (
+                          <SelectItem key={code} value={code}>
+                            {code}
+                          </SelectItem>
+                        ))}
+                      </SelectGroup>
+                    </SelectContent>
+                  </Select>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <div className="grid gap-4 sm:grid-cols-2">
+              <FormField
+                control={form.control}
+                name="eventType"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Event type</FormLabel>
+                    <Select value={field.value} onValueChange={field.onChange}>
+                      <FormControl>
+                        <SelectTrigger className="w-full">
+                          <SelectValue />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        <SelectGroup>
+                          <SelectItem value={NONE_VALUE}>None</SelectItem>
+                          {EVENT_TYPES.map((type) => (
+                            <SelectItem key={type} value={type}>
+                              {type}
+                            </SelectItem>
+                          ))}
+                        </SelectGroup>
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="eventCategory"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Event category</FormLabel>
+                    <Select value={field.value} onValueChange={field.onChange}>
+                      <FormControl>
+                        <SelectTrigger className="w-full">
+                          <SelectValue />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        <SelectGroup>
+                          <SelectItem value={NONE_VALUE}>None</SelectItem>
+                          {EVENT_CATEGORIES.map((category) => (
+                            <SelectItem key={category} value={category}>
+                              {category}
+                            </SelectItem>
+                          ))}
+                        </SelectGroup>
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
+            <FormField
+              control={form.control}
+              name="sharingDescription"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Sharing description</FormLabel>
+                  <FormControl>
+                    <Textarea
+                      placeholder="Shown when this event is shared or found in search"
+                      {...field}
+                    />
+                  </FormControl>
+                  <div className="text-right text-xs text-muted-foreground">
+                    {field.value.length}/{MAX_SHARING_DESCRIPTION_LENGTH}
+                  </div>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name="keywords"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Keywords</FormLabel>
+                  {field.value.length > 0 && (
+                    <div className="flex flex-wrap gap-2">
+                      {field.value.map((keyword) => (
+                        <Badge key={keyword} variant="secondary" className="gap-1">
+                          {keyword}
+                          <button
+                            type="button"
+                            onClick={() => field.onChange(field.value.filter((k) => k !== keyword))}
+                            aria-label={`Remove ${keyword}`}
+                          >
+                            <X className="size-3" />
+                          </button>
+                        </Badge>
+                      ))}
+                    </div>
+                  )}
+                  <div className="flex items-center gap-2">
+                    <Input
+                      value={keywordInput}
+                      onChange={(e) => setKeywordInput(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          e.preventDefault();
+                          addKeyword(field.value, field.onChange);
+                        }
+                      }}
+                      placeholder="Add a keyword"
+                      disabled={field.value.length >= MAX_KEYWORDS}
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => addKeyword(field.value, field.onChange)}
+                      disabled={field.value.length >= MAX_KEYWORDS}
+                    >
+                      Add
+                    </Button>
+                  </div>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+          </>
+        )}
         <Button type="submit" disabled={isSubmitting}>
           {isSubmitting && <LoaderCircle className="animate-spin" />}
           {isEditMode ? "Save changes" : "Create event"}
