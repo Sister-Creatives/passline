@@ -14,7 +14,16 @@ import {
   IdCardIcon,
 } from "lucide-react";
 
-export type SidebarNavItem = { title: string; path: string; icon?: ReactNode; isActive?: boolean };
+export type SidebarNavItem = {
+  title: string;
+  path: string;
+  icon?: ReactNode;
+  isActive?: boolean;
+  // Which live count (from organizers.getSidebarCounts) renders as a badge on
+  // this item, if any. Only Events and Attendees carry one -- badges stay
+  // sparse on purpose so the nav reads as signal, not noise.
+  badgeKey?: "events" | "attendees";
+};
 export type SidebarNavGroup = { label: string; items: SidebarNavItem[] };
 
 // Primary create action -- rendered as a prominent button above the nav.
@@ -27,8 +36,8 @@ export const createAction: SidebarNavItem = {
 // The organizer's day-to-day sections (the "Manage" group).
 export const primaryNav: SidebarNavItem[] = [
   { title: "Overview", path: "/dashboard", icon: <LayoutDashboardIcon /> },
-  { title: "Events", path: "/events", icon: <CalendarIcon /> },
-  { title: "Attendees", path: "/attendees", icon: <UsersRoundIcon /> },
+  { title: "Events", path: "/events", icon: <CalendarIcon />, badgeKey: "events" },
+  { title: "Attendees", path: "/attendees", icon: <UsersRoundIcon />, badgeKey: "attendees" },
   { title: "Reports", path: "/reports", icon: <ChartColumnIcon /> },
   { title: "Marketing", path: "/marketing", icon: <MegaphoneIcon /> },
 ];

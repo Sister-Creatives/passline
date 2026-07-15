@@ -44,6 +44,50 @@ export const getMe = query({
  * (rather than throwing) for an unknown id, mirroring the rest of the
  * public-read surface (e.g. `events.getEventBySlug`).
  */
+/**
+ * Aggregate counts for the sidebar badges: how many events the organizer has,
+ * and how many attendees across all of them. "Attendees" mirrors the metric on
+ * the dashboard Overview (`dashboard.getOverview`) so the badge and the Overview
+ * headline never disagree: confirmed/checked-in RSVPs plus valid/checked-in
+ * tickets (the paid-ticketing flow). Waitlisted, pending-claim, and cancelled
+ * are excluded.
+ *
+ * This walks every event's RSVPs and tickets on each run, which is fine at the
+ * current scale; if an organizer ever accumulates a very large history this is
+ * the spot to swap in a denormalized counter.
+ */
+export const getSidebarCounts = query({
+  args: {},
+  handler: async (ctx) => {
+    const organizerId = await getAuthOrganizerId(ctx);
+    if (!organizerId) return { events: 0, attendees: 0 };
+
+    const events = await ctx.db
+      .query("events")
+      .withIndex("by_organizer", (q) => q.eq("organizerId", organizerId))
+      .collect();
+
+    const [rsvpsByEvent, ticketsByEvent] = await Promise.all([
+      Promise.all(
+        events.map((e) =>
+          ctx.db.query("rsvps").withIndex("by_event", (q) => q.eq("eventId", e._id)).collect(),
+        ),
+      ),
+      Promise.all(
+        events.map((e) =>
+          ctx.db.query("tickets").withIndex("by_event", (q) => q.eq("eventId", e._id)).collect(),
+        ),
+      ),
+    ]);
+
+    const attendees =
+      rsvpsByEvent.flat().filter((r) => r.status === "confirmed" || r.status === "checked_in").length +
+      ticketsByEvent.flat().filter((t) => t.status === "valid" || t.status === "checked_in").length;
+
+    return { events: events.length, attendees };
+  },
+});
+
 export const getPublicProfile = query({
   args: { organizerId: v.id("organizers") },
   handler: async (ctx, { organizerId }) => {
