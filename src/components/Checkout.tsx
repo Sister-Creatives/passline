@@ -7,7 +7,7 @@ import { Minus, Plus, LoaderCircle } from "lucide-react";
 import { toast } from "sonner";
 
 import { api } from "../../convex/_generated/api";
-import type { Doc } from "../../convex/_generated/dataModel";
+import type { Doc, Id } from "../../convex/_generated/dataModel";
 import { formatMoney } from "@/lib/format-money";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -29,15 +29,17 @@ export function Checkout({ event }: { event: Doc<"events"> }) {
   const currency = event.currency ?? "USD";
   const { data: types } = useQuery(convexQuery(api.ticketTypes.listPublicForEvent, { eventId: event._id }));
   const { data: questions } = useQuery(convexQuery(api.checkoutQuestions.listForEvent, { eventId: event._id }));
+  const { data: sessions } = useQuery(convexQuery(api.eventSessions.listForEvent, { eventId: event._id }));
   const createOrder = useMutation(api.orders.createOrder);
 
   const [quantities, setQuantities] = useState<Record<string, number>>({});
   const [buyerName, setBuyerName] = useState("");
   const [buyerEmail, setBuyerEmail] = useState("");
   const [answers, setAnswers] = useState<Record<string, string>>({});
+  const [sessionId, setSessionId] = useState<Id<"eventSessions"> | "">("");
   const [submitting, setSubmitting] = useState(false);
 
-  if (types === undefined || questions === undefined) {
+  if (types === undefined || questions === undefined || sessions === undefined) {
     return (
       <div className="flex flex-col gap-3">
         <Skeleton className="h-16 w-full" />
@@ -47,6 +49,7 @@ export function Checkout({ event }: { event: Doc<"events"> }) {
     );
   }
 
+  const hasSessions = sessions.length > 0;
   const freeTypes = types.filter((t) => t.kind === "free");
   const hasPaid = types.some((t) => t.kind !== "free");
 
@@ -72,7 +75,13 @@ export function Checkout({ event }: { event: Doc<"events"> }) {
     return n === 0 || n >= (t.minPerOrder ?? 1);
   });
   const canSubmit =
-    totalTickets > 0 && buyerName.trim() !== "" && emailValid && requiredAnswered && minOk && !submitting;
+    totalTickets > 0 &&
+    buyerName.trim() !== "" &&
+    emailValid &&
+    requiredAnswered &&
+    minOk &&
+    (!hasSessions || sessionId !== "") &&
+    !submitting;
 
   function setQty(id: string, n: number) {
     setQuantities((q) => ({ ...q, [id]: n }));
@@ -95,6 +104,7 @@ export function Checkout({ event }: { event: Doc<"events"> }) {
         buyerName: buyerName.trim(),
         buyerEmail: buyerEmail.trim(),
         answers: answerList.length > 0 ? answerList : undefined,
+        sessionId: hasSessions && sessionId !== "" ? sessionId : undefined,
       });
       navigate({ to: "/orders/$token", params: { token: res.token } });
     } catch (error) {
@@ -110,6 +120,28 @@ export function Checkout({ event }: { event: Doc<"events"> }) {
       </CardHeader>
       <CardContent>
         <form onSubmit={handleSubmit} className="flex flex-col gap-6">
+          {hasSessions && (
+            <div className="grid gap-1.5">
+              <Label htmlFor="checkout-session">Session</Label>
+              <Select
+                value={sessionId}
+                onValueChange={(value) => setSessionId(value as Id<"eventSessions">)}
+              >
+                <SelectTrigger id="checkout-session" className="w-full">
+                  <SelectValue placeholder="Choose a session" />
+                </SelectTrigger>
+                <SelectContent>
+                  {sessions.map((session) => (
+                    <SelectItem key={session._id} value={session._id}>
+                      {new Date(session.startsAt).toLocaleString()}
+                      {session.label ? ` · ${session.label}` : ""} · {session.remaining} left
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+
           <div className="flex flex-col gap-3">
             {types.map((t) => {
               const isFree = t.kind === "free";
