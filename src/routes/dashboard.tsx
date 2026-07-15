@@ -193,6 +193,7 @@ function OverviewContent() {
   }
 
   const { events, attendance, sales, timeseries, deltas, upcomingEvents, recentActivity } = data;
+  const totalRegistrations = timeseries.reduce((sum, d) => sum + d.registrations, 0);
 
   return (
     <div className="flex flex-col gap-6">
@@ -216,14 +217,28 @@ function OverviewContent() {
         <Stat label="Check-ins" value={attendance.checkedIn} />
       </div>
 
-      <TrendCard
-        headline={formatInteger(deltas.registrations.current)}
-        description="Registrations in the last 30 days"
-        deltaPct={deltas.registrations.pct}
-        data={timeseries}
-        dataKey="registrations"
-        color="var(--chart-1)"
-      />
+      {totalRegistrations > 0 ? (
+        <TrendCard
+          headline={formatInteger(deltas.registrations.current)}
+          description="Registrations in the last 30 days"
+          deltaPct={deltas.registrations.pct}
+          data={timeseries}
+          dataKey="registrations"
+          color="var(--chart-1)"
+        />
+      ) : (
+        <Card>
+          <CardHeader>
+            <CardTitle className="font-mono text-2xl tabular-nums">0</CardTitle>
+            <CardDescription>Registrations in the last 30 days</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="flex h-40 items-center justify-center rounded-lg border border-dashed text-center text-sm text-muted-foreground">
+              No registrations yet — the trend will appear here as people sign up.
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       <section className="flex flex-col gap-4">
         <h2 className="text-lg font-medium">Sales</h2>
