@@ -14,6 +14,7 @@ import { DashboardLayout } from "@/components/DashboardLayout";
 import { EventBuilderNav } from "@/components/EventBuilderNav";
 import { AttendeeTable } from "@/components/AttendeeTable";
 import { EventForm } from "@/components/EventForm";
+import { EventMobilePreview } from "@/components/EventMobilePreview";
 import { TicketTypesPanel } from "@/components/TicketTypesPanel";
 import { SessionsPanel } from "@/components/SessionsPanel";
 import { SeatingPanel } from "@/components/SeatingPanel";
@@ -94,6 +95,9 @@ function EventManageContent({ eventId }: { eventId: Id<"events"> }) {
 
   const isPublished = event.status === "published";
   const seatsTaken = confirmed.length + pendingClaim.length + checkedIn.length;
+  // The mobile preview mirrors the public event page, so it's only shown while
+  // building the event (the "edit" section group), not on the manage tabs.
+  const isEditSection = EVENT_SECTIONS.find((s) => s.key === section)?.group === "edit";
 
   async function handleTogglePublish() {
     try {
@@ -177,6 +181,7 @@ function EventManageContent({ eventId }: { eventId: Id<"events"> }) {
         </div>
         <ContinueFooter eventId={eventId} section={section} />
       </div>
+      {isEditSection && <EventMobilePreview event={event} />}
     </div>
   );
 }
