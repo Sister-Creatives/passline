@@ -121,6 +121,9 @@ function EventDetails({ slug, event }: { slug: string; event: Doc<"events"> }) {
   const { data: ticketTypes } = useSuspenseQuery(
     convexQuery(api.ticketTypes.listPublicForEvent, { eventId: event._id }),
   );
+  const { data: sessions } = useSuspenseQuery(
+    convexQuery(api.eventSessions.listForEvent, { eventId: event._id }),
+  );
   const content = rawContent as PublicEventContent | null;
   const isFull = publicState.seatsTaken >= publicState.capacity;
 
@@ -277,7 +280,7 @@ function EventDetails({ slug, event }: { slug: string; event: Doc<"events"> }) {
       </p>
 
       <div className="mt-6">
-        {ticketTypes.length > 0 ? (
+        {ticketTypes.length > 0 && sessions.length === 0 ? (
           <Checkout event={event} />
         ) : (
           <div className="max-w-sm">
