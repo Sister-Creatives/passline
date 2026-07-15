@@ -58,12 +58,12 @@ function EventManagePage() {
   const { id } = Route.useParams();
   const eventId = id as Id<"events">;
   return (
-    <DashboardLayout>
+    <DashboardLayout wide>
       <Suspense
         fallback={
-          <div className="mx-auto flex max-w-6xl gap-6 p-4 sm:p-8">
-            <Skeleton className="hidden h-96 w-52 sm:block" />
-            <div className="flex flex-1 flex-col gap-3">
+          <div className="flex flex-col gap-6 p-4 md:p-6 lg:flex-row lg:gap-8">
+            <Skeleton className="hidden h-96 w-60 shrink-0 lg:block" />
+            <div className="flex min-w-0 flex-1 flex-col gap-3 lg:max-w-5xl">
               <Skeleton className="h-9 w-64" />
               <Skeleton className="h-64 w-full" />
             </div>
@@ -125,7 +125,7 @@ function EventManageContent({ eventId }: { eventId: Id<"events"> }) {
   }
 
   return (
-    <div className="mx-auto flex max-w-6xl flex-col gap-6 p-4 sm:flex-row sm:p-8">
+    <div className="flex flex-col gap-6 p-4 md:p-6 lg:flex-row lg:gap-8">
       <EventBuilderNav
         eventId={eventId}
         activeSection={section}
@@ -133,7 +133,7 @@ function EventManageContent({ eventId }: { eventId: Id<"events"> }) {
         slug={event.slug}
         onTogglePublish={handleTogglePublish}
       />
-      <div className="min-w-0 flex-1">
+      <div className="min-w-0 flex-1 lg:max-w-5xl">
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div>
             <h1 className="text-2xl font-semibold">{event.title}</h1>

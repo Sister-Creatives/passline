@@ -41,7 +41,7 @@ export function EventBuilderNav({
   }));
 
   return (
-    <nav className="flex w-full shrink-0 flex-col gap-4 sm:w-56">
+    <nav className="flex w-full shrink-0 flex-col gap-4 lg:sticky lg:top-(--app-header-height) lg:max-h-[calc(100svh-var(--app-header-height))] lg:w-60 lg:self-start lg:overflow-y-auto lg:pt-1 lg:pb-4">
       {groups.map((group) => {
         const defaultOpen =
           group.key === "edit"
