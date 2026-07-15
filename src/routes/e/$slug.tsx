@@ -8,6 +8,7 @@ import { api } from "../../../convex/_generated/api";
 import type { Doc } from "../../../convex/_generated/dataModel";
 import { isValidHexColor, parseVideoEmbed } from "../../../convex/lib/eventContent";
 import { ACCESSIBILITY_FEATURES } from "@/lib/accessibility";
+import { Checkout } from "@/components/Checkout";
 import { RsvpForm } from "@/components/RsvpForm";
 import { TrackingPixels } from "@/components/TrackingPixels";
 import { formatEventDateRange } from "@/lib/format-event-date";
@@ -116,6 +117,9 @@ function EventDetails({ slug, event }: { slug: string; event: Doc<"events"> }) {
   );
   const { data: rawContent } = useSuspenseQuery(
     convexQuery(api.eventContent.getBySlug, { slug }),
+  );
+  const { data: ticketTypes } = useSuspenseQuery(
+    convexQuery(api.ticketTypes.listPublicForEvent, { eventId: event._id }),
   );
   const content = rawContent as PublicEventContent | null;
   const isFull = publicState.seatsTaken >= publicState.capacity;
@@ -272,13 +276,19 @@ function EventDetails({ slug, event }: { slug: string; event: Doc<"events"> }) {
         {publicState.seatsTaken} of {publicState.capacity} spots taken
       </p>
 
-      <div className="mt-6 max-w-sm">
-        <RsvpForm
-          slug={slug}
-          isFull={isFull}
-          ctaLabel={content?.ctaLabel}
-          accentColor={brandColor}
-        />
+      <div className="mt-6">
+        {ticketTypes.length > 0 ? (
+          <Checkout event={event} />
+        ) : (
+          <div className="max-w-sm">
+            <RsvpForm
+              slug={slug}
+              isFull={isFull}
+              ctaLabel={content?.ctaLabel}
+              accentColor={brandColor}
+            />
+          </div>
+        )}
       </div>
     </div>
   );
