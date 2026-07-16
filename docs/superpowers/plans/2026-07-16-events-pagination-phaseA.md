@@ -260,7 +260,13 @@ test("rsvp confirm raises seatsTaken; cancel with a waitlister nets to zero", as
   expect((await t.run((ctx) => ctx.db.get(eventId)))!.seatsTaken).toBe(1);
 });
 
-test("sweep expiry updates seatsTaken for every affected event", async () => {
+// NOTE: sweep is seat-count-NEUTRAL. When a claim expires, the holder is sent to the
+// back of the waitlist and then immediately re-promoted (Convex read-your-writes lets
+// promoteNext see the row it just re-waitlisted), so a lone waitlister reclaims the seat
+// and seatsTaken stays 1 -- it does NOT drop to 0. The sweep recompute is therefore a
+// defensive per-event self-heal; to make its fan-out observable, corrupt the denormalized
+// counter first and assert sweep heals it, across two events.
+test("sweep recomputes seatsTaken for every affected event (per-event fan-out)", async () => {
   const t = convexTest(schema, modules);
   const { as } = await asOrganizer(t, "ada@example.com");
   await as.mutation(api.organizers.ensureOrganizer, {});
@@ -273,25 +279,25 @@ test("sweep expiry updates seatsTaken for every affected event", async () => {
   };
   const e1 = await mk("E1");
   const e2 = await mk("E2");
-  // Each event: one confirmed (fills seat) + one waitlisted.
   for (const e of [e1, e2]) {
     await t.mutation(api.rsvps.rsvp, { slug: e.slug, name: "A", email: `a@${e.slug}.co` });
     await t.mutation(api.rsvps.rsvp, { slug: e.slug, name: "B", email: `b@${e.slug}.co` });
-  }
-  // Expire the holds far in the future so any claim window has passed, then sweep.
-  // (No pending_claim holds yet; create expiry by cancelling A to promote B into a hold, then expiring it.)
-  for (const e of [e1, e2]) {
-    const a = await t.run((ctx) =>
+    // Cancel A -> B is promoted into a confirmed_pending_claim hold (seatsTaken stays 1).
+    const rows = await t.run((ctx) =>
       ctx.db.query("rsvps").withIndex("by_event", (q) => q.eq("eventId", e.id)).collect(),
     );
-    const confirmedA = a.find((r) => r.status === "confirmed")!;
-    await t.mutation(api.rsvps.cancelRsvp, { token: confirmedA.token }); // B -> confirmed_pending_claim (hold)
+    const a = rows.find((r) => r.status === "confirmed")!;
+    await t.mutation(api.rsvps.cancelRsvp, { token: a.token });
   }
-  // Now each event has a live hold (seatsTaken 1). Sweep far in the future expires them;
-  // with no further waitlisters, the hold goes back to waitlisted -> seatsTaken drops to 0.
+  // Corrupt both denormalized counters so the per-event recompute's effect is observable.
+  await t.run(async (ctx) => {
+    await ctx.db.patch(e1.id, { seatsTaken: 99 });
+    await ctx.db.patch(e2.id, { seatsTaken: 99 });
+  });
+  // Sweep far in the future expires both holds; recompute must heal both counters back to 1.
   await t.mutation(internal.waitlist.sweepExpiredClaims, { now: Date.now() + 60 * 60 * 1000 });
-  expect((await t.run((ctx) => ctx.db.get(e1.id)))!.seatsTaken).toBe(0);
-  expect((await t.run((ctx) => ctx.db.get(e2.id)))!.seatsTaken).toBe(0);
+  expect((await t.run((ctx) => ctx.db.get(e1.id)))!.seatsTaken).toBe(1);
+  expect((await t.run((ctx) => ctx.db.get(e2.id)))!.seatsTaken).toBe(1);
 });
 ```
 
