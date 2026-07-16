@@ -4,6 +4,7 @@ import type { Id } from "./_generated/dataModel";
 import { v } from "convex/values";
 import { CLAIM_WINDOW_MS } from "./lib/constants";
 import { countSeatsTaken } from "./lib/capacity";
+import { recomputeEventStats } from "./lib/eventStats";
 
 /**
  * Offer a freed seat to the next person on an event's waitlist.
@@ -68,6 +69,7 @@ async function sweep(ctx: MutationCtx, now: number): Promise<number> {
     .filter((q) => q.eq(q.field("status"), "confirmed_pending_claim"))
     .collect();
 
+  const touched = new Set<Id<"events">>();
   let reprocessed = 0;
   for (const hold of holds) {
     if ((hold.claimExpiresAt ?? 0) >= now) continue;
@@ -86,7 +88,11 @@ async function sweep(ctx: MutationCtx, now: number): Promise<number> {
       claimExpiresAt: undefined,
     });
     await promoteNext(ctx, hold.eventId, now);
+    touched.add(hold.eventId);
     reprocessed++;
+  }
+  for (const eventId of touched) {
+    await recomputeEventStats(ctx, eventId);
   }
   return reprocessed;
 }
