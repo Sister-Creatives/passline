@@ -40,8 +40,12 @@ test("recomputeEventStats writes seatsTaken/ticketsSold/revenueCents from childr
     const base = { eventId, organizerId, buyerName: "Bo", buyerEmail: "bo@x.co", currency: "USD",
       feeMode: "absorb" as const, subtotalCents: 2000, feeCents: 0, totalCents: 2000, createdAt: Date.now() };
     const paid = await ctx.db.insert("orders", { ...base, status: "paid", payoutCents: 2000, token: "o1", paidAt: Date.now() });
-    await ctx.db.insert("orders", { ...base, status: "pending", payoutCents: 2000, token: "o2" });
+    const pending = await ctx.db.insert("orders", { ...base, status: "pending", payoutCents: 2000, token: "o2" });
     await ctx.db.insert("tickets", { orderId: paid, eventId, ticketTypeId: ttId, code: "TK1", status: "valid", createdAt: Date.now() });
+    // On the pending (unpaid) order: must be excluded by the paid-order join.
+    await ctx.db.insert("tickets", { orderId: pending, eventId, ticketTypeId: ttId, code: "TK2", status: "valid", createdAt: Date.now() });
+    // On the paid order but cancelled: must be excluded by the non-cancelled filter.
+    await ctx.db.insert("tickets", { orderId: paid, eventId, ticketTypeId: ttId, code: "TK3", status: "cancelled", createdAt: Date.now() });
     await recomputeEventStats(ctx, eventId);
   });
 
