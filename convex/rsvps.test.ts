@@ -205,6 +205,26 @@ test("rsvp confirm raises seatsTaken; cancel with a waitlister nets to zero", as
   expect((await t.run((ctx) => ctx.db.get(eventId)))!.seatsTaken).toBe(1);
 });
 
+test("cancelRsvp recomputes seatsTaken to 0 when there is no waitlister", async () => {
+  const t = convexTest(schema, modules);
+  const { as } = await asOrganizer(t, "ada@example.com");
+  await as.mutation(api.organizers.ensureOrganizer, {});
+  const eventId = await as.mutation(api.events.createEvent, {
+    title: "Solo", description: "x", startsAt: 100, endsAt: 200, location: "H", capacity: 1,
+  });
+  const slug = (await t.run((ctx) => ctx.db.get(eventId)))!.slug;
+  await as.mutation(api.events.publishEvent, { eventId });
+
+  const a = await t.mutation(api.rsvps.rsvp, { slug, name: "A", email: "a@x.co" });
+  expect(a.status).toBe("confirmed");
+  expect((await t.run((ctx) => ctx.db.get(eventId)))!.seatsTaken).toBe(1);
+
+  // No waitlister -> cancel frees the seat and nothing backfills -> must drop to 0.
+  // Only passes if cancelRsvp itself recomputes (the confirm-branch recompute left it at 1).
+  await t.mutation(api.rsvps.cancelRsvp, { token: a.token });
+  expect((await t.run((ctx) => ctx.db.get(eventId)))!.seatsTaken).toBe(0);
+});
+
 test("sweep recomputes seatsTaken for every affected event (per-event fan-out)", async () => {
   const t = convexTest(schema, modules);
   const { as } = await asOrganizer(t, "ada@example.com");
