@@ -89,7 +89,9 @@ function EventsListContent() {
   const kpis = useMemo(() => {
     const published = events.filter((e) => e.status === "published").length;
     const upcoming = events.filter((e) => e.endsAt >= now);
-    const nextUpcoming = upcoming.slice().sort((a, b) => a.startsAt - b.startsAt)[0];
+    const nextUpcoming = upcoming
+      .filter((e) => e.startsAt >= now)
+      .sort((a, b) => a.startsAt - b.startsAt)[0];
     return {
       total: events.length,
       published,
@@ -165,7 +167,13 @@ function EventsListContent() {
         <StatCard
           label="Upcoming"
           value={kpis.upcomingCount}
-          sub={kpis.nextUpcoming ? `Next ${formatRelative(kpis.nextUpcoming.startsAt)}` : "None scheduled"}
+          sub={
+            kpis.nextUpcoming
+              ? `Next ${formatRelative(kpis.nextUpcoming.startsAt)}`
+              : kpis.upcomingCount > 0
+                ? "In progress"
+                : "None scheduled"
+          }
         />
         <StatCard
           label="Attendees"
