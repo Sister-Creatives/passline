@@ -2,6 +2,7 @@ import { v } from "convex/values";
 import { mutation, type MutationCtx } from "./_generated/server";
 import { getAuthOrganizerId } from "./auth";
 import type { Id } from "./_generated/dataModel";
+import { recomputeEventStats } from "./lib/eventStats";
 
 /** Resolve the target organizer from an id, an email, or the session. */
 async function resolveOrg(
@@ -314,6 +315,8 @@ export const seed = mutation({
         }
         await ctx.db.patch(ticketTypeId, { sold });
       }
+
+      await recomputeEventStats(ctx, eventId);
     }
 
     const seededPublished = (

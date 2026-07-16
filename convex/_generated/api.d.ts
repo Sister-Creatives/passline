@@ -35,6 +35,7 @@ import type * as lib_readiness from "../lib/readiness.js";
 import type * as lib_slug from "../lib/slug.js";
 import type * as lib_timeseries from "../lib/timeseries.js";
 import type * as marketing from "../marketing.js";
+import type * as migrations from "../migrations.js";
 import type * as orders from "../orders.js";
 import type * as organizers from "../organizers.js";
 import type * as promoCodes from "../promoCodes.js";
@@ -85,6 +86,7 @@ declare const fullApi: ApiFromModules<{
   "lib/slug": typeof lib_slug;
   "lib/timeseries": typeof lib_timeseries;
   marketing: typeof marketing;
+  migrations: typeof migrations;
   orders: typeof orders;
   organizers: typeof organizers;
   promoCodes: typeof promoCodes;
@@ -130,4 +132,5 @@ export declare const internal: FilterApi<
 
 export declare const components: {
   resend: import("@convex-dev/resend/_generated/component.js").ComponentApi<"resend">;
+  migrations: import("@convex-dev/migrations/_generated/component.js").ComponentApi<"migrations">;
 };
