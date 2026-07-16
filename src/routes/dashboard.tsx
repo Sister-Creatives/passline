@@ -214,6 +214,8 @@ function OverviewContent() {
     data;
   const totalRegistrations = timeseries.reduce((sum, d) => sum + d.registrations, 0);
   const totalCheckIns = timeseries.reduce((sum, d) => sum + d.checkIns, 0);
+  const nextUpcoming = upcomingEvents[0];
+  const avgOrderCents = sales.orders > 0 ? Math.round(sales.revenueCents / sales.orders) : 0;
 
   return (
     <div className="flex flex-col gap-4">
@@ -237,24 +239,28 @@ function OverviewContent() {
         <StatCard
           label="Upcoming"
           value={events.upcoming}
+          sub={nextUpcoming ? `Next ${formatRelative(nextUpcoming.startsAt)}` : "None scheduled"}
           deltaPct={cards.upcoming.deltaPct}
           spark={cards.upcoming.spark}
         />
         <StatCard
           label="Attendees"
           value={attendance.attendees}
+          sub={`${formatInteger(attendance.checkedIn)} checked in`}
           deltaPct={cards.attendees.deltaPct}
           spark={cards.attendees.spark}
         />
         <StatCard
           label="Orders"
           value={sales.orders}
+          sub={sales.orders > 0 ? `${formatMoney(avgOrderCents, sales.currency)} avg order` : undefined}
           deltaPct={cards.orders.deltaPct}
           spark={cards.orders.spark}
         />
         <StatCard
           label="Tickets sold"
           value={sales.ticketsSold}
+          sub={sales.revenueCents > 0 ? `${formatMoney(sales.revenueCents, sales.currency)} revenue` : undefined}
           deltaPct={cards.ticketsSold.deltaPct}
           spark={cards.ticketsSold.spark}
         />
