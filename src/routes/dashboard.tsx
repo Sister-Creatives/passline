@@ -3,7 +3,7 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { convexQuery } from "@convex-dev/react-query";
 import { PlusIcon } from "lucide-react";
-import { Area, AreaChart, CartesianGrid, ResponsiveContainer, XAxis } from "recharts";
+import { Area, AreaChart, CartesianGrid, XAxis } from "recharts";
 
 import { api } from "../../convex/_generated/api";
 import { DashboardLayout } from "@/components/DashboardLayout";
@@ -27,6 +27,8 @@ import {
 } from "@/components/ui/chart";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Empty, EmptyHeader, EmptyTitle, EmptyDescription } from "@/components/ui/empty";
+import { StatCard } from "@/components/stat-card";
+import { formatShortDate, formatRelative } from "@/lib/format-date";
 
 export const Route = createFileRoute("/dashboard")({ component: OverviewPage });
 
@@ -40,41 +42,9 @@ function OverviewPage() {
   );
 }
 
-/** "Sat, Jul 20, 3:00 PM" — a compact local date+time for an event start. */
-function formatShortDate(ms: number): string {
-  return new Date(ms).toLocaleString(undefined, {
-    weekday: "short",
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  });
-}
-
 /** "Jul 20" tick label from a "YYYY-MM-DD" bucket date. */
 function formatDayTick(date: string): string {
   return new Date(date).toLocaleDateString(undefined, { month: "short", day: "numeric" });
-}
-
-const RELATIVE_UNITS: [Intl.RelativeTimeFormatUnit, number][] = [
-  ["year", 1000 * 60 * 60 * 24 * 365],
-  ["month", 1000 * 60 * 60 * 24 * 30],
-  ["day", 1000 * 60 * 60 * 24],
-  ["hour", 1000 * 60 * 60],
-  ["minute", 1000 * 60],
-];
-
-/** "2h ago" / "3d ago" for an audit-log timestamp. */
-function formatRelative(ms: number): string {
-  const diff = ms - Date.now();
-  const abs = Math.abs(diff);
-  for (const [unit, unitMs] of RELATIVE_UNITS) {
-    if (abs >= unitMs) {
-      const rtf = new Intl.RelativeTimeFormat(undefined, { numeric: "auto" });
-      return rtf.format(Math.round(diff / unitMs), unit);
-    }
-  }
-  return "just now";
 }
 
 /**
@@ -375,67 +345,5 @@ function OverviewContent() {
         </Card>
       </div>
     </div>
-  );
-}
-
-/** A tiny gradient area chart with no axes/grid/tooltip, for a stat card footer. */
-function Sparkline({ data }: { data: number[] }) {
-  const gradientId = `spark-${useId().replace(/:/g, "")}`;
-  const points = data.map((v, i) => ({ i, v }));
-  return (
-    <div className="h-12 w-full">
-      <ResponsiveContainer width="100%" height="100%">
-        <AreaChart data={points} margin={{ top: 4, right: 0, bottom: 0, left: 0 }}>
-          <defs>
-            <linearGradient id={gradientId} x1="0" x2="0" y1="0" y2="1">
-              <stop offset="0%" stopColor="var(--primary)" stopOpacity={0.3} />
-              <stop offset="100%" stopColor="var(--primary)" stopOpacity={0} />
-            </linearGradient>
-          </defs>
-          <Area
-            dataKey="v"
-            type="monotone"
-            stroke="var(--primary)"
-            strokeWidth={1.5}
-            fill={`url(#${gradientId})`}
-            isAnimationActive={false}
-            dot={false}
-          />
-        </AreaChart>
-      </ResponsiveContainer>
-    </div>
-  );
-}
-
-function StatCard({
-  label,
-  value,
-  sub,
-  deltaPct,
-  spark,
-}: {
-  label: string;
-  value: string | number;
-  sub?: string;
-  deltaPct: number | null;
-  spark: number[];
-}) {
-  return (
-    <Card className="gap-0 overflow-hidden pb-0">
-      <CardHeader className="pb-2">
-        <div className="flex items-center justify-between gap-2">
-          <CardDescription>{label}</CardDescription>
-          {deltaPct !== null && (
-            <Delta value={Math.round(deltaPct)} variant="badge">
-              <DeltaIcon variant="trend" />
-              <DeltaValue suffix="%" />
-            </Delta>
-          )}
-        </div>
-        <CardTitle className="font-mono text-3xl tabular-nums">{value}</CardTitle>
-        {sub && <div className="text-xs text-muted-foreground">{sub}</div>}
-      </CardHeader>
-      <Sparkline data={spark} />
-    </Card>
   );
 }
