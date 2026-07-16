@@ -1,22 +1,10 @@
 import { query } from "./_generated/server";
 import { getAuthOrganizerId } from "./auth";
 import { countSeatsTaken } from "./lib/capacity";
+import { MS_PER_DAY, TIMESERIES_DAYS, toUtcDateString, buildDateWindow } from "./lib/timeseries";
 
-const MS_PER_DAY = 24 * 60 * 60 * 1000;
-const TIMESERIES_DAYS = 30;
 const UPCOMING_LIMIT = 5;
 const ACTIVITY_LIMIT = 8;
-
-/** UTC "YYYY-MM-DD" for a given epoch-ms timestamp. Mirrors `analytics.ts`. */
-function toUtcDateString(ms: number): string {
-  return new Date(ms).toISOString().slice(0, 10);
-}
-
-/** Epoch-ms (UTC midnight) for a "YYYY-MM-DD" date string. Mirrors `analytics.ts`. */
-function fromUtcDateString(dateStr: string): number {
-  const [year, month, day] = dateStr.split("-").map(Number);
-  return Date.UTC(year, month - 1, day);
-}
 
 type TimeseriesBucket = {
   date: string;
@@ -27,17 +15,12 @@ type TimeseriesBucket = {
 
 /** The last 30 UTC-day buckets (including today), zero-filled, oldest first. */
 function buildEmptyTimeseries(now: number): TimeseriesBucket[] {
-  const todayMs = fromUtcDateString(toUtcDateString(now));
-  const buckets: TimeseriesBucket[] = [];
-  for (let i = TIMESERIES_DAYS - 1; i >= 0; i--) {
-    buckets.push({
-      date: toUtcDateString(todayMs - i * MS_PER_DAY),
-      registrations: 0,
-      checkIns: 0,
-      revenueCents: 0,
-    });
-  }
-  return buckets;
+  return buildDateWindow(now).map((date) => ({
+    date,
+    registrations: 0,
+    checkIns: 0,
+    revenueCents: 0,
+  }));
 }
 
 function zeroedOverview(now: number) {
