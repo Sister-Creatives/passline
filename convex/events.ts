@@ -8,6 +8,8 @@ import { promoteNext } from "./waitlist";
 import { recordAudit } from "./audit";
 import { computeReadiness } from "./lib/readiness";
 import { isEventCategory, isEventType, isValidSlug } from "./lib/eventTaxonomy";
+import { SEAT_HOLDING_STATUSES } from "./lib/constants";
+import { MS_PER_DAY, buildDateWindow, fromUtcDateString, toUtcDateString } from "./lib/timeseries";
 
 const CURRENCY_RE = /^[A-Z]{3}$/;
 const MAX_KEYWORDS = 10;
@@ -306,6 +308,111 @@ export const listMyEvents = query({
       .withIndex("by_organizer", (q) => q.eq("organizerId", organizerId))
       .order("desc")
       .collect();
+  },
+});
+
+/**
+ * Owner-scoped events list enriched for the `/events` cockpit.
+ *
+ * Per event: raw display fields plus a live `seatsTaken` (seat-holding RSVPs,
+ * matching `countSeatsTaken`), the paid-channel `ticketsSold` / `revenueCents`,
+ * a cumulative "pace to capacity" registration series (`spark`, right edge ==
+ * `seatsTaken`), a cumulative paid-revenue series (`revenueSpark`, right edge ==
+ * `revenueCents`), and a 30d-vs-prior-30d registration `deltaPct` (null when the
+ * prior window is empty). Fans out over `by_event` like `dashboard.getOverview`,
+ * kept per-event rather than flattened. Returns [] when unauthenticated.
+ */
+export const listMyEventsWithStats = query({
+  args: {},
+  handler: async (ctx) => {
+    const now = Date.now();
+    const organizerId = await getAuthOrganizerId(ctx);
+    if (!organizerId) return [];
+
+    const events = await ctx.db
+      .query("events")
+      .withIndex("by_organizer", (q) => q.eq("organizerId", organizerId))
+      .order("desc")
+      .collect();
+
+    const window = buildDateWindow(now);
+    const windowStartMs = fromUtcDateString(window[0]);
+    const seatHolding = (status: string) =>
+      (SEAT_HOLDING_STATUSES as readonly string[]).includes(status);
+
+    return Promise.all(
+      events.map(async (e) => {
+        const [rsvps, tickets, orders] = await Promise.all([
+          ctx.db.query("rsvps").withIndex("by_event", (q) => q.eq("eventId", e._id)).collect(),
+          ctx.db.query("tickets").withIndex("by_event", (q) => q.eq("eventId", e._id)).collect(),
+          ctx.db.query("orders").withIndex("by_event", (q) => q.eq("eventId", e._id)).collect(),
+        ]);
+
+        // Seat-holding registrations (the capacity source of truth).
+        const seats = rsvps.filter((r) => seatHolding(r.status));
+        const seatsTaken = seats.length;
+
+        // Cumulative pace-to-capacity spark. Registrations older than the
+        // window seed the baseline so the final point still equals seatsTaken.
+        const regTime = (r: (typeof seats)[number]) => r.createdAt ?? r._creationTime;
+        const dayCounts = new Map(window.map((d) => [d, 0]));
+        let regBaseline = 0;
+        for (const r of seats) {
+          const t = regTime(r);
+          const key = toUtcDateString(t);
+          if (t < windowStartMs || !dayCounts.has(key)) regBaseline += 1;
+          else dayCounts.set(key, dayCounts.get(key)! + 1);
+        }
+        let regRunning = regBaseline;
+        const spark = window.map((d) => (regRunning += dayCounts.get(d)!));
+
+        // Paid channel: revenue + tickets sold, and a cumulative revenue spark.
+        const paidOrders = orders.filter((o) => o.status === "paid");
+        const paidOrderIds = new Set(paidOrders.map((o) => o._id));
+        const revenueCents = paidOrders.reduce((sum, o) => sum + o.payoutCents, 0);
+        const ticketsSold = tickets.filter((t) => paidOrderIds.has(t.orderId)).length;
+
+        const revByDay = new Map(window.map((d) => [d, 0]));
+        let revBaseline = 0;
+        for (const o of paidOrders) {
+          const t = o.paidAt ?? o.createdAt;
+          const key = toUtcDateString(t);
+          if (t < windowStartMs || !revByDay.has(key)) revBaseline += o.payoutCents;
+          else revByDay.set(key, revByDay.get(key)! + o.payoutCents);
+        }
+        let revRunning = revBaseline;
+        const revenueSpark = window.map((d) => (revRunning += revByDay.get(d)!));
+
+        // Registrations last 30d vs the prior 30d.
+        const windowMs = 30 * MS_PER_DAY;
+        const curStart = now - windowMs;
+        const prevStart = now - 2 * windowMs;
+        const cur = seats.filter((r) => regTime(r) >= curStart).length;
+        const prev = seats.filter((r) => {
+          const t = regTime(r);
+          return t >= prevStart && t < curStart;
+        }).length;
+        const deltaPct = prev === 0 ? null : ((cur - prev) / prev) * 100;
+
+        return {
+          _id: e._id,
+          title: e.title,
+          slug: e.slug,
+          location: e.location,
+          startsAt: e.startsAt,
+          endsAt: e.endsAt,
+          status: e.status,
+          capacity: e.capacity,
+          currency: e.currency ?? "USD",
+          seatsTaken,
+          ticketsSold,
+          revenueCents,
+          spark,
+          revenueSpark,
+          deltaPct,
+        };
+      }),
+    );
   },
 });
 
