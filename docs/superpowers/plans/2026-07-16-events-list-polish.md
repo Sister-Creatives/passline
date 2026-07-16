@@ -15,6 +15,8 @@
 - **The dashboard must not regress** — after any extraction, `dashboard.getOverview` output and the `/dashboard` render are unchanged.
 - **Seats are RSVP-derived** — `seatsTaken` and the pace chart count seat-holding RSVPs only (confirmed / confirmed_pending_claim / checked_in), matching `countSeatsTaken`. Tickets/orders are the separate paid channel feeding `ticketsSold` / `revenueCents`.
 - **Package manager:** pnpm. Tests: `pnpm test` (vitest run). Build: `pnpm build`. Typecheck: `npx tsc --noEmit`.
+- **tsconfig has `noUnusedLocals` + `noUnusedParameters` ON** — `npx tsc --noEmit` fails on any unused import, variable, or parameter. After deleting inline code (Task 3) prune the now-dangling imports; in Task 5 import only what you use. `tsc` must exit 0.
+- **No em/en dashes anywhere the user sees** — use a plain hyphen `-` or a middle dot `·` for separators/placeholders. (Existing code comments that already use `—` may be moved verbatim.)
 
 ---
 
@@ -915,7 +917,7 @@ function EventRowView({ e }: { e: EventRow }) {
             <div className="text-xs text-muted-foreground">{formatInteger(e.ticketsSold)} sold</div>
           </div>
         ) : (
-          <span className="text-muted-foreground">—</span>
+          <span className="text-muted-foreground">-</span>
         )}
       </TableCell>
       <TableCell>
@@ -945,7 +947,7 @@ Expected: builds clean.
 Ensure seed data exists (the repo's dev sample-data mutation, per recent commits). Start the app:
 
 Run: `pnpm dev` (then load `http://localhost:3000/events`)
-Confirm: KPI strip shows Events / Upcoming / Attendees (with spark) / Revenue (with spark); the table splits into Upcoming and Past; each row shows a pace chart, a fill bar with `seatsTaken/capacity`, sales or `—`, and a status badge; typing in Search filters live; the status toggle filters; the sort select reorders; clicking a title or chevron opens `/events/$id`. Verify no horizontal page scroll at a narrow width (Trend/Sales/location collapse).
+Confirm: KPI strip shows Events / Upcoming / Attendees (with spark) / Revenue (with spark); the table splits into Upcoming and Past; each row shows a pace chart, a fill bar with `seatsTaken/capacity`, sales or a `-` placeholder, and a status badge; typing in Search filters live; the status toggle filters; the sort select reorders; clicking a title or chevron opens `/events/$id`. Verify no horizontal page scroll at a narrow width (Trend/Sales/location collapse).
 
 Use the `superpowers:verification-before-completion` skill (or the `/verify` skill) to drive this and capture evidence.
 
