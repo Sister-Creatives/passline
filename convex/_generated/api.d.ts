@@ -28,6 +28,7 @@ import type * as http from "../http.js";
 import type * as lib_capacity from "../lib/capacity.js";
 import type * as lib_constants from "../lib/constants.js";
 import type * as lib_eventContent from "../lib/eventContent.js";
+import type * as lib_eventStats from "../lib/eventStats.js";
 import type * as lib_eventTaxonomy from "../lib/eventTaxonomy.js";
 import type * as lib_fees from "../lib/fees.js";
 import type * as lib_readiness from "../lib/readiness.js";
@@ -77,6 +78,7 @@ declare const fullApi: ApiFromModules<{
   "lib/capacity": typeof lib_capacity;
   "lib/constants": typeof lib_constants;
   "lib/eventContent": typeof lib_eventContent;
+  "lib/eventStats": typeof lib_eventStats;
   "lib/eventTaxonomy": typeof lib_eventTaxonomy;
   "lib/fees": typeof lib_fees;
   "lib/readiness": typeof lib_readiness;

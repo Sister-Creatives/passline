@@ -82,6 +82,9 @@ export const createEvent = mutation({
       ...args,
       status: "draft",
       slug: slugify(args.title, crypto.randomUUID()),
+      seatsTaken: 0,
+      ticketsSold: 0,
+      revenueCents: 0,
     });
     return eventId;
   },
@@ -504,6 +507,9 @@ export const duplicateEvent = mutation({
       metaPixelId: source.metaPixelId,
       googleAnalyticsId: source.googleAnalyticsId,
       gtmId: source.gtmId,
+      seatsTaken: 0,
+      ticketsSold: 0,
+      revenueCents: 0,
     });
 
     const ticketTypes = await ctx.db

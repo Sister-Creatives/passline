@@ -43,6 +43,12 @@ export default defineSchema({
     // Explicit creation time. Real events leave this unset (surfaces fall back
     // to `_creationTime`); seed/import data sets it to backdate history.
     createdAt: v.optional(v.number()),
+    // Denormalized stats, maintained by recomputeEventStats on every write that
+    // can move them (see convex/lib/eventStats.ts). Optional so the schema
+    // deploys before the backfill; reads treat undefined as 0.
+    seatsTaken: v.optional(v.number()),
+    ticketsSold: v.optional(v.number()),
+    revenueCents: v.optional(v.number()),
   })
     .index("by_organizer", ["organizerId"])
     .index("by_slug", ["slug"]),
