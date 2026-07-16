@@ -1,7 +1,23 @@
 import { v } from "convex/values";
-import { mutation } from "./_generated/server";
+import { mutation, type MutationCtx } from "./_generated/server";
 import { getAuthOrganizerId } from "./auth";
 import type { Id } from "./_generated/dataModel";
+
+/** Resolve the target organizer from an id, an email, or the session. */
+async function resolveOrg(
+  ctx: MutationCtx,
+  args: { organizerId?: Id<"organizers">; email?: string },
+): Promise<Id<"organizers"> | null> {
+  if (args.organizerId) return args.organizerId;
+  if (args.email) {
+    const org = await ctx.db
+      .query("organizers")
+      .withIndex("by_email", (q) => q.eq("email", args.email!))
+      .unique();
+    if (org) return org._id;
+  }
+  return await getAuthOrganizerId(ctx);
+}
 
 /**
  * Dev-only sample data. Creates a realistic set of events (one live now, a few
@@ -50,21 +66,12 @@ export const seed = mutation({
     email: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    let organizerId: Id<"organizers"> | null = args.organizerId ?? null;
-    if (!organizerId && args.email) {
-      const org = await ctx.db
-        .query("organizers")
-        .withIndex("by_email", (q) => q.eq("email", args.email!))
-        .unique();
-      organizerId = org?._id ?? null;
-    }
-    if (!organizerId) organizerId = await getAuthOrganizerId(ctx);
-    if (!organizerId) {
+    const orgId = await resolveOrg(ctx, args);
+    if (!orgId) {
       throw new Error(
         "No organizer resolved. Pass { email } or { organizerId }, or run while signed in.",
       );
     }
-    const orgId = organizerId;
     const now = Date.now();
 
     const existing = await ctx.db
@@ -207,6 +214,7 @@ export const seed = mutation({
             email: p.email,
             token: `rsvp-${rid()}`,
             status: "confirmed",
+            createdAt: now - Math.floor(Math.random() * 25) * DAY - Math.floor(Math.random() * 12 * HOUR),
           });
           attendeesCreated += 1;
           sold += 1;
@@ -221,6 +229,7 @@ export const seed = mutation({
             token: `rsvp-${rid()}`,
             status: "checked_in",
             checkedInAt: at,
+            createdAt: at - Math.floor(Math.random() * 14) * DAY - HOUR,
           });
           attendeesCreated += 1;
           sold += 1;
@@ -234,6 +243,7 @@ export const seed = mutation({
             token: `rsvp-${rid()}`,
             status: "waitlisted",
             waitlistPosition: i + 1,
+            createdAt: now - Math.floor(Math.random() * 25) * DAY - Math.floor(Math.random() * 12 * HOUR),
           });
           attendeesCreated += 1;
         }
@@ -320,5 +330,56 @@ export const seed = mutation({
       ordersCreated,
       revenueDollars: Math.round(revenueCents / 100),
     };
+  },
+});
+
+/** Delete everything seed() created (events tagged "seed" and their children). */
+export const clear = mutation({
+  args: {
+    organizerId: v.optional(v.id("organizers")),
+    email: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const orgId = await resolveOrg(ctx, args);
+    if (!orgId) throw new Error("No organizer resolved.");
+
+    const events = (
+      await ctx.db
+        .query("events")
+        .withIndex("by_organizer", (q) => q.eq("organizerId", orgId))
+        .collect()
+    ).filter((e) => (e.keywords ?? []).includes("seed"));
+
+    let docsDeleted = 0;
+    for (const e of events) {
+      for (const r of await ctx.db.query("rsvps").withIndex("by_event", (q) => q.eq("eventId", e._id)).collect()) {
+        await ctx.db.delete(r._id);
+        docsDeleted += 1;
+      }
+      for (const t of await ctx.db.query("tickets").withIndex("by_event", (q) => q.eq("eventId", e._id)).collect()) {
+        await ctx.db.delete(t._id);
+        docsDeleted += 1;
+      }
+      for (const o of await ctx.db.query("orders").withIndex("by_event", (q) => q.eq("eventId", e._id)).collect()) {
+        for (const oi of await ctx.db.query("orderItems").withIndex("by_order", (q) => q.eq("orderId", o._id)).collect()) {
+          await ctx.db.delete(oi._id);
+          docsDeleted += 1;
+        }
+        await ctx.db.delete(o._id);
+        docsDeleted += 1;
+      }
+      for (const tt of await ctx.db.query("ticketTypes").withIndex("by_event", (q) => q.eq("eventId", e._id)).collect()) {
+        await ctx.db.delete(tt._id);
+        docsDeleted += 1;
+      }
+      for (const cp of await ctx.db.query("emailCampaigns").withIndex("by_event", (q) => q.eq("eventId", e._id)).collect()) {
+        await ctx.db.delete(cp._id);
+        docsDeleted += 1;
+      }
+      await ctx.db.delete(e._id);
+      docsDeleted += 1;
+    }
+
+    return { cleared: true, eventsDeleted: events.length, docsDeleted };
   },
 });

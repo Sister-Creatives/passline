@@ -57,6 +57,9 @@ export default defineSchema({
     // the check-in event) so the door dashboard's "recent check-ins" list can
     // sort by actual arrival time.
     checkedInAt: v.optional(v.number()),
+    // Explicit registration time. Real RSVPs leave this unset (surfaces fall
+    // back to `_creationTime`); seed/import data sets it to backdate history.
+    createdAt: v.optional(v.number()),
   })
     .index("by_event", ["eventId"])
     .index("by_event_and_status", ["eventId", "status"])

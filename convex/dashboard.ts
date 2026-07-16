@@ -126,11 +126,11 @@ export const getOverview = query({
     const timeseries = buildEmptyTimeseries(now);
     const bucketByDate = new Map(timeseries.map((b) => [b.date, b]));
     for (const r of allRsvps) {
-      const bucket = bucketByDate.get(toUtcDateString(r._creationTime));
+      const bucket = bucketByDate.get(toUtcDateString(r.createdAt ?? r._creationTime));
       if (bucket) bucket.registrations += 1;
     }
     for (const t of allTickets) {
-      const bucket = bucketByDate.get(toUtcDateString(t._creationTime));
+      const bucket = bucketByDate.get(toUtcDateString(t.createdAt));
       if (bucket) bucket.registrations += 1;
     }
     for (const o of paidOrders) {
@@ -155,11 +155,11 @@ export const getOverview = query({
     const inCurrent = (ms: number) => ms >= currentStart;
     const inPrevious = (ms: number) => ms >= prevStart && ms < currentStart;
     const regCurrent =
-      allRsvps.filter((r) => inCurrent(r._creationTime)).length +
-      allTickets.filter((t) => inCurrent(t._creationTime)).length;
+      allRsvps.filter((r) => inCurrent(r.createdAt ?? r._creationTime)).length +
+      allTickets.filter((t) => inCurrent(t.createdAt)).length;
     const regPrevious =
-      allRsvps.filter((r) => inPrevious(r._creationTime)).length +
-      allTickets.filter((t) => inPrevious(t._creationTime)).length;
+      allRsvps.filter((r) => inPrevious(r.createdAt ?? r._creationTime)).length +
+      allTickets.filter((t) => inPrevious(t.createdAt)).length;
     const ciCurrent =
       allRsvps.filter((r) => r.checkedInAt !== undefined && inCurrent(r.checkedInAt)).length +
       allTickets.filter((t) => t.checkedInAt !== undefined && inCurrent(t.checkedInAt)).length;
