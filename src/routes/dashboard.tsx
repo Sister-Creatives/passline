@@ -216,6 +216,10 @@ function OverviewContent() {
   const totalCheckIns = timeseries.reduce((sum, d) => sum + d.checkIns, 0);
   const nextUpcoming = upcomingEvents[0];
   const avgOrderCents = sales.orders > 0 ? Math.round(sales.revenueCents / sales.orders) : 0;
+  const checkInRate =
+    attendance.attendees > 0
+      ? Math.round((attendance.checkedIn / attendance.attendees) * 100)
+      : 0;
 
   return (
     <div className="flex flex-col gap-4">
@@ -246,7 +250,7 @@ function OverviewContent() {
         <StatCard
           label="Attendees"
           value={attendance.attendees}
-          sub={`${formatInteger(attendance.checkedIn)} checked in`}
+          sub={`${formatInteger(attendance.checkedIn)} checked in · ${checkInRate}%`}
           deltaPct={cards.attendees.deltaPct}
           spark={cards.attendees.spark}
         />
