@@ -31,14 +31,14 @@ export function NavLiveBanner() {
       <SidebarMenu className="gap-1">
         {live.map((e) => (
           <SidebarMenuItem key={e._id}>
-            <SidebarMenuButton asChild tooltip={e.title + " — at the door"}>
+            <SidebarMenuButton asChild tooltip={e.title}>
               <Link to="/events/$id/door" params={{ id: e._id }}>
                 <DoorOpenIcon />
                 <span className="truncate">{e.title}</span>
               </Link>
             </SidebarMenuButton>
             {e.checkedIn > 0 && (
-              <SidebarMenuBadge className="rounded-full bg-sidebar-border px-1.5 font-medium text-sidebar-foreground/70">
+              <SidebarMenuBadge className="rounded-full bg-primary px-1.5 text-[11px] font-semibold text-primary-foreground tabular-nums peer-hover/menu-button:text-primary-foreground peer-data-active/menu-button:text-primary-foreground">
                 {e.checkedIn}
               </SidebarMenuBadge>
             )}

@@ -25,7 +25,7 @@ export const Route = createFileRoute("/attendees")({ component: AttendeesPage })
 function statusBadge(status: string) {
   switch (status) {
     case "checked_in":
-      return <Badge className="bg-success/15 text-success">Checked in</Badge>;
+      return <Badge variant="success">Checked in</Badge>;
     case "confirmed":
     case "valid":
       return <Badge variant="secondary">Confirmed</Badge>;

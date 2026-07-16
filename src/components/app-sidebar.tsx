@@ -58,7 +58,7 @@ export function AppSidebar() {
   return (
     <Sidebar collapsible="icon" variant="sidebar" className="group-data-[side=left]:border-r-0">
       {/* Workspace / org identity -- replaces the static "Passline" wordmark */}
-      <SidebarHeader className="h-(--app-header-height,3rem) p-0">
+      <SidebarHeader className="h-(--app-header-height,3rem) border-b p-0">
         <NavWorkspace />
       </SidebarHeader>
 
@@ -113,7 +113,7 @@ export function AppSidebar() {
                     </Link>
                   </SidebarMenuButton>
                   {badge && (
-                    <SidebarMenuBadge className="rounded-full bg-sidebar-border px-1.5 font-medium text-sidebar-foreground/70">
+                    <SidebarMenuBadge className="rounded-full bg-primary px-1.5 text-[11px] font-semibold text-primary-foreground tabular-nums peer-hover/menu-button:text-primary-foreground peer-data-active/menu-button:text-primary-foreground">
                       {badge}
                     </SidebarMenuBadge>
                   )}
