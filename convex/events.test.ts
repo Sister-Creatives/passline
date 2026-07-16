@@ -1320,12 +1320,56 @@ test("listMyEventsWithStats: revenue and ticketsSold count only paid orders", as
     const base = { eventId, organizerId, buyerName: "Bo", buyerEmail: "bo@x.co", currency: "USD",
       feeMode: "absorb" as const, subtotalCents: 2000, feeCents: 0, totalCents: 2000, createdAt: Date.now() };
     const paid = await ctx.db.insert("orders", { ...base, status: "paid", payoutCents: 2000, token: "o1", paidAt: Date.now() });
-    await ctx.db.insert("orders", { ...base, status: "pending", payoutCents: 2000, token: "o2" });
+    const pending = await ctx.db.insert("orders", { ...base, status: "pending", payoutCents: 2000, token: "o2" });
     await ctx.db.insert("tickets", { orderId: paid, eventId, ticketTypeId, code: "TK1", status: "valid", createdAt: Date.now() });
+    // Tied to the pending (unpaid) order -- must NOT count toward ticketsSold.
+    await ctx.db.insert("tickets", { orderId: pending, eventId, ticketTypeId, code: "TK2", status: "valid", createdAt: Date.now() });
   });
 
   const [row] = await as.query(api.events.listMyEventsWithStats, {});
   expect(row.revenueCents).toBe(2000);
   expect(row.ticketsSold).toBe(1);
   expect(row.revenueSpark[row.revenueSpark.length - 1]).toBe(2000);
+});
+
+test("listMyEventsWithStats: registrations/revenue older than the 30-day window seed the baseline", async () => {
+  const t = convexTest(schema, modules);
+  const { as } = await asOrganizer(t, "ada@example.com");
+  await as.mutation(api.organizers.ensureOrganizer, {});
+  const eventId = await as.mutation(api.events.createEvent, {
+    title: "Long Runner", description: "x", startsAt: 100, endsAt: 200, location: "Hall", capacity: 50,
+  });
+  const organizerId = (await t.run((ctx) => ctx.db.get(eventId)))!.organizerId;
+
+  const DAY = 24 * 60 * 60 * 1000;
+  const now = Date.now();
+  await t.run(async (ctx) => {
+    // Outside the 30-day window -- must seed the baseline, not appear as a delta.
+    await ctx.db.insert("rsvps", {
+      eventId, name: "Old", email: "old@x.co", token: "t-old",
+      status: "confirmed", createdAt: now - 40 * DAY,
+    });
+    // Inside the window -- must add on top of the baseline.
+    await ctx.db.insert("rsvps", {
+      eventId, name: "Recent", email: "recent@x.co", token: "t-recent",
+      status: "confirmed", createdAt: now - 2 * DAY,
+    });
+    await ctx.db.insert("orders", {
+      eventId, organizerId, buyerName: "Old Buyer", buyerEmail: "old-buyer@x.co",
+      currency: "USD", feeMode: "absorb", subtotalCents: 1500, feeCents: 0, totalCents: 1500,
+      payoutCents: 1500, token: "o-old", createdAt: now - 40 * DAY,
+      status: "paid", paidAt: now - 40 * DAY,
+    });
+  });
+
+  const [row] = await as.query(api.events.listMyEventsWithStats, {});
+  expect(row.seatsTaken).toBe(2);
+  expect(row.spark).toHaveLength(30);
+  // Baseline (the 40-day-old registration) is already accrued on day 0 of the window.
+  expect(row.spark[0]).toBe(1);
+  expect(row.spark[row.spark.length - 1]).toBe(2);
+  for (let i = 1; i < row.spark.length; i++) expect(row.spark[i]).toBeGreaterThanOrEqual(row.spark[i - 1]);
+
+  expect(row.revenueSpark[0]).toBe(1500);
+  expect(row.revenueSpark[row.revenueSpark.length - 1]).toBe(row.revenueCents);
 });
