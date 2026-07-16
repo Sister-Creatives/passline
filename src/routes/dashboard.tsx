@@ -3,7 +3,7 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { convexQuery } from "@convex-dev/react-query";
 import { PlusIcon } from "lucide-react";
-import { Area, AreaChart, CartesianGrid, XAxis } from "recharts";
+import { Area, AreaChart, CartesianGrid, ResponsiveContainer, XAxis } from "recharts";
 
 import { api } from "../../convex/_generated/api";
 import { DashboardLayout } from "@/components/DashboardLayout";
@@ -210,7 +210,8 @@ function OverviewContent() {
     );
   }
 
-  const { events, attendance, sales, timeseries, deltas, upcomingEvents, recentActivity } = data;
+  const { events, attendance, sales, timeseries, deltas, upcomingEvents, recentActivity, cards } =
+    data;
   const totalRegistrations = timeseries.reduce((sum, d) => sum + d.registrations, 0);
   const totalCheckIns = timeseries.reduce((sum, d) => sum + d.checkIns, 0);
 
@@ -226,15 +227,37 @@ function OverviewContent() {
       </div>
 
       <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
-        <Stat
+        <StatCard
           label="Events"
           value={events.total}
           sub={`${events.published} published · ${events.draft} draft`}
+          deltaPct={cards.events.deltaPct}
+          spark={cards.events.spark}
         />
-        <Stat label="Upcoming" value={events.upcoming} />
-        <Stat label="Attendees" value={attendance.attendees} />
-        <Stat label="Orders" value={sales.orders} />
-        <Stat label="Tickets sold" value={sales.ticketsSold} />
+        <StatCard
+          label="Upcoming"
+          value={events.upcoming}
+          deltaPct={cards.upcoming.deltaPct}
+          spark={cards.upcoming.spark}
+        />
+        <StatCard
+          label="Attendees"
+          value={attendance.attendees}
+          deltaPct={cards.attendees.deltaPct}
+          spark={cards.attendees.spark}
+        />
+        <StatCard
+          label="Orders"
+          value={sales.orders}
+          deltaPct={cards.orders.deltaPct}
+          spark={cards.orders.spark}
+        />
+        <StatCard
+          label="Tickets sold"
+          value={sales.ticketsSold}
+          deltaPct={cards.ticketsSold.deltaPct}
+          spark={cards.ticketsSold.spark}
+        />
       </div>
 
       <MetricChartCard
@@ -345,22 +368,64 @@ function OverviewContent() {
   );
 }
 
-function Stat({
+/** A tiny gradient area chart with no axes/grid/tooltip, for a stat card footer. */
+function Sparkline({ data }: { data: number[] }) {
+  const gradientId = `spark-${useId().replace(/:/g, "")}`;
+  const points = data.map((v, i) => ({ i, v }));
+  return (
+    <div className="h-12 w-full">
+      <ResponsiveContainer width="100%" height="100%">
+        <AreaChart data={points} margin={{ top: 4, right: 0, bottom: 0, left: 0 }}>
+          <defs>
+            <linearGradient id={gradientId} x1="0" x2="0" y1="0" y2="1">
+              <stop offset="0%" stopColor="var(--primary)" stopOpacity={0.3} />
+              <stop offset="100%" stopColor="var(--primary)" stopOpacity={0} />
+            </linearGradient>
+          </defs>
+          <Area
+            dataKey="v"
+            type="monotone"
+            stroke="var(--primary)"
+            strokeWidth={1.5}
+            fill={`url(#${gradientId})`}
+            isAnimationActive={false}
+            dot={false}
+          />
+        </AreaChart>
+      </ResponsiveContainer>
+    </div>
+  );
+}
+
+function StatCard({
   label,
   value,
   sub,
+  deltaPct,
+  spark,
 }: {
   label: string;
   value: string | number;
   sub?: string;
+  deltaPct: number | null;
+  spark: number[];
 }) {
   return (
-    <Card>
-      <CardHeader>
-        <CardDescription>{label}</CardDescription>
+    <Card className="gap-0 overflow-hidden pb-0">
+      <CardHeader className="pb-2">
+        <div className="flex items-center justify-between gap-2">
+          <CardDescription>{label}</CardDescription>
+          {deltaPct !== null && (
+            <Delta value={Math.round(deltaPct)} variant="badge">
+              <DeltaIcon variant="trend" />
+              <DeltaValue suffix="%" />
+            </Delta>
+          )}
+        </div>
         <CardTitle className="font-mono text-3xl tabular-nums">{value}</CardTitle>
+        {sub && <div className="text-xs text-muted-foreground">{sub}</div>}
       </CardHeader>
-      {sub && <CardContent className="text-xs text-muted-foreground">{sub}</CardContent>}
+      <Sparkline data={spark} />
     </Card>
   );
 }

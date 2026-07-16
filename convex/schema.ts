@@ -40,6 +40,9 @@ export default defineSchema({
     eventCategory: v.optional(v.string()),      // one of EVENT_CATEGORIES
     keywords: v.optional(v.array(v.string())),  // <= 10, trimmed, de-duped, non-empty
     hostProfileId: v.optional(v.id("hostProfiles")),
+    // Explicit creation time. Real events leave this unset (surfaces fall back
+    // to `_creationTime`); seed/import data sets it to backdate history.
+    createdAt: v.optional(v.number()),
   })
     .index("by_organizer", ["organizerId"])
     .index("by_slug", ["slug"]),

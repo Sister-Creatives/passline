@@ -41,6 +41,7 @@ function buildEmptyTimeseries(now: number): TimeseriesBucket[] {
 }
 
 function zeroedOverview(now: number) {
+  const emptyCard = { spark: [] as number[], deltaPct: null as number | null };
   return {
     events: { total: 0, published: 0, draft: 0, upcoming: 0 },
     attendance: { attendees: 0, checkedIn: 0 },
@@ -50,6 +51,13 @@ function zeroedOverview(now: number) {
       registrations: { current: 0, previous: 0, pct: null as number | null },
       checkIns: { current: 0, previous: 0, pct: null as number | null },
       revenue: { current: 0, previous: 0, pct: null as number | null },
+    },
+    cards: {
+      events: emptyCard,
+      upcoming: emptyCard,
+      attendees: emptyCard,
+      orders: emptyCard,
+      ticketsSold: emptyCard,
     },
     upcomingEvents: [] as never[],
     recentActivity: [] as never[],
@@ -212,6 +220,44 @@ export const getOverview = query({
       })),
     );
 
+    // Per-KPI 30-day cumulative sparklines + period-over-period deltas for the
+    // Overview stat cards. Cumulative so a low-volume metric (events) still
+    // draws a clean rising area; deltaPct compares the last 30 days to the 30
+    // before it.
+    const dayEnds = timeseries.map((b) => new Date(`${b.date}T23:59:59.999Z`).getTime());
+    const cardFrom = (timestamps: number[]) => {
+      const sorted = timestamps.slice().sort((a, b) => a - b);
+      let idx = 0;
+      let running = 0;
+      const spark = dayEnds.map((end) => {
+        while (idx < sorted.length && sorted[idx] <= end) {
+          running += 1;
+          idx += 1;
+        }
+        return running;
+      });
+      const cur = timestamps.filter(inCurrent).length;
+      const prev = timestamps.filter(inPrevious).length;
+      return { spark, deltaPct: pctChange(cur, prev) };
+    };
+    const attendeeTimes = [
+      ...allRsvps
+        .filter((r) => r.status === "confirmed" || r.status === "checked_in")
+        .map((r) => r.createdAt ?? r._creationTime),
+      ...allTickets
+        .filter((t) => t.status === "valid" || t.status === "checked_in")
+        .map((t) => t.createdAt),
+    ];
+    const cards = {
+      events: cardFrom(events.map((e) => e.createdAt ?? e._creationTime)),
+      upcoming: cardFrom(upcomingEventDocs.map((e) => e.createdAt ?? e._creationTime)),
+      attendees: cardFrom(attendeeTimes),
+      orders: cardFrom(paidOrders.map((o) => o.paidAt ?? o.createdAt)),
+      ticketsSold: cardFrom(
+        allTickets.filter((t) => paidOrderIds.has(t.orderId)).map((t) => t.createdAt),
+      ),
+    };
+
     return {
       events: {
         total: events.length,
@@ -223,6 +269,7 @@ export const getOverview = query({
       sales: { revenueCents, orders: paidOrders.length, ticketsSold, currency },
       timeseries,
       deltas,
+      cards,
       upcomingEvents,
       recentActivity,
     };

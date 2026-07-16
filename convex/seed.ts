@@ -187,6 +187,11 @@ export const seed = mutation({
         currency,
         feeMode,
         keywords: ["seed"],
+        // Created before the event happens, spread across the past ~30 days.
+        createdAt:
+          Math.min(c.start, now) -
+          (3 + Math.floor(Math.random() * 27)) * DAY -
+          Math.floor(Math.random() * 12 * HOUR),
       });
       eventsCreated += 1;
 
