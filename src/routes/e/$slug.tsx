@@ -40,8 +40,8 @@ export const Route = createFileRoute("/e/$slug")({
     meta: [
       {
         title: loaderData?.event
-          ? `${stripHtml(loaderData.event.title)} — Passline`
-          : "Event — Passline",
+          ? `${stripHtml(loaderData.event.title)} · Passline`
+          : "Event · Passline",
       },
     ],
   }),

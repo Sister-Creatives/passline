@@ -245,7 +245,7 @@ function OverviewContent() {
         dataKey="registrations"
         color="var(--chart-1)"
         isEmpty={totalRegistrations === 0}
-        emptyLabel="No registrations yet — the trend appears as people sign up."
+        emptyLabel="No registrations yet."
         heightClass="h-72"
       />
 
@@ -258,7 +258,7 @@ function OverviewContent() {
           dataKey="checkIns"
           color="var(--chart-4)"
           isEmpty={totalCheckIns === 0}
-          emptyLabel="No check-ins yet — scans at the door show up here."
+          emptyLabel="No check-ins yet."
         />
         <MetricChartCard
           headline={formatMoney(deltas.revenue.current, sales.currency)}
@@ -268,7 +268,7 @@ function OverviewContent() {
           dataKey="revenue"
           color="var(--chart-2)"
           isEmpty={sales.revenueCents === 0}
-          emptyLabel="No sales yet — online payments are coming soon."
+          emptyLabel="No sales yet."
         />
       </div>
 

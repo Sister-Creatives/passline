@@ -242,8 +242,7 @@ export function SessionsPanel({ eventId }: { eventId: Id<"events"> }) {
           <EmptyHeader>
             <EmptyTitle>No sessions yet</EmptyTitle>
             <EmptyDescription>
-              Add a session to sell tickets for specific dates/times -- once an event has any
-              session, every order must pick one.
+              Add a session to sell tickets for specific dates or times.
             </EmptyDescription>
           </EmptyHeader>
         </Empty>

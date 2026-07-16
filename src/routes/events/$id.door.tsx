@@ -74,7 +74,7 @@ function DoorContent({ eventId }: { eventId: Id<"events"> }) {
       } else if (result.status === "already") {
         toast.info("Already checked in");
       } else {
-        toast.error("Not confirmed -- cannot check in");
+        toast.error("Not confirmed, cannot check in");
       }
       form.reset();
     } catch (error) {

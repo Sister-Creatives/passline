@@ -301,8 +301,7 @@ export function SeatingPanel({ eventId }: { eventId: Id<"events"> }) {
           <EmptyHeader>
             <EmptyTitle>No seating sections yet</EmptyTitle>
             <EmptyDescription>
-              Generate a section of rows x seats, priced by a ticket type, to sell assigned seats
-              instead of general admission quantities.
+              Generate a section to sell assigned seats.
             </EmptyDescription>
           </EmptyHeader>
         </Empty>

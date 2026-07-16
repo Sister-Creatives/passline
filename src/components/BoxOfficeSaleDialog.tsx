@@ -297,7 +297,7 @@ function BoxOfficeForm({
       const total = formatMoney(result.totalCents, currency);
       toast.success(
         paymentMethod === "cash"
-          ? `Sold for ${total} -- cash sale, no booking fee`
+          ? `Sold for ${total}. Cash sale, no booking fee.`
           : `Sold for ${total}`,
       );
       onDone();
@@ -490,7 +490,7 @@ function BoxOfficeForm({
         </ToggleGroup>
         <p className="text-xs text-muted-foreground">
           {paymentMethod === "cash"
-            ? "Cash sales have no booking fee -- the buyer pays exactly the subtotal."
+            ? "Cash sales have no booking fee. The buyer pays exactly the subtotal."
             : "Card sales carry the event's normal booking fee."}
         </p>
       </div>
