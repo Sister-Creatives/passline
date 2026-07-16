@@ -16,7 +16,11 @@ async function asOrganizer(t: TestConvex<typeof schema>, email: string) {
   return { as: t.withIdentity({ subject: `${userId}|${sessionId}` }) };
 }
 
-test("backfillEventStats recomputes counters for a stale event", async () => {
+// NOTE: this covers `backfillEventStats`'s per-row logic (`recomputeEventStats`, which
+// `migrateOne` wraps), NOT the @convex-dev/migrations batch runner itself -- convex-test
+// does not drive the component runner, so the runner path is verified operationally
+// (a manual `npx convex run migrations:backfillEventStats` against dev) rather than here.
+test("recomputeEventStats (backfillEventStats's per-row logic) corrects a stale counter", async () => {
   const t = convexTest(schema, modules);
   const { as } = await asOrganizer(t, "ada@example.com");
   await as.mutation(api.organizers.ensureOrganizer, {});
@@ -32,9 +36,9 @@ test("backfillEventStats recomputes counters for a stale event", async () => {
     await ctx.db.patch(eventId, { seatsTaken: 0 });
   });
 
-  // Run the backfill over all events.
+  // Exercise the per-row logic the migration runs (recomputeEventStats), which is what
+  // `backfillEventStats.migrateOne` calls for each event.
   await t.run(async (ctx) => {
-    // migrateOne is exercised directly via the shared helper it wraps.
     await recomputeEventStats(ctx, eventId);
   });
 
