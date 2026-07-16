@@ -73,6 +73,13 @@ export const seed = mutation({
       );
     }
     const now = Date.now();
+    // A recency-biased timestamp over the last ~50 days, so BOTH the current
+    // 30-day window and the previous one have data and the deltas compute
+    // (otherwise the previous period is empty and every delta is null).
+    const spreadTime = () =>
+      now -
+      Math.floor(Math.random() * Math.random() * 50) * DAY -
+      Math.floor(Math.random() * 12 * HOUR);
 
     const existing = await ctx.db
       .query("events")
@@ -190,7 +197,7 @@ export const seed = mutation({
         // Created before the event happens, spread across the past ~30 days.
         createdAt:
           Math.min(c.start, now) -
-          (3 + Math.floor(Math.random() * 27)) * DAY -
+          (3 + Math.floor(Math.random() * 47)) * DAY -
           Math.floor(Math.random() * 12 * HOUR),
       });
       eventsCreated += 1;
@@ -219,7 +226,7 @@ export const seed = mutation({
             email: p.email,
             token: `rsvp-${rid()}`,
             status: "confirmed",
-            createdAt: now - Math.floor(Math.random() * 25) * DAY - Math.floor(Math.random() * 12 * HOUR),
+            createdAt: spreadTime(),
           });
           attendeesCreated += 1;
           sold += 1;
@@ -248,7 +255,7 @@ export const seed = mutation({
             token: `rsvp-${rid()}`,
             status: "waitlisted",
             waitlistPosition: i + 1,
-            createdAt: now - Math.floor(Math.random() * 25) * DAY - Math.floor(Math.random() * 12 * HOUR),
+            createdAt: spreadTime(),
           });
           attendeesCreated += 1;
         }
@@ -260,8 +267,7 @@ export const seed = mutation({
         let sold = 0;
         for (let i = 0; i < c.sold; i++) {
           const p = person();
-          const paidAt =
-            now - Math.floor(Math.random() * 21) * DAY - Math.floor(Math.random() * 12 * HOUR);
+          const paidAt = spreadTime();
           const subtotal = c.ticket.price;
           const orderId = await ctx.db.insert("orders", {
             eventId,
