@@ -13,6 +13,7 @@ import { resolveAndComputeDiscount } from "./promoCodes";
 import { validateAndSnapshotAnswers } from "./checkoutQuestions";
 import { unlockedTicketTypeIds } from "./accessCodes";
 import { recordAudit } from "./audit";
+import { recomputeEventStats } from "./lib/eventStats";
 
 /** 16 random bytes -> 32 lowercase hex chars, prefixed to form an opaque token/code. */
 function randomToken(prefix: string): string {
@@ -567,6 +568,8 @@ export const createOrder = mutation({
       status = "paid";
     }
 
+    await recomputeEventStats(ctx, eventId);
+
     return { orderId, token: order.token, totalCents: order.totalCents, currency: order.currency, status };
   },
 });
@@ -622,6 +625,8 @@ export const createBoxOfficeOrder = mutation({
       summary: `Box office sale to ${buyerName} (${paymentMethod}): ${order.totalCents} cents`,
     });
 
+    await recomputeEventStats(ctx, eventId);
+
     return { orderId, token: order.token, totalCents: order.totalCents };
   },
 });
@@ -641,6 +646,7 @@ export const markOrderPaid = internalMutation({
     if (!order) throw new Error("Order not found");
     if (order.status !== "pending") return null; // idempotent: paid → no-op; cancelled → no-op (capacity already released)
     await issueTicketsAndMarkPaid(ctx, order);
+    await recomputeEventStats(ctx, order.eventId);
     return null;
   },
 });
@@ -867,6 +873,7 @@ export const refundOrder = mutation({
       action: "order.refunded",
       summary: `Refunded order ${order.token.slice(0, 12)}`,
     });
+    await recomputeEventStats(ctx, order.eventId);
     return null;
   },
 });

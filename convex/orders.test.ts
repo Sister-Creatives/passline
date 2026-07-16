@@ -2091,3 +2091,29 @@ test("createBoxOfficeOrder accepts seatIds and issues seat-tied tickets immediat
   expect(tickets).toHaveLength(1);
   expect(tickets[0]?.seatId).toBe(seat._id);
 });
+
+// --- recomputeEventStats wiring (Phase A Task 3) -------------------------
+
+test("box office sale raises ticketsSold + revenueCents; refund reverses both", async () => {
+  const t = convexTest(schema, modules);
+  const { as } = await asOrganizer(t, "ada@example.com");
+  await as.mutation(api.organizers.ensureOrganizer, {});
+  const eventId = await makePublishedEvent(as, 100);
+  const ttId = await makePaidTicketType(as, eventId, 2000);
+
+  // Sell 1 ticket at the door (cash = zero fee, so payout == subtotal == 2000):
+  const { orderId } = await as.mutation(api.orders.createBoxOfficeOrder, {
+    eventId,
+    items: [{ ticketTypeId: ttId, quantity: 1 }],
+    buyerName: "Bo",
+    paymentMethod: "cash",
+  });
+  let ev = await t.run((ctx) => ctx.db.get(eventId));
+  expect(ev!.ticketsSold).toBe(1);
+  expect(ev!.revenueCents).toBe(2000);
+
+  await as.mutation(api.orders.refundOrder, { orderId });
+  ev = await t.run((ctx) => ctx.db.get(eventId));
+  expect(ev!.ticketsSold).toBe(0);
+  expect(ev!.revenueCents).toBe(0);
+});
