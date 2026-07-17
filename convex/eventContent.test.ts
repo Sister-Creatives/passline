@@ -3,6 +3,7 @@ import { convexTest, type TestConvex } from "convex-test";
 import { expect, test } from "vitest";
 import schema from "./schema";
 import { api } from "./_generated/api";
+import type { Id } from "./_generated/dataModel";
 import { isValidHexColor, parseVideoEmbed } from "./lib/eventContent";
 
 const modules = import.meta.glob("./**/*.*s");
@@ -30,6 +31,14 @@ async function makeEvent(as: ReturnType<TestConvex<typeof schema>["withIdentity"
     location: "x",
     capacity,
   });
+}
+
+async function storeN(t: TestConvex<typeof schema>, n: number) {
+  const ids: Id<"_storage">[] = [];
+  for (let i = 0; i < n; i++) {
+    ids.push(await t.run((ctx) => ctx.storage.store(new Blob([`x${i}`], { type: "image/png" }))));
+  }
+  return ids;
 }
 
 const baseUpdateArgs = { agenda: [], speakers: [], faqs: [] };
@@ -321,6 +330,72 @@ test("getBySlug returns null for an unknown slug", async () => {
   expect(content).toBeNull();
 });
 
+// --- image mutations ---------------------------------------------------
+
+test("generateUploadUrl rejects a non-owner", async () => {
+  const t = convexTest(schema, modules);
+  const { as: asAda } = await asOrganizer(t, "ada@example.com");
+  await asAda.mutation(api.organizers.ensureOrganizer, {});
+  const { as: asBob } = await asOrganizer(t, "bob@example.com");
+  await asBob.mutation(api.organizers.ensureOrganizer, {});
+  const eventId = await makeEvent(asAda);
+
+  await expect(asBob.mutation(api.eventContent.generateUploadUrl, { eventId })).rejects.toThrow();
+});
+
+test("setGallery rejects more than 8 images", async () => {
+  const t = convexTest(schema, modules);
+  const { as } = await asOrganizer(t, "ada@example.com");
+  await as.mutation(api.organizers.ensureOrganizer, {});
+  const eventId = await makeEvent(as);
+  const ids = await storeN(t, 9);
+
+  await expect(
+    as.mutation(api.eventContent.setGallery, {
+      eventId,
+      images: ids.map((storageId) => ({ storageId })),
+    }),
+  ).rejects.toThrow();
+});
+
+test("setGallery deletes storage files that were removed", async () => {
+  const t = convexTest(schema, modules);
+  const { as } = await asOrganizer(t, "ada@example.com");
+  await as.mutation(api.organizers.ensureOrganizer, {});
+  const eventId = await makeEvent(as);
+  const [a, b] = await storeN(t, 2);
+
+  await as.mutation(api.eventContent.setGallery, {
+    eventId,
+    images: [{ storageId: a }, { storageId: b }],
+  });
+  await as.mutation(api.eventContent.setGallery, {
+    eventId,
+    images: [{ storageId: a }],
+  });
+
+  expect(await t.run((ctx) => ctx.storage.getUrl(b))).toBeNull();
+  expect(await t.run((ctx) => ctx.storage.getUrl(a))).not.toBeNull();
+});
+
+test("setCoverImage replacing an uploaded cover deletes the previous file and clears legacy url", async () => {
+  const t = convexTest(schema, modules);
+  const { as } = await asOrganizer(t, "ada@example.com");
+  await as.mutation(api.organizers.ensureOrganizer, {});
+  const eventId = await makeEvent(as);
+  const [a, b] = await storeN(t, 2);
+
+  await as.mutation(api.eventContent.setCoverImage, { eventId, storageId: a });
+  await as.mutation(api.eventContent.setCoverImage, { eventId, storageId: b });
+
+  expect(await t.run((ctx) => ctx.storage.getUrl(a))).toBeNull();
+  const row = await t.run((ctx) =>
+    ctx.db.query("eventContent").withIndex("by_event", (q) => q.eq("eventId", eventId)).unique(),
+  );
+  expect(row?.coverImageId).toBe(b);
+  expect(row?.coverImageUrl).toBeUndefined();
+});
+
 // --- updateAccessibility ------------------------------------------------
 
 test("updateAccessibility upserts the accessibility block + coverImageAlt without clobbering existing page content", async () => {
@@ -331,7 +406,6 @@ test("updateAccessibility upserts the accessibility block + coverImageAlt withou
 
   await as.mutation(api.eventContent.update, {
     eventId,
-    coverImageUrl: "https://example.com/cover.jpg",
     ctaLabel: "Register",
     agenda: [{ time: "10:00", title: "Doors open" }],
     speakers: [{ name: "Ada Lovelace", title: "Keynote" }],
@@ -355,7 +429,6 @@ test("updateAccessibility upserts the accessibility block + coverImageAlt withou
   expect(rows).toHaveLength(1);
   const row = rows[0];
   // Page content from `update` survives untouched.
-  expect(row.coverImageUrl).toBe("https://example.com/cover.jpg");
   expect(row.ctaLabel).toBe("Register");
   expect(row.agenda).toEqual([{ time: "10:00", title: "Doors open", description: undefined }]);
   expect(row.speakers).toEqual([

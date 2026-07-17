@@ -159,8 +159,8 @@ export const update = mutation({
       throw new Error("Video URL must be a YouTube or Vimeo link");
     }
 
+    // coverImageUrl/coverImageId/gallery are owned by the image mutations; update never writes them.
     const patch = {
-      coverImageUrl: normalizeOptionalString(args.coverImageUrl),
       brandColor,
       ctaLabel: normalizeOptionalString(args.ctaLabel),
       videoUrl,
@@ -182,6 +182,72 @@ export const update = mutation({
       eventId: args.eventId,
       organizerId: event.organizerId,
       ...patch,
+    });
+  },
+});
+
+export const generateUploadUrl = mutation({
+  args: { eventId: v.id("events") },
+  handler: async (ctx, { eventId }) => {
+    await requireOwnedEvent(ctx, eventId);
+    return await ctx.storage.generateUploadUrl();
+  },
+});
+
+/** Owner-only: set (or clear, with null) the uploaded cover image. Deletes the
+ *  replaced file and clears any legacy coverImageUrl so resolution is unambiguous. */
+export const setCoverImage = mutation({
+  args: { eventId: v.id("events"), storageId: v.union(v.id("_storage"), v.null()) },
+  handler: async (ctx, { eventId, storageId }) => {
+    const event = await requireOwnedEvent(ctx, eventId);
+    const existing = await ctx.db
+      .query("eventContent")
+      .withIndex("by_event", (q) => q.eq("eventId", eventId))
+      .unique();
+    const prev = existing?.coverImageId;
+    if (prev && prev !== storageId) await ctx.storage.delete(prev);
+    const patch = { coverImageId: storageId ?? undefined, coverImageUrl: undefined };
+    if (existing) {
+      await ctx.db.patch(existing._id, patch);
+      return existing._id;
+    }
+    return await ctx.db.insert("eventContent", {
+      eventId,
+      organizerId: event.organizerId,
+      ...emptyContent(),
+      ...patch,
+    });
+  },
+});
+
+/** Owner-only: replace the whole gallery (ordered, <= 8). Deletes any storage
+ *  files no longer referenced, covering remove/reorder/alt in one write. */
+export const setGallery = mutation({
+  args: {
+    eventId: v.id("events"),
+    images: v.array(v.object({ storageId: v.id("_storage"), alt: v.optional(v.string()) })),
+  },
+  handler: async (ctx, { eventId, images }) => {
+    const event = await requireOwnedEvent(ctx, eventId);
+    if (images.length > 8) throw new Error("A gallery can have at most 8 images");
+    const existing = await ctx.db
+      .query("eventContent")
+      .withIndex("by_event", (q) => q.eq("eventId", eventId))
+      .unique();
+    const keep = new Set(images.map((i) => i.storageId));
+    for (const old of existing?.gallery ?? []) {
+      if (!keep.has(old.storageId)) await ctx.storage.delete(old.storageId);
+    }
+    const gallery = images.map((i) => ({ storageId: i.storageId, alt: normalizeOptionalString(i.alt) }));
+    if (existing) {
+      await ctx.db.patch(existing._id, { gallery });
+      return existing._id;
+    }
+    return await ctx.db.insert("eventContent", {
+      eventId,
+      organizerId: event.organizerId,
+      ...emptyContent(),
+      gallery,
     });
   },
 });
