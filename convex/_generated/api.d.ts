@@ -31,6 +31,7 @@ import type * as lib_eventContent from "../lib/eventContent.js";
 import type * as lib_eventStats from "../lib/eventStats.js";
 import type * as lib_eventTaxonomy from "../lib/eventTaxonomy.js";
 import type * as lib_fees from "../lib/fees.js";
+import type * as lib_pace from "../lib/pace.js";
 import type * as lib_readiness from "../lib/readiness.js";
 import type * as lib_slug from "../lib/slug.js";
 import type * as lib_timeseries from "../lib/timeseries.js";
@@ -82,6 +83,7 @@ declare const fullApi: ApiFromModules<{
   "lib/eventStats": typeof lib_eventStats;
   "lib/eventTaxonomy": typeof lib_eventTaxonomy;
   "lib/fees": typeof lib_fees;
+  "lib/pace": typeof lib_pace;
   "lib/readiness": typeof lib_readiness;
   "lib/slug": typeof lib_slug;
   "lib/timeseries": typeof lib_timeseries;

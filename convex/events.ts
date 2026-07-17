@@ -9,7 +9,8 @@ import { recordAudit } from "./audit";
 import { computeReadiness } from "./lib/readiness";
 import { isEventCategory, isEventType, isValidSlug } from "./lib/eventTaxonomy";
 import { SEAT_HOLDING_STATUSES } from "./lib/constants";
-import { MS_PER_DAY, buildDateWindow, fromUtcDateString, toUtcDateString } from "./lib/timeseries";
+import { buildDateWindow, fromUtcDateString, toUtcDateString } from "./lib/timeseries";
+import { buildPaceSpark } from "./lib/pace";
 
 const CURRENCY_RE = /^[A-Z]{3}$/;
 const MAX_KEYWORDS = 10;
@@ -340,8 +341,6 @@ export const listMyEventsWithStats = query({
 
     const window = buildDateWindow(now);
     const windowStartMs = fromUtcDateString(window[0]);
-    const seatHolding = (status: string) =>
-      (SEAT_HOLDING_STATUSES as readonly string[]).includes(status);
 
     return Promise.all(
       events.map(async (e) => {
@@ -351,23 +350,10 @@ export const listMyEventsWithStats = query({
           ctx.db.query("orders").withIndex("by_event", (q) => q.eq("eventId", e._id)).collect(),
         ]);
 
-        // Seat-holding registrations (the capacity source of truth).
-        const seats = rsvps.filter((r) => seatHolding(r.status));
-        const seatsTaken = seats.length;
-
-        // Cumulative pace-to-capacity spark. Registrations older than the
-        // window seed the baseline so the final point still equals seatsTaken.
-        const regTime = (r: (typeof seats)[number]) => r.createdAt ?? r._creationTime;
-        const dayCounts = new Map(window.map((d) => [d, 0]));
-        let regBaseline = 0;
-        for (const r of seats) {
-          const t = regTime(r);
-          const key = toUtcDateString(t);
-          if (t < windowStartMs || !dayCounts.has(key)) regBaseline += 1;
-          else dayCounts.set(key, dayCounts.get(key)! + 1);
-        }
-        let regRunning = regBaseline;
-        const spark = window.map((d) => (regRunning += dayCounts.get(d)!));
+        const { spark, deltaPct } = buildPaceSpark(rsvps, now);
+        const seatsTaken = rsvps.filter((r) =>
+          (SEAT_HOLDING_STATUSES as readonly string[]).includes(r.status),
+        ).length;
 
         // Paid channel: revenue + tickets sold, and a cumulative revenue spark.
         const paidOrders = orders.filter((o) => o.status === "paid");
@@ -385,17 +371,6 @@ export const listMyEventsWithStats = query({
         }
         let revRunning = revBaseline;
         const revenueSpark = window.map((d) => (revRunning += revByDay.get(d)!));
-
-        // Registrations last 30d vs the prior 30d.
-        const windowMs = 30 * MS_PER_DAY;
-        const curStart = now - windowMs;
-        const prevStart = now - 2 * windowMs;
-        const cur = seats.filter((r) => regTime(r) >= curStart).length;
-        const prev = seats.filter((r) => {
-          const t = regTime(r);
-          return t >= prevStart && t < curStart;
-        }).length;
-        const deltaPct = prev === 0 ? null : ((cur - prev) / prev) * 100;
 
         return {
           _id: e._id,
@@ -447,6 +422,88 @@ export const getMyEventsKpis = query({
       ticketsSold: events.reduce((s, e) => s + (e.ticketsSold ?? 0), 0),
       currency: events[0]?.currency ?? "USD",
     };
+  },
+});
+
+/**
+ * Server-side, in-memory paginated events list for the `/events` cockpit.
+ *
+ * Loads the organizer's event docs (cheap -- stats are denormalized), filters
+ * by tab (endsAt vs now) + status + case-insensitive title/location search,
+ * sorts by the chosen key, slices out page `page`, and enriches ONLY that
+ * page's rows with their pace `spark` + `deltaPct` (per-row rsvps read). Returns
+ * an empty page when unauthenticated. `now` is a client arg for the tab boundary.
+ */
+export const listMyEventsPage = query({
+  args: {
+    tab: v.union(v.literal("upcoming"), v.literal("past"), v.literal("all")),
+    status: v.union(v.literal("all"), v.literal("published"), v.literal("draft")),
+    sort: v.union(v.literal("date"), v.literal("fill"), v.literal("name")),
+    search: v.string(),
+    page: v.number(),
+    pageSize: v.number(),
+    now: v.number(),
+  },
+  handler: async (ctx, { tab, status, sort, search, page, pageSize, now }) => {
+    const organizerId = await getAuthOrganizerId(ctx);
+    if (!organizerId) return { rows: [], page: 1, pageCount: 0, total: 0 };
+
+    const all = await ctx.db
+      .query("events")
+      .withIndex("by_organizer", (q) => q.eq("organizerId", organizerId))
+      .collect();
+
+    const q = search.trim().toLowerCase();
+    const filtered = all.filter((e) => {
+      const inTab =
+        tab === "all" ? true : tab === "upcoming" ? e.endsAt >= now : e.endsAt < now;
+      const inStatus = status === "all" || e.status === status;
+      const inSearch =
+        q === "" || e.title.toLowerCase().includes(q) || e.location.toLowerCase().includes(q);
+      return inTab && inStatus && inSearch;
+    });
+
+    const fillOf = (e: (typeof all)[number]) =>
+      e.capacity > 0 ? (e.seatsTaken ?? 0) / e.capacity : 0;
+    filtered.sort((a, b) => {
+      if (sort === "name") return a.title.localeCompare(b.title);
+      if (sort === "fill") return fillOf(b) - fillOf(a);
+      // date: upcoming soonest-first (asc); past/all most-recent-first (desc)
+      return tab === "upcoming" ? a.startsAt - b.startsAt : b.startsAt - a.startsAt;
+    });
+
+    const total = filtered.length;
+    const pageCount = Math.ceil(total / pageSize);
+    const clampedPage = Math.min(Math.max(1, page), Math.max(1, pageCount));
+    const slice = filtered.slice((clampedPage - 1) * pageSize, clampedPage * pageSize);
+
+    const rows = await Promise.all(
+      slice.map(async (e) => {
+        const rsvps = await ctx.db
+          .query("rsvps")
+          .withIndex("by_event", (qq) => qq.eq("eventId", e._id))
+          .collect();
+        const { spark, deltaPct } = buildPaceSpark(rsvps, now);
+        return {
+          _id: e._id,
+          title: e.title,
+          slug: e.slug,
+          location: e.location,
+          startsAt: e.startsAt,
+          endsAt: e.endsAt,
+          status: e.status,
+          capacity: e.capacity,
+          currency: e.currency ?? "USD",
+          seatsTaken: e.seatsTaken ?? 0,
+          ticketsSold: e.ticketsSold ?? 0,
+          revenueCents: e.revenueCents ?? 0,
+          spark,
+          deltaPct,
+        };
+      }),
+    );
+
+    return { rows, page: clampedPage, pageCount, total };
   },
 });
 

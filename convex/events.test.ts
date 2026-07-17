@@ -1434,3 +1434,92 @@ test("getMyEventsKpis treats pre-backfill (undefined) counters as 0, not NaN", a
   expect(k.revenueCents).toBe(5000);
   expect(Number.isFinite(k.attendees)).toBe(true);
 });
+
+test("listMyEventsPage: tab filter, sort, search, and numbered slicing", async () => {
+  const t = convexTest(schema, modules);
+  const { as } = await asOrganizer(t, "ada@example.com");
+  await as.mutation(api.organizers.ensureOrganizer, {});
+  const now = 1_000_000_000_000;
+  const mk = async (title: string, startsAt: number, endsAt: number, seatsTaken: number, capacity: number) => {
+    const id = await as.mutation(api.events.createEvent, {
+      title, description: "x", startsAt, endsAt, location: "Town Hall", capacity,
+    });
+    await t.run((ctx) => ctx.db.patch(id, { seatsTaken }));
+    return id;
+  };
+  // 3 upcoming, 1 past.
+  await mk("Alpha", now + 3000, now + 4000, 10, 100); // fill 0.10
+  await mk("Bravo", now + 1000, now + 2000, 90, 100); // fill 0.90, soonest
+  await mk("Charlie", now + 5000, now + 6000, 50, 100);
+  await mk("Delta Past", now - 4000, now - 3000, 25, 100);
+
+  // Upcoming tab, date sort (soonest first), page 1 of 2.
+  const p1 = await as.query(api.events.listMyEventsPage, {
+    tab: "upcoming", status: "all", sort: "date", search: "", page: 1, pageSize: 2, now,
+  });
+  expect(p1.total).toBe(3);
+  expect(p1.pageCount).toBe(2);
+  expect(p1.rows.map((r) => r.title)).toEqual(["Bravo", "Alpha"]); // soonest-first
+  const p2 = await as.query(api.events.listMyEventsPage, {
+    tab: "upcoming", status: "all", sort: "date", search: "", page: 2, pageSize: 2, now,
+  });
+  expect(p2.rows.map((r) => r.title)).toEqual(["Charlie"]);
+
+  // Fill sort (fullest first) across all upcoming.
+  const byFill = await as.query(api.events.listMyEventsPage, {
+    tab: "upcoming", status: "all", sort: "fill", search: "", page: 1, pageSize: 10, now,
+  });
+  expect(byFill.rows.map((r) => r.title)).toEqual(["Bravo", "Charlie", "Alpha"]);
+
+  // Past tab.
+  const past = await as.query(api.events.listMyEventsPage, {
+    tab: "past", status: "all", sort: "date", search: "", page: 1, pageSize: 10, now,
+  });
+  expect(past.rows.map((r) => r.title)).toEqual(["Delta Past"]);
+
+  // Search matches location on the All tab (all four share "Town Hall").
+  const search = await as.query(api.events.listMyEventsPage, {
+    tab: "all", status: "all", sort: "name", search: "town hall", page: 1, pageSize: 10, now,
+  });
+  expect(search.total).toBe(4);
+  expect(search.rows.map((r) => r.title)).toEqual(["Alpha", "Bravo", "Charlie", "Delta Past"]);
+
+  // Page clamps beyond the end.
+  const clamped = await as.query(api.events.listMyEventsPage, {
+    tab: "upcoming", status: "all", sort: "date", search: "", page: 99, pageSize: 2, now,
+  });
+  expect(clamped.page).toBe(2);
+});
+
+test("listMyEventsPage: status filter + per-row spark endpoint, empty when unauth", async () => {
+  const t = convexTest(schema, modules);
+  const { as } = await asOrganizer(t, "ada@example.com");
+  await as.mutation(api.organizers.ensureOrganizer, {});
+  const now = 1_000_000_000_000;
+  const pub = await as.mutation(api.events.createEvent, {
+    title: "Pub", description: "x", startsAt: now + 1000, endsAt: now + 2000, location: "H", capacity: 10,
+  });
+  await as.mutation(api.events.publishEvent, { eventId: pub });
+  await as.mutation(api.events.createEvent, {
+    title: "Draft", description: "x", startsAt: now + 1000, endsAt: now + 2000, location: "H", capacity: 10,
+  });
+  // Give the published event 2 seat-holding rsvps.
+  await t.run(async (ctx) => {
+    await ctx.db.insert("rsvps", { eventId: pub, name: "A", email: "a@x.co", token: "t1", status: "confirmed" });
+    await ctx.db.insert("rsvps", { eventId: pub, name: "B", email: "b@x.co", token: "t2", status: "checked_in" });
+    await ctx.db.patch(pub, { seatsTaken: 2 });
+  });
+
+  const onlyPub = await as.query(api.events.listMyEventsPage, {
+    tab: "all", status: "published", sort: "date", search: "", page: 1, pageSize: 10, now,
+  });
+  expect(onlyPub.rows.map((r) => r.title)).toEqual(["Pub"]);
+  const row = onlyPub.rows[0];
+  expect(row.spark[row.spark.length - 1]).toBe(row.seatsTaken); // spark endpoint == seatsTaken
+  expect(row.seatsTaken).toBe(2);
+
+  const unauth = await t.query(api.events.listMyEventsPage, {
+    tab: "all", status: "all", sort: "date", search: "", page: 1, pageSize: 10, now,
+  });
+  expect(unauth).toEqual({ rows: [], page: 1, pageCount: 0, total: 0 });
+});
