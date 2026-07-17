@@ -574,10 +574,15 @@ git commit -m "feat(settings): upload the organization logo instead of pasting a
 
 ---
 
-### Task 5: `hostProfiles` — `logoId` on create/update + blob cleanup on delete
+### Task 5: `hostProfiles` — `logoId` end-to-end (backend + panel)
+
+> **Scope note:** the backend arg change and the panel wiring ship in ONE task
+> because splitting them would leave typecheck red at the task boundary. Both
+> the tests AND `tsc --noEmit` must be green before this task is committed.
 
 **Files:**
 - Modify: `convex/hostProfiles.ts:14-39` (`validateFields`), `:55-81` (`create`), `:97-121` (`update`), `:123-141` (`remove`), `:83-95` (`listMine`), `:152-170` (`getForEvent`)
+- Modify: `src/components/HostProfilesPanel.tsx:63-68` (form schema), `:99-125` (defaults + submit), `:163-172` (the logo field)
 - Test: `convex/hostProfiles.test.ts` (append)
 
 **Interfaces:**
@@ -841,27 +846,7 @@ export const listMine = query({
 Run: `./node_modules/.bin/vitest run convex/hostProfiles.test.ts`
 Expected: PASS.
 
-- [ ] **Step 8: Commit**
-
-Typecheck will still fail here because `HostProfilesPanel` passes `logoUrl` — that is Task 6. Commit the backend anyway; the branch is not merged until Task 6 lands.
-
-```bash
-git add convex/hostProfiles.ts convex/hostProfiles.test.ts
-git commit -m "feat(hostProfiles): take an uploaded logoId and clean up blobs"
-```
-
----
-
-### Task 6: Host profiles panel — upload the logo
-
-**Files:**
-- Modify: `src/components/HostProfilesPanel.tsx:63-68` (form schema), `:99-125` (defaults + submit), `:163-172` (the logo field)
-
-**Interfaces:**
-- Consumes: `api.files.generateUploadUrl` (Task 1); `api.hostProfiles.create/update` with `logoId` (Task 5); `ImageDropzone`'s `getUploadUrl` prop (Task 3).
-- Produces: nothing.
-
-- [ ] **Step 1: Swap `logoUrl` for `logoId` in the form schema**
+- [ ] **Step 8: Swap `logoUrl` for `logoId` in the form schema**
 
 In `src/components/HostProfilesPanel.tsx`, the schema becomes — `logoId` is a plain optional string in the form (it holds a storage id, validated server-side by the `v.id("_storage")` type):
 
@@ -876,7 +861,7 @@ const hostProfileFormSchema = z.object({
 
 If `optionalHttpsUrl` is now referenced only by `websiteUrl`, leave it — it is still used.
 
-- [ ] **Step 2: Update defaults and submit**
+- [ ] **Step 9: Update defaults and submit**
 
 Add the upload mutation near the component's other hooks:
 
@@ -923,7 +908,7 @@ Add the `Id` type import if not present:
 import type { Id } from "../../convex/_generated/dataModel";
 ```
 
-- [ ] **Step 3: Replace the logo URL field with the dropzone**
+- [ ] **Step 10: Replace the logo URL field with the dropzone**
 
 Replace the `FormField` for `logoUrl` (the one rendering `<Input placeholder="https://example.com/logo.png" {...field} />`) with:
 
@@ -953,17 +938,17 @@ Add the import:
 import { ImageDropzone } from "@/components/ImageDropzone";
 ```
 
-- [ ] **Step 4: Typecheck**
+- [ ] **Step 11: Typecheck**
 
 Run: `./node_modules/.bin/tsc --noEmit`
 Expected: clean. This is the step that proves Task 5's arg change is fully wired.
 
-- [ ] **Step 5: Run the full suite**
+- [ ] **Step 12: Run the full suite**
 
 Run: `./node_modules/.bin/vitest run`
 Expected: PASS — baseline 502 plus the tests added in Tasks 1/2/5 (≈517), 41 files.
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 13: Commit**
 
 ```bash
 git add src/components/HostProfilesPanel.tsx
@@ -972,7 +957,7 @@ git commit -m "feat(settings): upload host profile logos instead of pasting urls
 
 ---
 
-### Task 7: Verify end-to-end in the real app
+### Task 6: Verify end-to-end in the real app
 
 **Files:** none (verification only)
 
@@ -1009,5 +994,5 @@ If steps 3's flows revealed bugs, fix them with a test first (return to the rele
 
 - **Do not remove `organizers.image` or `hostProfiles.logoUrl`.** They are read-only fallbacks. Tests in Tasks 2 and 5 assert the fallback works; deleting the fields will fail them.
 - **`profile.tsx` has a name collision.** Its existing `const [image, setImage] = React.useState("")` shadows the new `setImage` mutation. Task 4 Step 1 deletes the state — if you see "setImage is not a function", that's why.
-- **Task 5 leaves the tree red for typecheck** until Task 6 wires the panel. That is expected and called out in Task 5 Step 8.
+- **Task 5 ships backend + panel together** precisely so typecheck is never left red at a task boundary. Both `vitest run` and `tsc --noEmit` must be green before it commits.
 - **Orphaned blob on dialog cancel is accepted**, by explicit decision — see the design spec §9. Do not build a cleanup mechanism.
