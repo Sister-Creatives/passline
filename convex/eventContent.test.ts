@@ -330,6 +330,24 @@ test("getBySlug returns null for an unknown slug", async () => {
   expect(content).toBeNull();
 });
 
+test("getBySlug does not leak storageId for a populated gallery", async () => {
+  const t = convexTest(schema, modules);
+  const { as } = await asOrganizer(t, "ada@example.com");
+  await as.mutation(api.organizers.ensureOrganizer, {});
+  const eventId = await makeEvent(as);
+  const [g1] = await storeN(t, 1);
+
+  await as.mutation(api.eventContent.setGallery, { eventId, images: [{ storageId: g1, alt: "one" }] });
+  const event = await t.run((ctx) => ctx.db.get(eventId));
+  await as.mutation(api.events.publishEvent, { eventId });
+
+  const res = await t.query(api.eventContent.getBySlug, { slug: event!.slug });
+  expect(res!.gallery).toHaveLength(1);
+  expect(res!.gallery[0]).toMatchObject({ alt: "one" });
+  expect(res!.gallery[0].url).toEqual(expect.stringContaining("http"));
+  expect((res!.gallery[0] as { storageId?: unknown }).storageId).toBeUndefined();
+});
+
 // --- image mutations ---------------------------------------------------
 
 test("generateUploadUrl rejects a non-owner", async () => {

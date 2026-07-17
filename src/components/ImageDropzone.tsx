@@ -52,10 +52,17 @@ export function ImageDropzone({
   }
 
   return (
-    <button
-      type="button"
-      disabled={disabled || uploading}
+    <div
+      role="button"
+      tabIndex={disabled || uploading ? -1 : 0}
+      aria-disabled={disabled || uploading}
       onClick={() => inputRef.current?.click()}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          inputRef.current?.click();
+        }
+      }}
       onDragOver={(e) => { e.preventDefault(); setDragActive(true); }}
       onDragLeave={() => setDragActive(false)}
       onDrop={(e) => {
@@ -81,6 +88,6 @@ export function ImageDropzone({
         className="hidden"
         onChange={(e) => { const f = e.target.files?.[0]; if (f) void handleFile(f); }}
       />
-    </button>
+    </div>
   );
 }

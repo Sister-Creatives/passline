@@ -657,6 +657,43 @@ test("duplicateEvent creates a draft copy with a distinct slug, deep-copies conf
   expect(copiedTickets).toEqual([]);
 });
 
+test("duplicateEvent does not copy coverImageId or gallery (no shared storage blobs)", async () => {
+  const t = convexTest(schema, modules);
+  const { as } = await asOrganizer(t, "ada@example.com");
+  await as.mutation(api.organizers.ensureOrganizer, {});
+
+  const eventId = await as.mutation(api.events.createEvent, {
+    title: "Event With Media",
+    description: "x",
+    startsAt: 1,
+    endsAt: 2,
+    location: "x",
+    capacity: 5,
+  });
+
+  const [cover, galleryImage] = await storeN(t, 2);
+  await as.mutation(api.eventContent.setCoverImage, { eventId, storageId: cover });
+  await as.mutation(api.eventContent.setGallery, {
+    eventId,
+    images: [{ storageId: galleryImage }],
+  });
+
+  const newEventId = await as.mutation(api.events.duplicateEvent, { eventId });
+
+  const copiedContent = await t.run((ctx) =>
+    ctx.db
+      .query("eventContent")
+      .withIndex("by_event", (q) => q.eq("eventId", newEventId))
+      .unique(),
+  );
+  expect(copiedContent?.coverImageId).toBeUndefined();
+  expect(copiedContent?.gallery ?? []).toEqual([]);
+
+  // The source's storage blobs must remain intact and unshared.
+  expect(await t.run((ctx) => ctx.storage.getUrl(cover))).not.toBeNull();
+  expect(await t.run((ctx) => ctx.storage.getUrl(galleryImage))).not.toBeNull();
+});
+
 test("duplicateEvent is owner-only", async () => {
   const t = convexTest(schema, modules);
   const { as: asAda } = await asOrganizer(t, "ada@example.com");

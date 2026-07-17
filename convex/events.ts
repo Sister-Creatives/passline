@@ -595,7 +595,20 @@ export const duplicateEvent = mutation({
       .withIndex("by_event", (q) => q.eq("eventId", eventId))
       .unique();
     if (content) {
-      const { _id, _creationTime, eventId: _eventId, organizerId: _organizerId, ...rest } = content;
+      // coverImageId and gallery reference storage blobs owned by the
+      // source event; deleteEvent's file cleanup deletes those blobs when
+      // the source is removed, so the duplicate must NOT reuse them (it
+      // starts with no uploaded cover/gallery). coverImageUrl is a legacy
+      // external URL, not a storage blob, so it is safe to copy as-is.
+      const {
+        _id,
+        _creationTime,
+        eventId: _eventId,
+        organizerId: _organizerId,
+        coverImageId: _coverImageId,
+        gallery: _gallery,
+        ...rest
+      } = content;
       await ctx.db.insert("eventContent", {
         eventId: newEventId,
         organizerId: source.organizerId,
