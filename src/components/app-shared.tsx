@@ -2,7 +2,6 @@ import type { ReactNode } from "react";
 import {
   LayoutDashboardIcon,
   CalendarIcon,
-  UsersRoundIcon,
   ChartColumnIcon,
   MegaphoneIcon,
   SettingsIcon,
@@ -20,8 +19,8 @@ export type SidebarNavItem = {
   icon?: ReactNode;
   isActive?: boolean;
   // Which live count (from organizers.getSidebarCounts) renders as a badge on
-  // this item, if any. Only Events and Attendees carry one -- badges stay
-  // sparse on purpose so the nav reads as signal, not noise.
+  // this item, if any. Only Events carries one -- badges stay sparse on
+  // purpose so the nav reads as signal, not noise.
   badgeKey?: "events" | "attendees";
 };
 export type SidebarNavGroup = { label: string; items: SidebarNavItem[] };
@@ -37,7 +36,6 @@ export const createAction: SidebarNavItem = {
 export const primaryNav: SidebarNavItem[] = [
   { title: "Overview", path: "/dashboard", icon: <LayoutDashboardIcon /> },
   { title: "Events", path: "/events", icon: <CalendarIcon />, badgeKey: "events" },
-  { title: "Attendees", path: "/attendees", icon: <UsersRoundIcon />, badgeKey: "attendees" },
   { title: "Reports", path: "/reports", icon: <ChartColumnIcon /> },
   { title: "Marketing", path: "/marketing", icon: <MegaphoneIcon /> },
 ];
