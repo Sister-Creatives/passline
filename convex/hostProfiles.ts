@@ -101,8 +101,9 @@ export const listMine = query({
 /**
  * Owner-only: re-validate and patch every field of an existing host profile.
  *
- * Deletes the logo blob it replaces so storage doesn't accumulate orphans, and
- * clears the legacy `logoUrl` so resolution is unambiguous.
+ * Deletes the logo blob it replaces so storage doesn't accumulate orphans. The
+ * legacy `logoUrl` is only cleared when a `logoId` is supplied -- a name-only
+ * edit on a pre-upload profile must not wipe out its existing logo.
  */
 export const update = mutation({
   args: {
@@ -127,7 +128,7 @@ export const update = mutation({
       name,
       bio,
       logoId: args.logoId,
-      logoUrl: undefined,
+      logoUrl: args.logoId ? undefined : profile.logoUrl,
       websiteUrl,
     });
     return null;

@@ -195,6 +195,49 @@ test("update patches all fields for the owner", async () => {
   expect(row?.websiteUrl).toBe("https://example.org");
 });
 
+test("update preserves a legacy logoUrl on a name-only edit (no logoId)", async () => {
+  const t = convexTest(schema, modules);
+  const { as } = await asOrganizer(t, "ada@example.com");
+  await as.mutation(api.organizers.ensureOrganizer, {});
+
+  const hostProfileId = await as.mutation(api.hostProfiles.create, validCreateArgs);
+  await t.run(async (ctx) => {
+    await ctx.db.patch(hostProfileId, { logoUrl: "https://legacy.example.com/old.png" });
+  });
+
+  await as.mutation(api.hostProfiles.update, {
+    hostProfileId,
+    ...validCreateArgs,
+    name: "Renamed Only",
+  });
+
+  const row = await t.run((ctx) => ctx.db.get(hostProfileId));
+  expect(row?.name).toBe("Renamed Only");
+  expect(row?.logoUrl).toBe("https://legacy.example.com/old.png");
+});
+
+test("update clears a legacy logoUrl once a logoId is uploaded", async () => {
+  const t = convexTest(schema, modules);
+  const { as } = await asOrganizer(t, "ada@example.com");
+  await as.mutation(api.organizers.ensureOrganizer, {});
+
+  const hostProfileId = await as.mutation(api.hostProfiles.create, validCreateArgs);
+  await t.run(async (ctx) => {
+    await ctx.db.patch(hostProfileId, { logoUrl: "https://legacy.example.com/old.png" });
+  });
+  const logoId = await t.run((ctx) => ctx.storage.store(new Blob(["a"], { type: "image/png" })));
+
+  await as.mutation(api.hostProfiles.update, {
+    hostProfileId,
+    ...validCreateArgs,
+    logoId,
+  });
+
+  const row = await t.run((ctx) => ctx.db.get(hostProfileId));
+  expect(row?.logoUrl).toBeUndefined();
+  expect(row?.logoId).toBe(logoId);
+});
+
 // --- remove ------------------------------------------------------------------
 
 test("remove is owner-only", async () => {
