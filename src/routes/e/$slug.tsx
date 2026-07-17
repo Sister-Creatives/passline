@@ -106,6 +106,7 @@ function EventPageContent({ slug }: { slug: string }) {
 type PublicEventContent = {
   coverImageUrl?: string;
   coverImageAlt?: string;
+  gallery?: { url: string; alt?: string }[];
   brandColor?: string;
   ctaLabel?: string;
   videoUrl?: string;
@@ -215,6 +216,23 @@ function EventDetails({ slug, event }: { slug: string; event: Doc<"events"> }) {
         </p>
         <p className="text-sm text-muted-foreground">{event.location}</p>
         <p className="mt-4 text-sm whitespace-pre-line">{event.description}</p>
+
+      {content && content.gallery && content.gallery.length > 0 && (
+        <section className="mt-8">
+          <h2 className="text-lg font-semibold">Gallery</h2>
+          <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3">
+            {content.gallery.map((img, i) => (
+              <img
+                key={i}
+                src={img.url}
+                alt={img.alt || `${stripHtml(event.title)} photo ${i + 1}`}
+                loading="lazy"
+                className="aspect-square w-full rounded-lg object-cover ring-1 ring-border/60"
+              />
+            ))}
+          </div>
+        </section>
+      )}
 
       {embedSrc && (
         <div className="relative mt-6 aspect-video w-full overflow-hidden rounded-lg bg-muted">
