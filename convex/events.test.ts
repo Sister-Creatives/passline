@@ -1295,12 +1295,13 @@ test("getMyEventsKpis sums denormalized counters over all events", async () => {
   expect(k.attendees).toBe(35);
   expect(k.ticketsSold).toBe(12);
   expect(k.revenueCents).toBe(24000);
+  expect(k.nextStartsAt).toBe(now + 1000); // e1 is the only not-yet-started event
 });
 
 test("getMyEventsKpis returns zeros when unauthenticated", async () => {
   const t = convexTest(schema, modules);
   const k = await t.query(api.events.getMyEventsKpis, { now: 1 });
-  expect(k).toEqual({ total: 0, published: 0, draft: 0, upcoming: 0, attendees: 0, revenueCents: 0, ticketsSold: 0, currency: "USD" });
+  expect(k).toEqual({ total: 0, published: 0, draft: 0, upcoming: 0, attendees: 0, revenueCents: 0, ticketsSold: 0, currency: "USD", nextStartsAt: null });
 });
 
 test("getMyEventsKpis treats pre-backfill (undefined) counters as 0, not NaN", async () => {

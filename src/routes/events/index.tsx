@@ -10,7 +10,7 @@ import { DashboardLayout } from "@/components/DashboardLayout";
 import { StatCard } from "@/components/stat-card";
 import { PaceChart } from "@/components/pace-chart";
 import { Delta, DeltaIcon, DeltaValue } from "@/components/delta";
-import { formatShortDate } from "@/lib/format-date";
+import { formatShortDate, formatRelative } from "@/lib/format-date";
 import { formatMoney } from "@/lib/format-money";
 import { formatInteger } from "@/lib/formater";
 import { Button } from "@/components/ui/button";
@@ -127,7 +127,17 @@ function EventsListContent() {
 
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
         <StatCard label="Events" value={kpis.total} sub={`${kpis.published} published · ${kpis.draft} draft`} />
-        <StatCard label="Upcoming" value={kpis.upcoming} sub={kpis.upcoming > 0 ? "Scheduled or in progress" : "None scheduled"} />
+        <StatCard
+          label="Upcoming"
+          value={kpis.upcoming}
+          sub={
+            kpis.nextStartsAt !== null
+              ? `Next ${formatRelative(kpis.nextStartsAt)}`
+              : kpis.upcoming > 0
+                ? "In progress"
+                : "None scheduled"
+          }
+        />
         <StatCard label="Attendees" value={formatInteger(kpis.attendees)} sub={`across ${kpis.total} events`} />
         <StatCard
           label="Revenue"

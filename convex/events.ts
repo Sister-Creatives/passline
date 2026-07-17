@@ -324,13 +324,17 @@ export const getMyEventsKpis = query({
   handler: async (ctx, { now }) => {
     const organizerId = await getAuthOrganizerId(ctx);
     if (!organizerId) {
-      return { total: 0, published: 0, draft: 0, upcoming: 0, attendees: 0, revenueCents: 0, ticketsSold: 0, currency: "USD" };
+      return { total: 0, published: 0, draft: 0, upcoming: 0, attendees: 0, revenueCents: 0, ticketsSold: 0, currency: "USD", nextStartsAt: null };
     }
     const events = await ctx.db
       .query("events")
       .withIndex("by_organizer", (q) => q.eq("organizerId", organizerId))
       .collect();
     const published = events.filter((e) => e.status === "published").length;
+    // Soonest start among events that have NOT started yet (startsAt >= now), for the
+    // "Next in X" label; null when nothing is scheduled ahead (all past or in progress).
+    const notStarted = events.filter((e) => e.startsAt >= now).map((e) => e.startsAt);
+    const nextStartsAt = notStarted.length > 0 ? Math.min(...notStarted) : null;
     return {
       total: events.length,
       published,
@@ -340,6 +344,7 @@ export const getMyEventsKpis = query({
       revenueCents: events.reduce((s, e) => s + (e.revenueCents ?? 0), 0),
       ticketsSold: events.reduce((s, e) => s + (e.ticketsSold ?? 0), 0),
       currency: events[0]?.currency ?? "USD",
+      nextStartsAt,
     };
   },
 });
