@@ -1,28 +1,30 @@
 import { useRef, useState } from "react";
-import { useMutation } from "convex/react";
 import { ImagePlus, LoaderCircle } from "lucide-react";
 import { toast } from "sonner";
 
-import { api } from "../../convex/_generated/api";
 import type { Id } from "../../convex/_generated/dataModel";
 import { cn } from "@/lib/utils";
 
 const MAX_BYTES = 5 * 1024 * 1024;
 
+/**
+ * The upload URL is injected rather than minted here: the event page mints an
+ * event-scoped one, the settings pages an organizer-scoped one. Keeping that
+ * choice with the caller is what lets all three share this component.
+ */
 export function ImageDropzone({
-  eventId,
+  getUploadUrl,
   onUploaded,
   disabled,
   label = "Drag an image here, or click to upload",
   className,
 }: {
-  eventId: Id<"events">;
+  getUploadUrl: () => Promise<string>;
   onUploaded: (storageId: Id<"_storage">) => void | Promise<void>;
   disabled?: boolean;
   label?: string;
   className?: string;
 }) {
-  const generateUploadUrl = useMutation(api.eventContent.generateUploadUrl);
   const inputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
   const [dragActive, setDragActive] = useState(false);
@@ -38,7 +40,7 @@ export function ImageDropzone({
     }
     setUploading(true);
     try {
-      const url = await generateUploadUrl({ eventId });
+      const url = await getUploadUrl();
       const res = await fetch(url, { method: "POST", headers: { "Content-Type": file.type }, body: file });
       if (!res.ok) throw new Error("Upload failed");
       const { storageId } = (await res.json()) as { storageId: Id<"_storage"> };

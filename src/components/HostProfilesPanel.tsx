@@ -14,6 +14,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Skeleton } from "@/components/ui/skeleton";
+import { ImageDropzone } from "@/components/ImageDropzone";
 import {
   Dialog,
   DialogContent,
@@ -63,7 +64,7 @@ const optionalHttpsUrl = z
 const hostProfileFormSchema = z.object({
   name: z.string().min(1, "Name is required"),
   bio: z.string().max(MAX_BIO_LENGTH, `Bio must be ${MAX_BIO_LENGTH} characters or fewer`),
-  logoUrl: optionalHttpsUrl,
+  logoId: z.string().optional(),
   websiteUrl: optionalHttpsUrl,
 });
 
@@ -90,26 +91,26 @@ function HostProfileEditor({
 }) {
   const create = useMutation(api.hostProfiles.create);
   const update = useMutation(api.hostProfiles.update);
+  const generateUploadUrl = useMutation(api.files.generateUploadUrl);
   const form = useForm<HostProfileFormValues>({
     resolver: zodResolver(hostProfileFormSchema),
     defaultValues: hostProfile
       ? {
           name: hostProfile.name,
           bio: hostProfile.bio ?? "",
-          logoUrl: hostProfile.logoUrl ?? "",
+          logoId: hostProfile.logoId ?? undefined,
           websiteUrl: hostProfile.websiteUrl ?? "",
         }
       : {
           name: "",
           bio: "",
-          logoUrl: "",
+          logoId: undefined,
           websiteUrl: "",
         },
   });
 
   async function onSubmit(values: HostProfileFormValues) {
     const bio = toOptional(values.bio);
-    const logoUrl = toOptional(values.logoUrl);
     const websiteUrl = toOptional(values.websiteUrl);
     try {
       if (hostProfile) {
@@ -117,12 +118,17 @@ function HostProfileEditor({
           hostProfileId: hostProfile._id,
           name: values.name,
           bio,
-          logoUrl,
+          logoId: values.logoId as Id<"_storage"> | undefined,
           websiteUrl,
         });
         toast.success("Host profile updated");
       } else {
-        await create({ name: values.name, bio, logoUrl, websiteUrl });
+        await create({
+          name: values.name,
+          bio,
+          logoId: values.logoId as Id<"_storage"> | undefined,
+          websiteUrl,
+        });
         toast.success("Host profile created");
       }
       onDone();
@@ -162,12 +168,16 @@ function HostProfileEditor({
         />
         <FormField
           control={form.control}
-          name="logoUrl"
+          name="logoId"
           render={({ field }) => (
             <FormItem>
-              <FormLabel>Logo URL (optional)</FormLabel>
+              <FormLabel>Logo</FormLabel>
               <FormControl>
-                <Input placeholder="https://example.com/logo.png" {...field} />
+                <ImageDropzone
+                  getUploadUrl={() => generateUploadUrl({})}
+                  onUploaded={(storageId) => field.onChange(storageId)}
+                  label={field.value ? "Logo ready — drop a new image to replace" : "Drag an image here, or click to upload"}
+                />
               </FormControl>
               <FormMessage />
             </FormItem>

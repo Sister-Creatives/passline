@@ -17,7 +17,10 @@ export default defineSchema({
   organizers: defineTable({
     name: v.string(),
     email: v.string(),
+    // Legacy URL (auto-seeded from the auth user's avatar in `ensureOrganizer`).
+    // Read-only fallback: `imageId` wins when set. Never written with a new value.
     image: v.optional(v.string()),
+    imageId: v.optional(v.id("_storage")),
   }).index("by_email", ["email"]),
 
   events: defineTable({
@@ -352,7 +355,9 @@ export default defineSchema({
     organizerId: v.id("organizers"),
     name: v.string(),
     bio: v.optional(v.string()), // <= 600 chars
-    logoUrl: v.optional(v.string()), // https URL (validated)
+    // Legacy https URL. Read-only fallback: `logoId` wins when set.
+    logoUrl: v.optional(v.string()),
+    logoId: v.optional(v.id("_storage")),
     websiteUrl: v.optional(v.string()), // https URL (validated)
     createdAt: v.number(),
   }).index("by_organizer", ["organizerId"]),

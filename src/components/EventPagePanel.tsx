@@ -312,6 +312,7 @@ function GalleryEditor({
   gallery: { storageId: Id<"_storage">; url: string; alt?: string }[];
 }) {
   const setGallery = useMutation(api.eventContent.setGallery);
+  const generateUploadUrl = useMutation(api.eventContent.generateUploadUrl);
   const [altDrafts, setAltDrafts] = useState<Record<string, string>>({});
 
   const galleryKey = gallery.map((g) => `${g.storageId}:${g.alt ?? ""}`).join("|");
@@ -374,7 +375,7 @@ function GalleryEditor({
       </Reorder.Group>
       {gallery.length < 8 ? (
         <ImageDropzone
-          eventId={eventId}
+          getUploadUrl={() => generateUploadUrl({ eventId })}
           onUploaded={async (storageId) => {
             await persist([...gallery.map((g) => ({ storageId: g.storageId, alt: g.alt })), { storageId, alt: undefined }]);
           }}
@@ -401,6 +402,7 @@ function EventPageForm({
 }) {
   const update = useMutation(api.eventContent.update);
   const setCoverImage = useMutation(api.eventContent.setCoverImage);
+  const generateUploadUrl = useMutation(api.eventContent.generateUploadUrl);
   const form = useForm<PageFormValues>({
     resolver: zodResolver(pageFormSchema),
     defaultValues: toFormValues(initial),
@@ -450,7 +452,7 @@ function EventPageForm({
                   <img src={coverUrl} alt="Cover preview" className="max-h-48 w-full object-cover" />
                   <div className="absolute right-2 top-2 flex gap-2">
                     <ImageDropzone
-                      eventId={eventId}
+                      getUploadUrl={() => generateUploadUrl({ eventId })}
                       label="Replace"
                       className="border-0 bg-background/80 p-2 backdrop-blur"
                       onUploaded={async (storageId) => {
@@ -464,7 +466,7 @@ function EventPageForm({
                 </div>
               ) : (
                 <ImageDropzone
-                  eventId={eventId}
+                  getUploadUrl={() => generateUploadUrl({ eventId })}
                   onUploaded={async (storageId) => {
                     await setCoverImage({ eventId, storageId });
                   }}

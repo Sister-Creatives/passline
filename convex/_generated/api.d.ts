@@ -23,6 +23,7 @@ import type * as email from "../email.js";
 import type * as eventContent from "../eventContent.js";
 import type * as eventSessions from "../eventSessions.js";
 import type * as events from "../events.js";
+import type * as files from "../files.js";
 import type * as hostProfiles from "../hostProfiles.js";
 import type * as http from "../http.js";
 import type * as lib_capacity from "../lib/capacity.js";
@@ -76,6 +77,7 @@ declare const fullApi: ApiFromModules<{
   eventContent: typeof eventContent;
   eventSessions: typeof eventSessions;
   events: typeof events;
+  files: typeof files;
   hostProfiles: typeof hostProfiles;
   http: typeof http;
   "lib/capacity": typeof lib_capacity;

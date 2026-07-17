@@ -43,7 +43,6 @@ async function makePublishedEvent(
 const validCreateArgs = {
   name: "Passline Events",
   bio: "We throw great parties.",
-  logoUrl: "https://example.com/logo.png",
   websiteUrl: "https://example.com",
 };
 
@@ -56,26 +55,6 @@ test("create rejects an empty/whitespace-only name", async () => {
 
   await expect(
     as.mutation(api.hostProfiles.create, { ...validCreateArgs, name: "   " }),
-  ).rejects.toThrow();
-});
-
-test("create rejects a non-https:// logoUrl", async () => {
-  const t = convexTest(schema, modules);
-  const { as } = await asOrganizer(t, "ada@example.com");
-  await as.mutation(api.organizers.ensureOrganizer, {});
-
-  await expect(
-    as.mutation(api.hostProfiles.create, {
-      ...validCreateArgs,
-      logoUrl: "http://example.com/logo.png",
-    }),
-  ).rejects.toThrow();
-
-  await expect(
-    as.mutation(api.hostProfiles.create, {
-      ...validCreateArgs,
-      logoUrl: "javascript:alert(1)",
-    }),
   ).rejects.toThrow();
 });
 
@@ -120,7 +99,6 @@ test("create succeeds with valid fields and stamps organizerId/createdAt", async
   expect(row?.organizerId).toEqual(organizerId);
   expect(row?.name).toBe("Passline Events");
   expect(row?.bio).toBe("We throw great parties.");
-  expect(row?.logoUrl).toBe("https://example.com/logo.png");
   expect(row?.websiteUrl).toBe("https://example.com");
   expect(typeof row?.createdAt).toBe("number");
 });
@@ -200,20 +178,64 @@ test("update patches all fields for the owner", async () => {
   await as.mutation(api.organizers.ensureOrganizer, {});
 
   const hostProfileId = await as.mutation(api.hostProfiles.create, validCreateArgs);
+  const logoId = await t.run((ctx) => ctx.storage.store(new Blob(["a"], { type: "image/png" })));
 
   await as.mutation(api.hostProfiles.update, {
     hostProfileId,
     name: "Updated Name",
     bio: "Updated bio",
-    logoUrl: "https://example.com/new-logo.png",
+    logoId,
     websiteUrl: "https://example.org",
   });
 
   const row = await t.run((ctx) => ctx.db.get(hostProfileId));
   expect(row?.name).toBe("Updated Name");
   expect(row?.bio).toBe("Updated bio");
-  expect(row?.logoUrl).toBe("https://example.com/new-logo.png");
+  expect(row?.logoId).toBe(logoId);
   expect(row?.websiteUrl).toBe("https://example.org");
+});
+
+test("update preserves a legacy logoUrl on a name-only edit (no logoId)", async () => {
+  const t = convexTest(schema, modules);
+  const { as } = await asOrganizer(t, "ada@example.com");
+  await as.mutation(api.organizers.ensureOrganizer, {});
+
+  const hostProfileId = await as.mutation(api.hostProfiles.create, validCreateArgs);
+  await t.run(async (ctx) => {
+    await ctx.db.patch(hostProfileId, { logoUrl: "https://legacy.example.com/old.png" });
+  });
+
+  await as.mutation(api.hostProfiles.update, {
+    hostProfileId,
+    ...validCreateArgs,
+    name: "Renamed Only",
+  });
+
+  const row = await t.run((ctx) => ctx.db.get(hostProfileId));
+  expect(row?.name).toBe("Renamed Only");
+  expect(row?.logoUrl).toBe("https://legacy.example.com/old.png");
+});
+
+test("update clears a legacy logoUrl once a logoId is uploaded", async () => {
+  const t = convexTest(schema, modules);
+  const { as } = await asOrganizer(t, "ada@example.com");
+  await as.mutation(api.organizers.ensureOrganizer, {});
+
+  const hostProfileId = await as.mutation(api.hostProfiles.create, validCreateArgs);
+  await t.run(async (ctx) => {
+    await ctx.db.patch(hostProfileId, { logoUrl: "https://legacy.example.com/old.png" });
+  });
+  const logoId = await t.run((ctx) => ctx.storage.store(new Blob(["a"], { type: "image/png" })));
+
+  await as.mutation(api.hostProfiles.update, {
+    hostProfileId,
+    ...validCreateArgs,
+    logoId,
+  });
+
+  const row = await t.run((ctx) => ctx.db.get(hostProfileId));
+  expect(row?.logoUrl).toBeUndefined();
+  expect(row?.logoId).toBe(logoId);
 });
 
 // --- remove ------------------------------------------------------------------
@@ -272,7 +294,8 @@ test("getForEvent returns the public projection for a published event with an at
   await as.mutation(api.organizers.ensureOrganizer, {});
 
   const eventId = await makePublishedEvent(as);
-  const hostProfileId = await as.mutation(api.hostProfiles.create, validCreateArgs);
+  const logoId = await t.run((ctx) => ctx.storage.store(new Blob(["a"], { type: "image/png" })));
+  const hostProfileId = await as.mutation(api.hostProfiles.create, { ...validCreateArgs, logoId });
   await as.mutation(api.events.updateEvent, {
     eventId,
     title: "Host Profile Event",
@@ -288,7 +311,7 @@ test("getForEvent returns the public projection for a published event with an at
   expect(result).toEqual({
     name: "Passline Events",
     bio: "We throw great parties.",
-    logoUrl: "https://example.com/logo.png",
+    logoUrl: expect.any(String),
     websiteUrl: "https://example.com",
   });
   expect(result).not.toHaveProperty("_id");
@@ -354,4 +377,87 @@ test("getForEvent returns null when the referenced profile was deleted", async (
 
   const result = await t.query(api.hostProfiles.getForEvent, { eventId });
   expect(result).toBeNull();
+});
+
+// --- logoId (Task 5) ---------------------------------------------------------
+
+test("create stores an uploaded logo id", async () => {
+  const t = convexTest(schema, modules);
+  const { as } = await asOrganizer(t, "ada@example.com");
+  await as.mutation(api.organizers.ensureOrganizer, {});
+  const logoId = await t.run((ctx) => ctx.storage.store(new Blob(["a"], { type: "image/png" })));
+
+  const id = await as.mutation(api.hostProfiles.create, { name: "Acme", logoId });
+  const row = await t.run((ctx) => ctx.db.get(id));
+  expect(row?.logoId).toBe(logoId);
+});
+
+test("update deletes the logo blob it replaces and clears the legacy url", async () => {
+  const t = convexTest(schema, modules);
+  const { as } = await asOrganizer(t, "ada@example.com");
+  await as.mutation(api.organizers.ensureOrganizer, {});
+  const first = await t.run((ctx) => ctx.storage.store(new Blob(["a"], { type: "image/png" })));
+  const id = await as.mutation(api.hostProfiles.create, { name: "Acme", logoId: first });
+  await t.run(async (ctx) => {
+    await ctx.db.patch(id, { logoUrl: "https://legacy.example.com/old.png" });
+  });
+
+  const second = await t.run((ctx) => ctx.storage.store(new Blob(["b"], { type: "image/png" })));
+  await as.mutation(api.hostProfiles.update, { hostProfileId: id, name: "Acme", logoId: second });
+
+  const row = await t.run((ctx) => ctx.db.get(id));
+  expect(row?.logoId).toBe(second);
+  expect(row?.logoUrl).toBeUndefined();
+  expect(await t.run((ctx) => ctx.storage.getUrl(first))).toBeNull();
+});
+
+test("remove deletes the profile's logo blob", async () => {
+  const t = convexTest(schema, modules);
+  const { as } = await asOrganizer(t, "ada@example.com");
+  await as.mutation(api.organizers.ensureOrganizer, {});
+  const logoId = await t.run((ctx) => ctx.storage.store(new Blob(["a"], { type: "image/png" })));
+  const id = await as.mutation(api.hostProfiles.create, { name: "Acme", logoId });
+
+  await as.mutation(api.hostProfiles.remove, { hostProfileId: id });
+
+  expect(await t.run((ctx) => ctx.storage.getUrl(logoId))).toBeNull();
+});
+
+test("setting a logo on another organizer's profile is rejected", async () => {
+  const t = convexTest(schema, modules);
+  const { as: ada } = await asOrganizer(t, "ada@example.com");
+  await ada.mutation(api.organizers.ensureOrganizer, {});
+  const id = await ada.mutation(api.hostProfiles.create, { name: "Acme" });
+
+  const { as: bob } = await asOrganizer(t, "bob@example.com");
+  await bob.mutation(api.organizers.ensureOrganizer, {});
+  const logoId = await t.run((ctx) => ctx.storage.store(new Blob(["a"], { type: "image/png" })));
+
+  await expect(
+    bob.mutation(api.hostProfiles.update, { hostProfileId: id, name: "Acme", logoId }),
+  ).rejects.toThrow(/not found/i);
+});
+
+test("listMine resolves an uploaded logo to a url", async () => {
+  const t = convexTest(schema, modules);
+  const { as } = await asOrganizer(t, "ada@example.com");
+  await as.mutation(api.organizers.ensureOrganizer, {});
+  const logoId = await t.run((ctx) => ctx.storage.store(new Blob(["a"], { type: "image/png" })));
+  await as.mutation(api.hostProfiles.create, { name: "Acme", logoId });
+
+  const rows = await as.query(api.hostProfiles.listMine, {});
+  expect(rows[0]?.logoUrl).toBeTruthy();
+});
+
+test("listMine falls back to the legacy logo url", async () => {
+  const t = convexTest(schema, modules);
+  const { as } = await asOrganizer(t, "ada@example.com");
+  await as.mutation(api.organizers.ensureOrganizer, {});
+  const id = await as.mutation(api.hostProfiles.create, { name: "Acme" });
+  await t.run(async (ctx) => {
+    await ctx.db.patch(id, { logoUrl: "https://legacy.example.com/old.png" });
+  });
+
+  const rows = await as.query(api.hostProfiles.listMine, {});
+  expect(rows[0]?.logoUrl).toBe("https://legacy.example.com/old.png");
 });
