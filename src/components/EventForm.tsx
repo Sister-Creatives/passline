@@ -467,7 +467,6 @@ export function EventForm({ event, onDone }: EventFormProps) {
                     <Button
                       type="button"
                       variant="outline"
-                      size="sm"
                       onClick={() => addKeyword(field.value, field.onChange)}
                       disabled={field.value.length >= MAX_KEYWORDS}
                     >

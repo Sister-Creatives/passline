@@ -331,7 +331,7 @@ function AttendeesSection({ event, rsvps }: { event: EventWithRsvps["event"]; rs
           onValueChange={(v) => { if (v) { setStatus(v as AttendeeStatusFilter); setPage(1); } }}
         >
           {FILTERS.map((f) => (
-            <ToggleGroupItem key={f.value} value={f.value}>
+            <ToggleGroupItem key={f.value} value={f.value} className="h-9">
               {f.label} <span className="ml-1 tabular-nums text-muted-foreground">{counts[f.value]}</span>
             </ToggleGroupItem>
           ))}
@@ -341,7 +341,7 @@ function AttendeesSection({ event, rsvps }: { event: EventWithRsvps["event"]; rs
             value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }}
             placeholder="Search name or email" className="w-56"
           />
-          <Button variant="outline" size="sm" onClick={handleExportCsv}><Download /> Export CSV</Button>
+          <Button variant="outline" onClick={handleExportCsv}><Download /> Export CSV</Button>
         </div>
       </div>
 
