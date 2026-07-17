@@ -115,9 +115,11 @@ Convex tests (`convex/organizers.test.ts`, `convex/hostProfiles.test.ts`), follo
 - `setImage` stores `imageId` and clears the legacy `image`.
 - Replacing a logo deletes the previous blob (`getUrl(prev)` → `null`) and keeps the new one.
 - `setImage({ storageId: null })` removes the logo and deletes the blob.
-- Unauthenticated `setImage` throws; `setLogo` on another organizer's profile throws.
+- Unauthenticated `setImage` throws; setting a logo on another organizer's profile throws.
 - `getMe` prefers `imageId` over legacy `image`; falls back to `image` when `imageId` is unset.
-- `hostProfiles.setLogo` mirrors the above; `getForEvent` resolves the uploaded logo.
+- `hostProfiles.create` stores an uploaded `logoId`; `update` deletes the blob it replaces
+  and clears the legacy `logoUrl`; `remove` deletes the profile's logo blob;
+  `getForEvent`/`listMine` resolve the uploaded logo to a URL.
 
 ## 9. Risks
 

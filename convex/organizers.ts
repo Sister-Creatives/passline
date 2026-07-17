@@ -93,12 +93,6 @@ export const getMe = query({
 });
 
 /**
- * Public: the display identity of an organizer for the host directory page
- * (`/host/$organizerId`) -- just `name`/`image`, never `email`. Returns null
- * (rather than throwing) for an unknown id, mirroring the rest of the
- * public-read surface (e.g. `events.getEventBySlug`).
- */
-/**
  * Aggregate counts for the sidebar badges: how many events the organizer has,
  * and how many attendees across all of them. "Attendees" mirrors the metric on
  * the dashboard Overview (`dashboard.getOverview`) so the badge and the Overview

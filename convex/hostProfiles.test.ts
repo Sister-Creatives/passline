@@ -308,10 +308,12 @@ test("getForEvent returns the public projection for a published event with an at
   });
 
   const result = await t.query(api.hostProfiles.getForEvent, { eventId });
-  expect(result?.name).toBe("Passline Events");
-  expect(result?.bio).toBe("We throw great parties.");
-  expect(result?.logoUrl).toBeTruthy();
-  expect(result?.websiteUrl).toBe("https://example.com");
+  expect(result).toEqual({
+    name: "Passline Events",
+    bio: "We throw great parties.",
+    logoUrl: expect.any(String),
+    websiteUrl: "https://example.com",
+  });
   expect(result).not.toHaveProperty("_id");
   expect(result).not.toHaveProperty("organizerId");
   expect(result).not.toHaveProperty("createdAt");

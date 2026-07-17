@@ -104,8 +104,12 @@ function SettingsProfilePage() {
                   variant="ghost"
                   size="sm"
                   onClick={async () => {
-                    await setImage({ storageId: null });
-                    toast.success("Logo removed");
+                    try {
+                      await setImage({ storageId: null });
+                      toast.success("Logo removed");
+                    } catch {
+                      toast.error("Could not remove the logo");
+                    }
                   }}
                 >
                   Remove logo
