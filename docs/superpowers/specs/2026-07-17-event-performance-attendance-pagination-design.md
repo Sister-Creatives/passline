@@ -48,7 +48,8 @@ Convex queries, so there are no backend changes.
 
 New component `src/components/EventPerformanceOverview.tsx`:
 
-- Props: `{ eventId: Id<"events">; currency: string }`.
+- Props: `{ eventId: Id<"events"> }` (currency is read from the `getEventSummary`
+  result, not passed in).
 - Reads `api.analytics.getEventSummary` and `api.analytics.getSalesTimeseries`
   (the same queries `AnalyticsPanel` uses).
 - Renders a 4-tile row mirroring `AnalyticsPanel`'s card style:
