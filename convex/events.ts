@@ -420,6 +420,37 @@ export const listMyEventsWithStats = query({
 });
 
 /**
+ * Owner-scoped KPI totals for the `/events` cockpit, summed from the
+ * denormalized event counters (O(events), no child reads). Numbers only;
+ * 30-day trend charts live on `/dashboard`. `now` is a client arg so the
+ * upcoming/past boundary is reactive. Zeroed when unauthenticated.
+ */
+export const getMyEventsKpis = query({
+  args: { now: v.number() },
+  handler: async (ctx, { now }) => {
+    const organizerId = await getAuthOrganizerId(ctx);
+    if (!organizerId) {
+      return { total: 0, published: 0, draft: 0, upcoming: 0, attendees: 0, revenueCents: 0, ticketsSold: 0, currency: "USD" };
+    }
+    const events = await ctx.db
+      .query("events")
+      .withIndex("by_organizer", (q) => q.eq("organizerId", organizerId))
+      .collect();
+    const published = events.filter((e) => e.status === "published").length;
+    return {
+      total: events.length,
+      published,
+      draft: events.length - published,
+      upcoming: events.filter((e) => e.endsAt >= now).length,
+      attendees: events.reduce((s, e) => s + (e.seatsTaken ?? 0), 0),
+      revenueCents: events.reduce((s, e) => s + (e.revenueCents ?? 0), 0),
+      ticketsSold: events.reduce((s, e) => s + (e.ticketsSold ?? 0), 0),
+      currency: events[0]?.currency ?? "USD",
+    };
+  },
+});
+
+/**
  * Owner-only view of an event plus its RSVPs, bucketed by status.
  *
  * Ownership is enforced by `requireOwnedEvent` (throws "Not found" for both a

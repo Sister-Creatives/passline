@@ -1373,3 +1373,37 @@ test("listMyEventsWithStats: registrations/revenue older than the 30-day window 
   expect(row.revenueSpark[0]).toBe(1500);
   expect(row.revenueSpark[row.revenueSpark.length - 1]).toBe(row.revenueCents);
 });
+
+test("getMyEventsKpis sums denormalized counters over all events", async () => {
+  const t = convexTest(schema, modules);
+  const { as } = await asOrganizer(t, "ada@example.com");
+  await as.mutation(api.organizers.ensureOrganizer, {});
+  const now = 1_000_000_000_000;
+  // One upcoming published, one past draft. Set counters directly.
+  const e1 = await as.mutation(api.events.createEvent, {
+    title: "Upcoming", description: "x", startsAt: now + 1000, endsAt: now + 2000, location: "H", capacity: 100,
+  });
+  await as.mutation(api.events.publishEvent, { eventId: e1 });
+  const e2 = await as.mutation(api.events.createEvent, {
+    title: "Past", description: "x", startsAt: now - 2000, endsAt: now - 1000, location: "H", capacity: 50,
+  });
+  await t.run(async (ctx) => {
+    await ctx.db.patch(e1, { seatsTaken: 30, ticketsSold: 10, revenueCents: 20000 });
+    await ctx.db.patch(e2, { seatsTaken: 5, ticketsSold: 2, revenueCents: 4000 });
+  });
+
+  const k = await as.query(api.events.getMyEventsKpis, { now });
+  expect(k.total).toBe(2);
+  expect(k.published).toBe(1);
+  expect(k.draft).toBe(1);
+  expect(k.upcoming).toBe(1); // only e1 has endsAt >= now
+  expect(k.attendees).toBe(35);
+  expect(k.ticketsSold).toBe(12);
+  expect(k.revenueCents).toBe(24000);
+});
+
+test("getMyEventsKpis returns zeros when unauthenticated", async () => {
+  const t = convexTest(schema, modules);
+  const k = await t.query(api.events.getMyEventsKpis, { now: 1 });
+  expect(k).toEqual({ total: 0, published: 0, draft: 0, upcoming: 0, attendees: 0, revenueCents: 0, ticketsSold: 0, currency: "USD" });
+});
