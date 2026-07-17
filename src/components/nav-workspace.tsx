@@ -37,7 +37,7 @@ export function NavWorkspace() {
     return (
       <SidebarMenu>
         <SidebarMenuItem>
-          <div className="flex h-full items-center gap-2 px-3">
+          <div className="flex h-full items-center gap-2 px-3 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:px-0">
             <Skeleton className="size-8 shrink-0 rounded-full" />
             <Skeleton className="h-4 w-28 group-data-[collapsible=icon]:hidden" />
           </div>
@@ -57,7 +57,7 @@ export function NavWorkspace() {
             <SidebarMenuButton
               size="lg"
               tooltip={name}
-              className="h-full rounded-none px-3 group-data-[collapsible=icon]:justify-center data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
+              className="h-full rounded-none px-3 group-data-[collapsible=icon]:mx-auto group-data-[collapsible=icon]:justify-center data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
             >
               <div
                 className={`flex aspect-square size-8 shrink-0 items-center justify-center overflow-hidden rounded-full text-sm font-semibold ${

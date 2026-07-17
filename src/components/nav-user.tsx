@@ -39,7 +39,7 @@ export function NavUser() {
             <SidebarMenuButton
               size="lg"
               tooltip={name}
-              className="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
+              className="group-data-[collapsible=icon]:mx-auto data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
             >
               <Avatar className="size-8 shrink-0">
                 {me?.image ? <AvatarImage src={me.image} className="object-contain p-0.5" /> : null}
