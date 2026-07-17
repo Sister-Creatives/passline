@@ -64,10 +64,18 @@ value. The fields are not removed, and no backfill runs.
 
 ### `convex/hostProfiles.ts`
 
-- `setLogo({ hostProfileId, storageId: v.union(v.id("_storage"), v.null()) })` — ownership via
-  the existing `requireOwnedHostProfile`. Same delete-then-patch shape; clears `logoUrl`.
-- `create` / `update` — drop the `logoUrl` arg. `validateFields` keeps its `websiteUrl` and
-  `bio` checks; the `logoUrl` https guard is removed with the arg.
+- `create` / `update` — replace the `logoUrl` arg with `logoId: v.optional(v.id("_storage"))`.
+  `validateFields` keeps its `websiteUrl` and `bio` checks; the `logoUrl` https guard is removed
+  with the arg.
+  - `create` inserts `logoId` directly.
+  - `update` deletes the previous `logoId` blob when it differs from the incoming one, patches
+    `logoId`, and clears `logoUrl`.
+
+  **Why not `setLogo` here.** Unlike the org profile (a row that always exists), host profiles
+  are created in a dialog — on create there is no `hostProfileId` yet, so an immediate
+  `setLogo(hostProfileId, …)` is impossible. The logo therefore travels with `create`/`update`
+  and commits on Save. This is a deliberate divergence from §6's "applies immediately" rule,
+  which holds only for the org profile.
 - `listMine` / `getForEvent` — resolve `logoId` to a URL, falling back to `logoUrl`,
   returned under the existing `logoUrl` key.
 
@@ -122,3 +130,10 @@ Convex tests (`convex/organizers.test.ts`, `convex/hostProfiles.test.ts`), follo
 - **Shared `generateUploadUrl`.** Any authenticated organizer can mint an upload URL. This
   matches the event-scoped precedent's trust level (an organizer is already trusted to upload);
   the setters enforce row ownership. Worth noting, not blocking.
+
+- **Orphaned blob on host-profile dialog cancel.** Accepted, eyes open. Because the logo
+  uploads before Save (see §5), uploading and then cancelling the dialog strands one
+  unreferenced blob (≤5 MB, the dropzone's cap). No cleanup is built for this; the alternative
+  (a `discardUpload` mutation on cancel/unmount) was considered and rejected as not worth the
+  complexity, since it still leaks if the tab is closed mid-dialog. Revisit if storage cost
+  ever shows up.
