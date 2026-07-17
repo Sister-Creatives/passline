@@ -1,4 +1,4 @@
-import { Suspense } from "react";
+import { Suspense, useMemo, useState } from "react";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useSuspenseQuery } from "@tanstack/react-query";
 import { convexQuery } from "@convex-dev/react-query";
@@ -10,9 +10,9 @@ import { toast } from "sonner";
 import { api } from "../../../convex/_generated/api";
 import type { Id } from "../../../convex/_generated/dataModel";
 import { EVENT_SECTIONS, isEventSectionKey, type EventSectionKey } from "@/lib/eventSections";
+import { filterAndPaginate, type AttendeeBucket, type AttendeeStatusFilter, type MergedAttendee } from "@/lib/attendees";
 import { DashboardLayout } from "@/components/DashboardLayout";
 import { EventBuilderNav } from "@/components/EventBuilderNav";
-import { AttendeeTable } from "@/components/AttendeeTable";
 import { EventForm } from "@/components/EventForm";
 import { EventPerformanceOverview } from "@/components/EventPerformanceOverview";
 import { EventMobilePreview } from "@/components/EventMobilePreview";
@@ -31,9 +31,14 @@ import { VirtualHubPanel } from "@/components/VirtualHubPanel";
 import { AccessibilityPanel } from "@/components/AccessibilityPanel";
 import { AuditLogPanel } from "@/components/AuditLogPanel";
 import { csvField } from "@/lib/csv";
+import { NumberedPagination } from "@/components/numbered-pagination";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Empty, EmptyHeader, EmptyTitle, EmptyDescription } from "@/components/ui/empty";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger,
@@ -47,14 +52,6 @@ export const Route = createFileRoute("/events/$id/")({
   }),
   component: EventManagePage,
 });
-
-const STATUS_LABEL: Record<string, string> = {
-  confirmed: "Confirmed",
-  confirmed_pending_claim: "Pending claim",
-  waitlisted: "Waitlisted",
-  checked_in: "Checked in",
-  cancelled: "Cancelled",
-};
 
 const EVENT_STATUS_LABEL: Record<string, string> = {
   draft: "Draft",
@@ -270,81 +267,141 @@ function DetailsSection({ event, seatsTaken }: { event: EventWithRsvps["event"];
   );
 }
 
-function AttendeesSection({
-  event, rsvps,
-}: {
-  event: EventWithRsvps["event"];
-  rsvps: EventWithRsvps;
-}) {
+const BUCKET_LABEL: Record<AttendeeBucket, string> = {
+  confirmed: "Confirmed", pending: "Pending claim", waitlist: "Waitlist", checkedIn: "Checked in",
+};
+const FILTERS: { value: AttendeeStatusFilter; label: string }[] = [
+  { value: "all", label: "All" }, { value: "confirmed", label: "Confirmed" },
+  { value: "pending", label: "Pending" }, { value: "waitlist", label: "Waitlist" },
+  { value: "checkedIn", label: "Checked in" },
+];
+const ATTENDEES_PAGE_SIZE = 10;
+
+function AttendeesSection({ event, rsvps }: { event: EventWithRsvps["event"]; rsvps: EventWithRsvps }) {
   const cancelRsvp = useMutation(api.rsvps.cancelRsvp);
   const { confirmed, pendingClaim, waitlisted, checkedIn } = rsvps;
+  const [status, setStatus] = useState<AttendeeStatusFilter>("all");
+  const [search, setSearch] = useState("");
+  const [page, setPage] = useState(1);
+
+  const all = useMemo<MergedAttendee[]>(() => {
+    const tag = (list: EventWithRsvps["confirmed"], bucket: AttendeeBucket): MergedAttendee[] =>
+      list.map((a) => ({ _id: a._id, name: a.name, email: a.email, token: a.token, bucket, checkedInAt: a.checkedInAt }));
+    return [
+      ...tag(confirmed, "confirmed"), ...tag(pendingClaim, "pending"),
+      ...tag(waitlisted, "waitlist"), ...tag(checkedIn, "checkedIn"),
+    ];
+  }, [confirmed, pendingClaim, waitlisted, checkedIn]);
+
+  const counts = useMemo(() => {
+    const c: Record<AttendeeStatusFilter, number> = { all: all.length, confirmed: 0, pending: 0, waitlist: 0, checkedIn: 0 };
+    for (const a of all) c[a.bucket]++;
+    return c;
+  }, [all]);
+
+  const result = filterAndPaginate(all, { status, search, page, pageSize: ATTENDEES_PAGE_SIZE });
 
   async function handleCancel(token: string) {
-    try {
-      await cancelRsvp({ token });
-      toast.success("RSVP cancelled");
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Failed to cancel RSVP");
-    }
+    try { await cancelRsvp({ token }); toast.success("RSVP cancelled"); }
+    catch (error) { toast.error(error instanceof Error ? error.message : "Failed to cancel RSVP"); }
   }
 
   function handleExportCsv() {
     try {
       const header = ["Name", "Email", "Status", "Checked in at"];
-      const attendees = [...confirmed, ...pendingClaim, ...waitlisted, ...checkedIn];
-      const rows = attendees.map((a: EventWithRsvps["confirmed"][number]) => [
-        a.name, a.email, STATUS_LABEL[a.status] ?? a.status,
+      const rows = all.map((a) => [
+        a.name, a.email, BUCKET_LABEL[a.bucket],
         a.checkedInAt ? new Date(a.checkedInAt).toLocaleString() : "",
       ]);
-      const csv = [header, ...rows].map((row) => row.map((f: string) => csvField(f)).join(",")).join("\r\n");
+      const csv = [header, ...rows].map((row) => row.map((f) => csvField(f)).join(",")).join("\r\n");
       const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
-      link.href = url;
-      link.download = `${event.slug}-attendees.csv`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
+      link.href = url; link.download = `${event.slug}-attendees.csv`;
+      document.body.appendChild(link); link.click(); document.body.removeChild(link);
       URL.revokeObjectURL(url);
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Failed to export CSV");
-    }
+    } catch (error) { toast.error(error instanceof Error ? error.message : "Failed to export CSV"); }
   }
 
   return (
-    <div className="flex flex-col gap-8">
-      <div className="flex justify-end">
-        <Button variant="outline" size="sm" onClick={handleExportCsv}><Download /> Export CSV</Button>
+    <div className="flex flex-col gap-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <ToggleGroup
+          type="single" variant="outline" value={status}
+          onValueChange={(v) => { if (v) { setStatus(v as AttendeeStatusFilter); setPage(1); } }}
+        >
+          {FILTERS.map((f) => (
+            <ToggleGroupItem key={f.value} value={f.value}>
+              {f.label} <span className="ml-1 tabular-nums text-muted-foreground">{counts[f.value]}</span>
+            </ToggleGroupItem>
+          ))}
+        </ToggleGroup>
+        <div className="flex items-center gap-2">
+          <Input
+            value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }}
+            placeholder="Search name or email" className="w-56"
+          />
+          <Button variant="outline" size="sm" onClick={handleExportCsv}><Download /> Export CSV</Button>
+        </div>
       </div>
-      <AttendeeTable
-        title={`Confirmed (${confirmed.length})`}
-        attendees={confirmed}
-        emptyMessage="No confirmed attendees yet."
-        renderAction={(a: EventWithRsvps["confirmed"][number]) => (
-          <AlertDialog>
-            <AlertDialogTrigger asChild>
-              <Button variant="outline" size="sm">Cancel</Button>
-            </AlertDialogTrigger>
-            <AlertDialogContent>
-              <AlertDialogHeader>
-                <AlertDialogTitle>Cancel this RSVP?</AlertDialogTitle>
-                <AlertDialogDescription>
-                  This frees the seat and cannot be undone.
-                </AlertDialogDescription>
-              </AlertDialogHeader>
-              <AlertDialogFooter>
-                <AlertDialogCancel>Cancel</AlertDialogCancel>
-                <AlertDialogAction variant="destructive" onClick={() => handleCancel(a.token)}>
-                  Cancel RSVP
-                </AlertDialogAction>
-              </AlertDialogFooter>
-            </AlertDialogContent>
-          </AlertDialog>
-        )}
-      />
-      <AttendeeTable title={`Pending claim (${pendingClaim.length})`} attendees={pendingClaim} emptyMessage="No one is currently claiming a seat." />
-      <AttendeeTable title={`Waitlist (${waitlisted.length})`} attendees={waitlisted} emptyMessage="The waitlist is empty." />
-      <AttendeeTable title={`Checked in (${checkedIn.length})`} attendees={checkedIn} emptyMessage="No one has checked in yet." />
+
+      {result.total === 0 ? (
+        <Empty className="mt-2">
+          <EmptyHeader>
+            <EmptyTitle>{all.length === 0 ? "No attendees yet" : "No matching attendees"}</EmptyTitle>
+            <EmptyDescription>
+              {all.length === 0 ? "Registrations will appear here." : "Try a different filter or search."}
+            </EmptyDescription>
+          </EmptyHeader>
+        </Empty>
+      ) : (
+        <>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Name</TableHead>
+                <TableHead>Email</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead className="text-right">Action</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {result.rows.map((a) => (
+                <TableRow key={a._id}>
+                  <TableCell className="font-medium">{a.name}</TableCell>
+                  <TableCell>{a.email}</TableCell>
+                  <TableCell><Badge variant="outline">{BUCKET_LABEL[a.bucket]}</Badge></TableCell>
+                  <TableCell className="text-right">
+                    {a.bucket === "confirmed" && (
+                      <AlertDialog>
+                        <AlertDialogTrigger asChild>
+                          <Button variant="outline" size="sm">Cancel</Button>
+                        </AlertDialogTrigger>
+                        <AlertDialogContent>
+                          <AlertDialogHeader>
+                            <AlertDialogTitle>Cancel this RSVP?</AlertDialogTitle>
+                            <AlertDialogDescription>This frees the seat and cannot be undone.</AlertDialogDescription>
+                          </AlertDialogHeader>
+                          <AlertDialogFooter>
+                            <AlertDialogCancel>Cancel</AlertDialogCancel>
+                            <AlertDialogAction variant="destructive" onClick={() => handleCancel(a.token)}>
+                              Cancel RSVP
+                            </AlertDialogAction>
+                          </AlertDialogFooter>
+                        </AlertDialogContent>
+                      </AlertDialog>
+                    )}
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-xs text-muted-foreground tabular-nums">{result.total} attendees</span>
+            <NumberedPagination page={result.page} pageCount={result.pageCount} onPage={setPage} />
+          </div>
+        </>
+      )}
     </div>
   );
 }
