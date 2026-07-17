@@ -14,6 +14,7 @@ import { DashboardLayout } from "@/components/DashboardLayout";
 import { EventBuilderNav } from "@/components/EventBuilderNav";
 import { AttendeeTable } from "@/components/AttendeeTable";
 import { EventForm } from "@/components/EventForm";
+import { EventPerformanceOverview } from "@/components/EventPerformanceOverview";
 import { EventMobilePreview } from "@/components/EventMobilePreview";
 import { TicketTypesPanel } from "@/components/TicketTypesPanel";
 import { SessionsPanel } from "@/components/SessionsPanel";
@@ -238,27 +239,33 @@ function SectionContent({
 }
 
 function DetailsSection({ event, seatsTaken }: { event: EventWithRsvps["event"]; seatsTaken: number }) {
+  const isPublished = event.status === "published";
   const capacityPercent = Math.min(100, (seatsTaken / event.capacity) * 100);
   return (
-    <div className="flex max-w-2xl flex-col gap-6">
-      <h2 className="text-lg font-medium">Event information</h2>
-      <div>
-        <div className="flex items-center justify-between text-sm">
-          <span className="font-medium">Capacity</span>
-          <span className="text-muted-foreground">{seatsTaken} / {event.capacity} seats taken</span>
-        </div>
-        <div
-          className="mt-2 h-2 w-full overflow-hidden rounded-full bg-muted"
-          role="progressbar"
-          aria-valuenow={Math.round(capacityPercent)}
-          aria-valuemin={0}
-          aria-valuemax={100}
-          aria-label="Capacity"
-        >
-          <div className="h-full rounded-full bg-primary transition-[width] duration-500 ease-out motion-reduce:transition-none" style={{ width: `${capacityPercent}%` }} />
-        </div>
+    <div className="flex max-w-5xl flex-col gap-6">
+      {isPublished ? (
+        <EventPerformanceOverview eventId={event._id} />
+      ) : (
+        <>
+          <h2 className="text-lg font-medium">Event information</h2>
+          <div>
+            <div className="flex items-center justify-between text-sm">
+              <span className="font-medium">Capacity</span>
+              <span className="text-muted-foreground">{seatsTaken} / {event.capacity} seats taken</span>
+            </div>
+            <div
+              className="mt-2 h-2 w-full overflow-hidden rounded-full bg-muted"
+              role="progressbar" aria-valuenow={Math.round(capacityPercent)}
+              aria-valuemin={0} aria-valuemax={100} aria-label="Capacity"
+            >
+              <div className="h-full rounded-full bg-primary transition-[width] duration-500 ease-out motion-reduce:transition-none" style={{ width: `${capacityPercent}%` }} />
+            </div>
+          </div>
+        </>
+      )}
+      <div className="max-w-2xl">
+        <EventForm event={event} />
       </div>
-      <EventForm event={event} />
     </div>
   );
 }
