@@ -33,7 +33,7 @@ function SettingsProfilePage() {
   async function save() {
     setSaving(true);
     try {
-      await updateProfile({ name: name.trim(), image: image.trim() || undefined });
+      await updateProfile({ name: name.trim() });
       toast.success("Profile updated");
     } catch {
       toast.error("Could not save profile");

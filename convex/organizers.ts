@@ -30,31 +30,65 @@ export const ensureOrganizer = mutation({
 });
 
 /**
- * Update the signed-in organizer's own profile (name + optional logo/avatar
- * URL). Name is required and trimmed; an empty image clears it, mirroring the
- * optional-field clearing pattern used across the codebase.
+ * Update the signed-in organizer's own name. Name is required and trimmed.
+ *
+ * The logo is deliberately NOT settable here -- it's a file now, applied
+ * immediately by `setImage` (mirroring `eventContent.setCoverImage`) so an
+ * upload can't be stranded in storage by navigating away without saving.
  */
 export const updateProfile = mutation({
-  args: { name: v.string(), image: v.optional(v.string()) },
-  handler: async (ctx, { name, image }) => {
+  args: { name: v.string() },
+  handler: async (ctx, { name }) => {
     const organizerId = await getAuthOrganizerId(ctx);
     if (!organizerId) throw new Error("Not authenticated");
     const trimmedName = name.trim();
     if (!trimmedName) throw new Error("Name is required");
-    const trimmedImage = image?.trim();
-    await ctx.db.patch(organizerId, {
-      name: trimmedName,
-      image: trimmedImage ? trimmedImage : undefined,
-    });
+    await ctx.db.patch(organizerId, { name: trimmedName });
+    return null;
   },
 });
 
+/**
+ * Set (or clear, with null) the organizer's uploaded logo.
+ *
+ * Deletes the blob it replaces so storage doesn't accumulate orphans, and
+ * clears the legacy `image` URL so resolution is unambiguous -- the same
+ * contract as `eventContent.setCoverImage`.
+ */
+export const setImage = mutation({
+  args: { storageId: v.union(v.id("_storage"), v.null()) },
+  handler: async (ctx, { storageId }) => {
+    const organizerId = await getAuthOrganizerId(ctx);
+    if (!organizerId) throw new Error("Not authenticated");
+    const organizer = await ctx.db.get(organizerId);
+    const prev = organizer?.imageId;
+    if (prev && prev !== storageId) await ctx.storage.delete(prev);
+    await ctx.db.patch(organizerId, {
+      imageId: storageId ?? undefined,
+      image: undefined,
+    });
+    return null;
+  },
+});
+
+/**
+ * The signed-in organizer. `image` is the resolved logo URL: the uploaded file
+ * when present, otherwise the legacy URL, so callers keep receiving a plain
+ * string and don't need to know which storage era a row is from.
+ */
 export const getMe = query({
   args: {},
   handler: async (ctx) => {
     const organizerId = await getAuthOrganizerId(ctx);
     if (!organizerId) return null;
-    return await ctx.db.get(organizerId);
+    const organizer = await ctx.db.get(organizerId);
+    if (!organizer) return null;
+    return {
+      ...organizer,
+      image: organizer.imageId
+        ? ((await ctx.storage.getUrl(organizer.imageId)) ?? undefined)
+        : organizer.image,
+    };
   },
 });
 
@@ -113,6 +147,11 @@ export const getPublicProfile = query({
   handler: async (ctx, { organizerId }) => {
     const organizer = await ctx.db.get(organizerId);
     if (!organizer) return null;
-    return { name: organizer.name, image: organizer.image };
+    return {
+      name: organizer.name,
+      image: organizer.imageId
+        ? ((await ctx.storage.getUrl(organizer.imageId)) ?? undefined)
+        : organizer.image,
+    };
   },
 });
