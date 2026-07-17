@@ -13,21 +13,19 @@ function normalizeOptionalString(s: string | undefined): string | undefined {
 
 /**
  * Trim and validate the optional fields shared by `create`/`update`: `bio`
- * must be <= MAX_BIO_LENGTH characters after trim, and `logoUrl`/`websiteUrl`,
- * when present, must start with `https://` (mirrors `virtualHub.ts`'s
- * `meetingUrl` guard -- blocks `http://`, `javascript:`, `data:`, etc). These
- * are direct create/update args (not a clear-or-set patch), so every value
- * the caller actually passed is validated as given, not silently dropped.
+ * must be <= MAX_BIO_LENGTH characters after trim, and `websiteUrl`, when
+ * present, must start with `https://` (mirrors `virtualHub.ts`'s `meetingUrl`
+ * guard -- blocks `http://`, `javascript:`, `data:`, etc). These are direct
+ * create/update args (not a clear-or-set patch), so every value the caller
+ * actually passed is validated as given, not silently dropped.
+ *
+ * The logo is no longer a URL -- it's an uploaded file (`logoId`), so there is
+ * nothing to validate: the id's existence is enforced by the storage type.
  */
-function validateFields(args: { bio?: string; logoUrl?: string; websiteUrl?: string }) {
+function validateFields(args: { bio?: string; websiteUrl?: string }) {
   const bio = normalizeOptionalString(args.bio);
   if (bio !== undefined && bio.length > MAX_BIO_LENGTH) {
     throw new Error(`Bio must be ${MAX_BIO_LENGTH} characters or fewer`);
-  }
-
-  const logoUrl = normalizeOptionalString(args.logoUrl);
-  if (logoUrl !== undefined && !logoUrl.startsWith("https://")) {
-    throw new Error("Logo URL must start with https://");
   }
 
   const websiteUrl = normalizeOptionalString(args.websiteUrl);
@@ -35,7 +33,7 @@ function validateFields(args: { bio?: string; logoUrl?: string; websiteUrl?: str
     throw new Error("Website URL must start with https://");
   }
 
-  return { bio, logoUrl, websiteUrl };
+  return { bio, websiteUrl };
 }
 
 /** Load a host profile and enforce that it belongs to the authenticated organizer. */
@@ -49,14 +47,14 @@ async function requireOwnedHostProfile(ctx: QueryCtx | MutationCtx, hostProfileI
 
 /**
  * Create a reusable host profile for the authenticated organizer. `name`
- * must be non-empty after trim; `bio`/`logoUrl`/`websiteUrl` are validated
- * (see `validateFields`). Stamps `organizerId` (from auth) + `createdAt`.
+ * must be non-empty after trim; `bio`/`websiteUrl` are validated (see
+ * `validateFields`). Stamps `organizerId` (from auth) + `createdAt`.
  */
 export const create = mutation({
   args: {
     name: v.string(),
     bio: v.optional(v.string()),
-    logoUrl: v.optional(v.string()),
+    logoId: v.optional(v.id("_storage")),
     websiteUrl: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
@@ -66,51 +64,72 @@ export const create = mutation({
     const name = args.name.trim();
     if (name.length === 0) throw new Error("Name is required");
 
-    const { bio, logoUrl, websiteUrl } = validateFields(args);
+    const { bio, websiteUrl } = validateFields(args);
 
     return ctx.db.insert("hostProfiles", {
       organizerId,
       name,
       bio,
-      logoUrl,
+      logoId: args.logoId,
       websiteUrl,
       createdAt: Date.now(),
     });
   },
 });
 
-/** Owner-only: the caller's host profiles, newest first. `[]` when unauthenticated (mirrors `listMyEvents`). */
+/** Owner-only: the caller's host profiles, newest first. `[]` when unauthenticated (mirrors `listMyEvents`).
+ *  `logoUrl` is resolved: the uploaded file when present, else the legacy URL. */
 export const listMine = query({
   args: {},
   handler: async (ctx) => {
     const organizerId = await getAuthOrganizerId(ctx);
     if (!organizerId) return [];
-    return ctx.db
+    const rows = await ctx.db
       .query("hostProfiles")
       .withIndex("by_organizer", (q) => q.eq("organizerId", organizerId))
       .order("desc")
       .collect();
+    return await Promise.all(
+      rows.map(async (row) => ({
+        ...row,
+        logoUrl: row.logoId ? ((await ctx.storage.getUrl(row.logoId)) ?? undefined) : row.logoUrl,
+      })),
+    );
   },
 });
 
-/** Owner-only: re-validate and patch every field of an existing host profile. */
+/**
+ * Owner-only: re-validate and patch every field of an existing host profile.
+ *
+ * Deletes the logo blob it replaces so storage doesn't accumulate orphans, and
+ * clears the legacy `logoUrl` so resolution is unambiguous.
+ */
 export const update = mutation({
   args: {
     hostProfileId: v.id("hostProfiles"),
     name: v.string(),
     bio: v.optional(v.string()),
-    logoUrl: v.optional(v.string()),
+    logoId: v.optional(v.id("_storage")),
     websiteUrl: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    await requireOwnedHostProfile(ctx, args.hostProfileId);
+    const profile = await requireOwnedHostProfile(ctx, args.hostProfileId);
 
     const name = args.name.trim();
     if (name.length === 0) throw new Error("Name is required");
 
-    const { bio, logoUrl, websiteUrl } = validateFields(args);
+    const { bio, websiteUrl } = validateFields(args);
 
-    await ctx.db.patch(args.hostProfileId, { name, bio, logoUrl, websiteUrl });
+    const prev = profile.logoId;
+    if (prev && prev !== args.logoId) await ctx.storage.delete(prev);
+
+    await ctx.db.patch(args.hostProfileId, {
+      name,
+      bio,
+      logoId: args.logoId,
+      logoUrl: undefined,
+      websiteUrl,
+    });
     return null;
   },
 });
@@ -134,6 +153,10 @@ export const remove = mutation({
         await ctx.db.patch(event._id, { hostProfileId: undefined });
       }
     }
+
+    // Mirrors events.deleteEvent, which deletes coverImageId + gallery blobs on
+    // delete: without this the logo file outlives every reference to it.
+    if (profile.logoId) await ctx.storage.delete(profile.logoId);
 
     await ctx.db.delete(hostProfileId);
     return null;
@@ -162,7 +185,9 @@ export const getForEvent = query({
     return {
       name: profile.name,
       bio: profile.bio,
-      logoUrl: profile.logoUrl,
+      logoUrl: profile.logoId
+        ? ((await ctx.storage.getUrl(profile.logoId)) ?? undefined)
+        : profile.logoUrl,
       websiteUrl: profile.websiteUrl,
     };
   },
