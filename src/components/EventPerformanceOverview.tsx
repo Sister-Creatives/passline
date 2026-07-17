@@ -2,7 +2,7 @@ import { useId } from "react";
 import { Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { convexQuery } from "@convex-dev/react-query";
-import { Area, AreaChart } from "recharts";
+import { Area, AreaChart, XAxis, YAxis } from "recharts";
 import { ArrowUpRight } from "lucide-react";
 
 import { api } from "../../convex/_generated/api";
@@ -10,9 +10,19 @@ import type { Id } from "../../convex/_generated/dataModel";
 import { formatMoney } from "@/lib/format-money";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { type ChartConfig, ChartContainer } from "@/components/ui/chart";
+import {
+  type ChartConfig,
+  ChartContainer,
+  ChartTooltip,
+  ChartTooltipContent,
+} from "@/components/ui/chart";
 
 const chartConfig = { revenue: { label: "Revenue", color: "var(--chart-1)" } } satisfies ChartConfig;
+
+/** "YYYY-MM-DD" -> "Jul 10" for the sparkline's date ticks and tooltip. */
+function formatDayLabel(date: string): string {
+  return new Date(`${date}T00:00:00Z`).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+}
 
 function Bar({ percent }: { percent: number }) {
   return (
@@ -42,6 +52,8 @@ export function EventPerformanceOverview({ eventId }: { eventId: Id<"events"> })
   const soldPct = capacity > 0 ? Math.min(100, (ticketsSold / capacity) * 100) : 0;
   const checkedInPct = ticketsSold > 0 ? Math.min(100, (checkedIn / ticketsSold) * 100) : 0;
   const checkInRate = ticketsSold > 0 ? Math.round((checkedIn / ticketsSold) * 100) : 0;
+  const avgOrderCents = orders.paid > 0 ? Math.round(revenue.netPayoutCents / orders.paid) : 0;
+  const remaining = Math.max(0, capacity - ticketsSold);
   const chartData = (timeseries ?? []).slice(-14).map((d) => ({ date: d.date, revenue: d.revenueCents }));
 
   return (
@@ -66,13 +78,22 @@ export function EventPerformanceOverview({ eventId }: { eventId: Id<"events"> })
               {formatMoney(revenue.netPayoutCents, currency)}
             </CardTitle>
           </CardHeader>
+          <CardContent className="text-xs text-muted-foreground tabular-nums">
+            {formatMoney(revenue.grossCents, currency)} gross
+            {orders.paid > 0 && <> &middot; {formatMoney(avgOrderCents, currency)} avg order</>}
+          </CardContent>
         </Card>
         <Card>
           <CardHeader>
             <CardDescription>Tickets sold</CardDescription>
             <CardTitle className="text-2xl tabular-nums">{ticketsSold} / {capacity}</CardTitle>
           </CardHeader>
-          <CardContent><Bar percent={soldPct} /></CardContent>
+          <CardContent className="flex flex-col gap-1.5">
+            <Bar percent={soldPct} />
+            <span className="text-xs text-muted-foreground tabular-nums">
+              {Math.round(soldPct)}% sold &middot; {remaining} left
+            </span>
+          </CardContent>
         </Card>
         <Card>
           <CardHeader>
@@ -101,17 +122,47 @@ export function EventPerformanceOverview({ eventId }: { eventId: Id<"events"> })
             <CardDescription>Sales, last 14 days</CardDescription>
           </CardHeader>
           <CardContent>
-            <ChartContainer config={chartConfig} className="aspect-auto h-24 w-full">
-              <AreaChart data={chartData} margin={{ left: 0, right: 0, top: 4, bottom: 0 }}>
+            <ChartContainer config={chartConfig} className="aspect-auto h-36 w-full">
+              <AreaChart data={chartData} margin={{ left: 4, right: 8, top: 8, bottom: 0 }}>
                 <defs>
                   <linearGradient id={gradientId} x1="0" x2="0" y1="0" y2="1">
                     <stop offset="0%" stopColor="var(--color-revenue)" stopOpacity={0.35} />
                     <stop offset="100%" stopColor="var(--color-revenue)" stopOpacity={0} />
                   </linearGradient>
                 </defs>
+                <XAxis
+                  dataKey="date"
+                  axisLine={false}
+                  tickLine={false}
+                  tickMargin={8}
+                  minTickGap={28}
+                  tickFormatter={formatDayLabel}
+                />
+                {/* Hidden, but pins the baseline to zero so the area never
+                    overshoots below it. */}
+                <YAxis hide domain={[0, "dataMax"]} />
+                <ChartTooltip
+                  cursor={{ stroke: "var(--color-revenue)", strokeDasharray: "3 3" }}
+                  content={
+                    <ChartTooltipContent
+                      indicator="dot"
+                      labelFormatter={(value) => formatDayLabel(String(value))}
+                      formatter={(value) => (
+                        <span className="font-medium tabular-nums text-foreground">
+                          {formatMoney(Number(value), currency)}
+                        </span>
+                      )}
+                    />
+                  }
+                />
                 <Area
-                  dataKey="revenue" type="natural" stroke="var(--color-revenue)" strokeWidth={2}
-                  fill={`url(#${gradientId})`} isAnimationActive={false} dot={false}
+                  dataKey="revenue"
+                  type="monotone"
+                  stroke="var(--color-revenue)"
+                  strokeWidth={2}
+                  fill={`url(#${gradientId})`}
+                  isAnimationActive={false}
+                  dot={false}
                 />
               </AreaChart>
             </ChartContainer>
