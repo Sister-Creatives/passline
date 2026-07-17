@@ -3,7 +3,7 @@ import { convexTest as rawConvexTest, type TestConvex } from "convex-test";
 import { register as registerRateLimiter } from "@convex-dev/rate-limiter/test";
 import { expect, test } from "vitest";
 import schema from "./schema";
-import { api } from "./_generated/api";
+import { api, internal } from "./_generated/api";
 
 // Passed explicitly for the same pnpm module-resolution reason documented in
 // schema.test.ts.
@@ -227,4 +227,85 @@ test("the rsvp rate limit is keyed per email, so a different email is unaffected
   // b@x.com has its own bucket and is untouched by a@x.com's exhaustion.
   const b = await t.mutation(api.rsvps.rsvp, { slug, name: "B", email: "b@x.com" });
   expect(b.status).toBe("confirmed");
+});
+
+test("rsvp confirm raises seatsTaken; cancel with a waitlister nets to zero", async () => {
+  const t = convexTest(schema, modules);
+  const { as } = await asOrganizer(t, "ada@example.com");
+  await as.mutation(api.organizers.ensureOrganizer, {});
+  const eventId = await as.mutation(api.events.createEvent, {
+    title: "Tiny", description: "x", startsAt: 100, endsAt: 200, location: "Hall", capacity: 1,
+  });
+  const slug = (await t.run((ctx) => ctx.db.get(eventId)))!.slug;
+  await as.mutation(api.events.publishEvent, { eventId });
+
+  const first = await t.mutation(api.rsvps.rsvp, { slug, name: "A", email: "a@x.co" });
+  expect(first.status).toBe("confirmed");
+  expect((await t.run((ctx) => ctx.db.get(eventId)))!.seatsTaken).toBe(1);
+
+  // Second RSVP is waitlisted (capacity 1).
+  const second = await t.mutation(api.rsvps.rsvp, { slug, name: "B", email: "b@x.co" });
+  expect(second.status).toBe("waitlisted");
+  expect((await t.run((ctx) => ctx.db.get(eventId)))!.seatsTaken).toBe(1);
+
+  // Cancel A -> promoteNext moves B into a seat-holding hold -> net seatsTaken stays 1.
+  await t.mutation(api.rsvps.cancelRsvp, { token: first.token });
+  expect((await t.run((ctx) => ctx.db.get(eventId)))!.seatsTaken).toBe(1);
+});
+
+test("cancelRsvp recomputes seatsTaken to 0 when there is no waitlister", async () => {
+  const t = convexTest(schema, modules);
+  const { as } = await asOrganizer(t, "ada@example.com");
+  await as.mutation(api.organizers.ensureOrganizer, {});
+  const eventId = await as.mutation(api.events.createEvent, {
+    title: "Solo", description: "x", startsAt: 100, endsAt: 200, location: "H", capacity: 1,
+  });
+  const slug = (await t.run((ctx) => ctx.db.get(eventId)))!.slug;
+  await as.mutation(api.events.publishEvent, { eventId });
+
+  const a = await t.mutation(api.rsvps.rsvp, { slug, name: "A", email: "a@x.co" });
+  expect(a.status).toBe("confirmed");
+  expect((await t.run((ctx) => ctx.db.get(eventId)))!.seatsTaken).toBe(1);
+
+  // No waitlister -> cancel frees the seat and nothing backfills -> must drop to 0.
+  // Only passes if cancelRsvp itself recomputes (the confirm-branch recompute left it at 1).
+  await t.mutation(api.rsvps.cancelRsvp, { token: a.token });
+  expect((await t.run((ctx) => ctx.db.get(eventId)))!.seatsTaken).toBe(0);
+});
+
+test("sweep recomputes seatsTaken for every affected event (per-event fan-out)", async () => {
+  const t = convexTest(schema, modules);
+  const { as } = await asOrganizer(t, "ada@example.com");
+  await as.mutation(api.organizers.ensureOrganizer, {});
+  const mk = async (title: string) => {
+    const id = await as.mutation(api.events.createEvent, {
+      title, description: "x", startsAt: 100, endsAt: 200, location: "H", capacity: 1,
+    });
+    await as.mutation(api.events.publishEvent, { eventId: id });
+    return { id, slug: (await t.run((ctx) => ctx.db.get(id)))!.slug };
+  };
+  const e1 = await mk("E1");
+  const e2 = await mk("E2");
+  // Each event: A confirmed (fills the 1 seat) + B waitlisted.
+  for (const e of [e1, e2]) {
+    await t.mutation(api.rsvps.rsvp, { slug: e.slug, name: "A", email: `a@${e.slug}.co` });
+    await t.mutation(api.rsvps.rsvp, { slug: e.slug, name: "B", email: `b@${e.slug}.co` });
+    // Cancel A -> B is promoted into a confirmed_pending_claim hold (seatsTaken stays 1).
+    const rows = await t.run((ctx) =>
+      ctx.db.query("rsvps").withIndex("by_event", (q) => q.eq("eventId", e.id)).collect(),
+    );
+    const a = rows.find((r) => r.status === "confirmed")!;
+    await t.mutation(api.rsvps.cancelRsvp, { token: a.token });
+  }
+  // sweep is seat-count-neutral (the expired hold is re-promoted to the same lone
+  // waitlister), so the TRUE seatsTaken stays 1. Corrupt the denormalized counter on
+  // both events so the per-event recompute's effect is observable.
+  await t.run(async (ctx) => {
+    await ctx.db.patch(e1.id, { seatsTaken: 99 });
+    await ctx.db.patch(e2.id, { seatsTaken: 99 });
+  });
+  // Sweep far in the future to expire both holds; recompute must heal both events' counters.
+  await t.mutation(internal.waitlist.sweepExpiredClaims, { now: Date.now() + 60 * 60 * 1000 });
+  expect((await t.run((ctx) => ctx.db.get(e1.id)))!.seatsTaken).toBe(1);
+  expect((await t.run((ctx) => ctx.db.get(e2.id)))!.seatsTaken).toBe(1);
 });

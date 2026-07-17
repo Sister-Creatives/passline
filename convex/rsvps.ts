@@ -7,6 +7,7 @@ import { SEAT_HOLDING_STATUSES } from "./lib/constants";
 import { promoteNext } from "./waitlist";
 import { getAuthOrganizerId } from "./auth";
 import { rateLimiter } from "./rateLimits";
+import { recomputeEventStats } from "./lib/eventStats";
 
 async function rsvpByToken(ctx: MutationCtx, token: string) {
   const row = await ctx.db
@@ -124,6 +125,7 @@ export const rsvp = mutation({
         eventTitle: event.title,
         token,
       });
+      await recomputeEventStats(ctx, event._id);
       return { status: "confirmed" as const, token };
     }
 
@@ -142,6 +144,7 @@ export const rsvp = mutation({
       eventTitle: event.title,
       waitlistPosition,
     });
+    await recomputeEventStats(ctx, event._id);
     return { status: "waitlisted" as const, token, waitlistPosition };
   },
 });
@@ -163,6 +166,7 @@ export const cancelRsvp = mutation({
       claimExpiresAt: undefined,
     });
     if (heldSeat) await promoteNext(ctx, row.eventId, Date.now());
+    await recomputeEventStats(ctx, row.eventId);
     return null;
   },
 });

@@ -9,17 +9,40 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as ReportsRouteImport } from './routes/reports'
+import { Route as MarketingRouteImport } from './routes/marketing'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as DashboardRouteImport } from './routes/dashboard'
+import { Route as AttendeesRouteImport } from './routes/attendees'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as EventsIndexRouteImport } from './routes/events/index'
+import { Route as SettingsTeamRouteImport } from './routes/settings/team'
+import { Route as SettingsProfileRouteImport } from './routes/settings/profile'
+import { Route as SettingsPaymentsRouteImport } from './routes/settings/payments'
+import { Route as SettingsHostProfilesRouteImport } from './routes/settings/host-profiles'
+import { Route as SettingsApiWebhooksRouteImport } from './routes/settings/api-webhooks'
 import { Route as RsvpTokenRouteImport } from './routes/rsvp/$token'
+import { Route as OrdersTokenRouteImport } from './routes/orders/$token'
+import { Route as HostOrganizerIdRouteImport } from './routes/host/$organizerId'
 import { Route as EventsNewRouteImport } from './routes/events/new'
 import { Route as EventsIdRouteImport } from './routes/events/$id'
 import { Route as ESlugRouteImport } from './routes/e/$slug'
 import { Route as ClaimTokenRouteImport } from './routes/claim/$token'
 import { Route as EventsIdIndexRouteImport } from './routes/events/$id.index'
+import { Route as EventsIdScanRouteImport } from './routes/events/$id.scan'
 import { Route as EventsIdDoorRouteImport } from './routes/events/$id.door'
+import { Route as ESlugWatchRouteImport } from './routes/e/$slug.watch'
 
+const ReportsRoute = ReportsRouteImport.update({
+  id: '/reports',
+  path: '/reports',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const MarketingRoute = MarketingRouteImport.update({
+  id: '/marketing',
+  path: '/marketing',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const LoginRoute = LoginRouteImport.update({
   id: '/login',
   path: '/login',
@@ -30,14 +53,59 @@ const DashboardRoute = DashboardRouteImport.update({
   path: '/dashboard',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AttendeesRoute = AttendeesRouteImport.update({
+  id: '/attendees',
+  path: '/attendees',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const EventsIndexRoute = EventsIndexRouteImport.update({
+  id: '/events/',
+  path: '/events/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SettingsTeamRoute = SettingsTeamRouteImport.update({
+  id: '/settings/team',
+  path: '/settings/team',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SettingsProfileRoute = SettingsProfileRouteImport.update({
+  id: '/settings/profile',
+  path: '/settings/profile',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SettingsPaymentsRoute = SettingsPaymentsRouteImport.update({
+  id: '/settings/payments',
+  path: '/settings/payments',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SettingsHostProfilesRoute = SettingsHostProfilesRouteImport.update({
+  id: '/settings/host-profiles',
+  path: '/settings/host-profiles',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SettingsApiWebhooksRoute = SettingsApiWebhooksRouteImport.update({
+  id: '/settings/api-webhooks',
+  path: '/settings/api-webhooks',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const RsvpTokenRoute = RsvpTokenRouteImport.update({
   id: '/rsvp/$token',
   path: '/rsvp/$token',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const OrdersTokenRoute = OrdersTokenRouteImport.update({
+  id: '/orders/$token',
+  path: '/orders/$token',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const HostOrganizerIdRoute = HostOrganizerIdRouteImport.update({
+  id: '/host/$organizerId',
+  path: '/host/$organizerId',
   getParentRoute: () => rootRouteImport,
 } as any)
 const EventsNewRoute = EventsNewRouteImport.update({
@@ -65,99 +133,212 @@ const EventsIdIndexRoute = EventsIdIndexRouteImport.update({
   path: '/',
   getParentRoute: () => EventsIdRoute,
 } as any)
+const EventsIdScanRoute = EventsIdScanRouteImport.update({
+  id: '/scan',
+  path: '/scan',
+  getParentRoute: () => EventsIdRoute,
+} as any)
 const EventsIdDoorRoute = EventsIdDoorRouteImport.update({
   id: '/door',
   path: '/door',
   getParentRoute: () => EventsIdRoute,
 } as any)
+const ESlugWatchRoute = ESlugWatchRouteImport.update({
+  id: '/watch',
+  path: '/watch',
+  getParentRoute: () => ESlugRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/attendees': typeof AttendeesRoute
   '/dashboard': typeof DashboardRoute
   '/login': typeof LoginRoute
+  '/marketing': typeof MarketingRoute
+  '/reports': typeof ReportsRoute
   '/claim/$token': typeof ClaimTokenRoute
-  '/e/$slug': typeof ESlugRoute
+  '/e/$slug': typeof ESlugRouteWithChildren
   '/events/$id': typeof EventsIdRouteWithChildren
   '/events/new': typeof EventsNewRoute
+  '/host/$organizerId': typeof HostOrganizerIdRoute
+  '/orders/$token': typeof OrdersTokenRoute
   '/rsvp/$token': typeof RsvpTokenRoute
+  '/settings/api-webhooks': typeof SettingsApiWebhooksRoute
+  '/settings/host-profiles': typeof SettingsHostProfilesRoute
+  '/settings/payments': typeof SettingsPaymentsRoute
+  '/settings/profile': typeof SettingsProfileRoute
+  '/settings/team': typeof SettingsTeamRoute
+  '/events/': typeof EventsIndexRoute
+  '/e/$slug/watch': typeof ESlugWatchRoute
   '/events/$id/door': typeof EventsIdDoorRoute
+  '/events/$id/scan': typeof EventsIdScanRoute
   '/events/$id/': typeof EventsIdIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/attendees': typeof AttendeesRoute
   '/dashboard': typeof DashboardRoute
   '/login': typeof LoginRoute
+  '/marketing': typeof MarketingRoute
+  '/reports': typeof ReportsRoute
   '/claim/$token': typeof ClaimTokenRoute
-  '/e/$slug': typeof ESlugRoute
+  '/e/$slug': typeof ESlugRouteWithChildren
   '/events/new': typeof EventsNewRoute
+  '/host/$organizerId': typeof HostOrganizerIdRoute
+  '/orders/$token': typeof OrdersTokenRoute
   '/rsvp/$token': typeof RsvpTokenRoute
+  '/settings/api-webhooks': typeof SettingsApiWebhooksRoute
+  '/settings/host-profiles': typeof SettingsHostProfilesRoute
+  '/settings/payments': typeof SettingsPaymentsRoute
+  '/settings/profile': typeof SettingsProfileRoute
+  '/settings/team': typeof SettingsTeamRoute
+  '/events': typeof EventsIndexRoute
+  '/e/$slug/watch': typeof ESlugWatchRoute
   '/events/$id/door': typeof EventsIdDoorRoute
+  '/events/$id/scan': typeof EventsIdScanRoute
   '/events/$id': typeof EventsIdIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/attendees': typeof AttendeesRoute
   '/dashboard': typeof DashboardRoute
   '/login': typeof LoginRoute
+  '/marketing': typeof MarketingRoute
+  '/reports': typeof ReportsRoute
   '/claim/$token': typeof ClaimTokenRoute
-  '/e/$slug': typeof ESlugRoute
+  '/e/$slug': typeof ESlugRouteWithChildren
   '/events/$id': typeof EventsIdRouteWithChildren
   '/events/new': typeof EventsNewRoute
+  '/host/$organizerId': typeof HostOrganizerIdRoute
+  '/orders/$token': typeof OrdersTokenRoute
   '/rsvp/$token': typeof RsvpTokenRoute
+  '/settings/api-webhooks': typeof SettingsApiWebhooksRoute
+  '/settings/host-profiles': typeof SettingsHostProfilesRoute
+  '/settings/payments': typeof SettingsPaymentsRoute
+  '/settings/profile': typeof SettingsProfileRoute
+  '/settings/team': typeof SettingsTeamRoute
+  '/events/': typeof EventsIndexRoute
+  '/e/$slug/watch': typeof ESlugWatchRoute
   '/events/$id/door': typeof EventsIdDoorRoute
+  '/events/$id/scan': typeof EventsIdScanRoute
   '/events/$id/': typeof EventsIdIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/attendees'
     | '/dashboard'
     | '/login'
+    | '/marketing'
+    | '/reports'
     | '/claim/$token'
     | '/e/$slug'
     | '/events/$id'
     | '/events/new'
+    | '/host/$organizerId'
+    | '/orders/$token'
     | '/rsvp/$token'
+    | '/settings/api-webhooks'
+    | '/settings/host-profiles'
+    | '/settings/payments'
+    | '/settings/profile'
+    | '/settings/team'
+    | '/events/'
+    | '/e/$slug/watch'
     | '/events/$id/door'
+    | '/events/$id/scan'
     | '/events/$id/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/attendees'
     | '/dashboard'
     | '/login'
+    | '/marketing'
+    | '/reports'
     | '/claim/$token'
     | '/e/$slug'
     | '/events/new'
+    | '/host/$organizerId'
+    | '/orders/$token'
     | '/rsvp/$token'
+    | '/settings/api-webhooks'
+    | '/settings/host-profiles'
+    | '/settings/payments'
+    | '/settings/profile'
+    | '/settings/team'
+    | '/events'
+    | '/e/$slug/watch'
     | '/events/$id/door'
+    | '/events/$id/scan'
     | '/events/$id'
   id:
     | '__root__'
     | '/'
+    | '/attendees'
     | '/dashboard'
     | '/login'
+    | '/marketing'
+    | '/reports'
     | '/claim/$token'
     | '/e/$slug'
     | '/events/$id'
     | '/events/new'
+    | '/host/$organizerId'
+    | '/orders/$token'
     | '/rsvp/$token'
+    | '/settings/api-webhooks'
+    | '/settings/host-profiles'
+    | '/settings/payments'
+    | '/settings/profile'
+    | '/settings/team'
+    | '/events/'
+    | '/e/$slug/watch'
     | '/events/$id/door'
+    | '/events/$id/scan'
     | '/events/$id/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  AttendeesRoute: typeof AttendeesRoute
   DashboardRoute: typeof DashboardRoute
   LoginRoute: typeof LoginRoute
+  MarketingRoute: typeof MarketingRoute
+  ReportsRoute: typeof ReportsRoute
   ClaimTokenRoute: typeof ClaimTokenRoute
-  ESlugRoute: typeof ESlugRoute
+  ESlugRoute: typeof ESlugRouteWithChildren
   EventsIdRoute: typeof EventsIdRouteWithChildren
   EventsNewRoute: typeof EventsNewRoute
+  HostOrganizerIdRoute: typeof HostOrganizerIdRoute
+  OrdersTokenRoute: typeof OrdersTokenRoute
   RsvpTokenRoute: typeof RsvpTokenRoute
+  SettingsApiWebhooksRoute: typeof SettingsApiWebhooksRoute
+  SettingsHostProfilesRoute: typeof SettingsHostProfilesRoute
+  SettingsPaymentsRoute: typeof SettingsPaymentsRoute
+  SettingsProfileRoute: typeof SettingsProfileRoute
+  SettingsTeamRoute: typeof SettingsTeamRoute
+  EventsIndexRoute: typeof EventsIndexRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/reports': {
+      id: '/reports'
+      path: '/reports'
+      fullPath: '/reports'
+      preLoaderRoute: typeof ReportsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/marketing': {
+      id: '/marketing'
+      path: '/marketing'
+      fullPath: '/marketing'
+      preLoaderRoute: typeof MarketingRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/login': {
       id: '/login'
       path: '/login'
@@ -172,6 +353,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DashboardRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/attendees': {
+      id: '/attendees'
+      path: '/attendees'
+      fullPath: '/attendees'
+      preLoaderRoute: typeof AttendeesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/': {
       id: '/'
       path: '/'
@@ -179,11 +367,67 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/events/': {
+      id: '/events/'
+      path: '/events'
+      fullPath: '/events/'
+      preLoaderRoute: typeof EventsIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/settings/team': {
+      id: '/settings/team'
+      path: '/settings/team'
+      fullPath: '/settings/team'
+      preLoaderRoute: typeof SettingsTeamRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/settings/profile': {
+      id: '/settings/profile'
+      path: '/settings/profile'
+      fullPath: '/settings/profile'
+      preLoaderRoute: typeof SettingsProfileRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/settings/payments': {
+      id: '/settings/payments'
+      path: '/settings/payments'
+      fullPath: '/settings/payments'
+      preLoaderRoute: typeof SettingsPaymentsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/settings/host-profiles': {
+      id: '/settings/host-profiles'
+      path: '/settings/host-profiles'
+      fullPath: '/settings/host-profiles'
+      preLoaderRoute: typeof SettingsHostProfilesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/settings/api-webhooks': {
+      id: '/settings/api-webhooks'
+      path: '/settings/api-webhooks'
+      fullPath: '/settings/api-webhooks'
+      preLoaderRoute: typeof SettingsApiWebhooksRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/rsvp/$token': {
       id: '/rsvp/$token'
       path: '/rsvp/$token'
       fullPath: '/rsvp/$token'
       preLoaderRoute: typeof RsvpTokenRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/orders/$token': {
+      id: '/orders/$token'
+      path: '/orders/$token'
+      fullPath: '/orders/$token'
+      preLoaderRoute: typeof OrdersTokenRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/host/$organizerId': {
+      id: '/host/$organizerId'
+      path: '/host/$organizerId'
+      fullPath: '/host/$organizerId'
+      preLoaderRoute: typeof HostOrganizerIdRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/events/new': {
@@ -221,6 +465,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof EventsIdIndexRouteImport
       parentRoute: typeof EventsIdRoute
     }
+    '/events/$id/scan': {
+      id: '/events/$id/scan'
+      path: '/scan'
+      fullPath: '/events/$id/scan'
+      preLoaderRoute: typeof EventsIdScanRouteImport
+      parentRoute: typeof EventsIdRoute
+    }
     '/events/$id/door': {
       id: '/events/$id/door'
       path: '/door'
@@ -228,16 +479,35 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof EventsIdDoorRouteImport
       parentRoute: typeof EventsIdRoute
     }
+    '/e/$slug/watch': {
+      id: '/e/$slug/watch'
+      path: '/watch'
+      fullPath: '/e/$slug/watch'
+      preLoaderRoute: typeof ESlugWatchRouteImport
+      parentRoute: typeof ESlugRoute
+    }
   }
 }
 
+interface ESlugRouteChildren {
+  ESlugWatchRoute: typeof ESlugWatchRoute
+}
+
+const ESlugRouteChildren: ESlugRouteChildren = {
+  ESlugWatchRoute: ESlugWatchRoute,
+}
+
+const ESlugRouteWithChildren = ESlugRoute._addFileChildren(ESlugRouteChildren)
+
 interface EventsIdRouteChildren {
   EventsIdDoorRoute: typeof EventsIdDoorRoute
+  EventsIdScanRoute: typeof EventsIdScanRoute
   EventsIdIndexRoute: typeof EventsIdIndexRoute
 }
 
 const EventsIdRouteChildren: EventsIdRouteChildren = {
   EventsIdDoorRoute: EventsIdDoorRoute,
+  EventsIdScanRoute: EventsIdScanRoute,
   EventsIdIndexRoute: EventsIdIndexRoute,
 }
 
@@ -247,13 +517,24 @@ const EventsIdRouteWithChildren = EventsIdRoute._addFileChildren(
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  AttendeesRoute: AttendeesRoute,
   DashboardRoute: DashboardRoute,
   LoginRoute: LoginRoute,
+  MarketingRoute: MarketingRoute,
+  ReportsRoute: ReportsRoute,
   ClaimTokenRoute: ClaimTokenRoute,
-  ESlugRoute: ESlugRoute,
+  ESlugRoute: ESlugRouteWithChildren,
   EventsIdRoute: EventsIdRouteWithChildren,
   EventsNewRoute: EventsNewRoute,
+  HostOrganizerIdRoute: HostOrganizerIdRoute,
+  OrdersTokenRoute: OrdersTokenRoute,
   RsvpTokenRoute: RsvpTokenRoute,
+  SettingsApiWebhooksRoute: SettingsApiWebhooksRoute,
+  SettingsHostProfilesRoute: SettingsHostProfilesRoute,
+  SettingsPaymentsRoute: SettingsPaymentsRoute,
+  SettingsProfileRoute: SettingsProfileRoute,
+  SettingsTeamRoute: SettingsTeamRoute,
+  EventsIndexRoute: EventsIndexRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

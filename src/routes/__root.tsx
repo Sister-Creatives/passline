@@ -9,7 +9,11 @@ import type { QueryClient } from '@tanstack/react-query'
 import type { ConvexQueryClient } from '@convex-dev/react-query'
 import type { ConvexReactClient } from 'convex/react'
 
+import { ThemeProvider } from 'next-themes'
+import { MotionConfig } from 'motion/react'
+
 import { Toaster } from '@/components/ui/sonner'
+import { TooltipProvider } from '@/components/ui/tooltip'
 import appCss from '../styles.css?url'
 
 // Router context provided by getRouter() in src/router.tsx. Auth and query
@@ -47,13 +51,25 @@ export const Route = createRootRouteWithContext<RouterAppContext>()({
 
 function RootDocument({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en">
+    <html lang="en" suppressHydrationWarning>
       <head>
         <HeadContent />
       </head>
       <body>
-        {children}
-        <Toaster />
+        <ThemeProvider
+          attribute="class"
+          defaultTheme="system"
+          enableSystem
+          disableTransitionOnChange
+        >
+          {/* reducedMotion="user" makes every Motion spring respect the OS
+              prefers-reduced-motion setting (transforms disabled, opacity
+              kept), matching the CSS accessibility layer in styles.css. */}
+          <MotionConfig reducedMotion="user">
+            <TooltipProvider>{children}</TooltipProvider>
+            <Toaster />
+          </MotionConfig>
+        </ThemeProvider>
         {import.meta.env.DEV && (
           <TanStackDevtools
             config={{
