@@ -225,11 +225,9 @@ function OverviewContent() {
           spark={cards.upcoming.spark}
         />
         <StatCard
-          label="Attendees"
-          value={attendance.attendees}
-          sub={`${formatInteger(attendance.checkedIn)} checked in · ${checkInRate}%`}
-          deltaPct={cards.attendees.deltaPct}
-          spark={cards.attendees.spark}
+          label="Check-in rate"
+          value={`${checkInRate}%`}
+          sub={`${formatInteger(attendance.checkedIn)} of ${formatInteger(attendance.attendees)} checked in`}
         />
         <StatCard
           label="Orders"
