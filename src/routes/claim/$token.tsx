@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { useMutation } from "convex/react";
 import { Check, X } from "lucide-react";
+import { toast } from "sonner";
 
 import { api } from "../../../convex/_generated/api";
 
@@ -28,6 +29,10 @@ function ClaimPage() {
       .catch(() => setState("expired"));
   }, [token, claimSpot]);
 
+  useEffect(() => {
+    if (state === "confirmed") toast.success("You're in");
+  }, [state]);
+
   const content =
     state === "pending"
       ? {
@@ -37,7 +42,12 @@ function ClaimPage() {
         }
       : state === "confirmed"
         ? {
-            icon: <Check className="size-10 text-primary" aria-hidden="true" />,
+            icon: (
+              <Check
+                className="size-10 animate-in text-primary zoom-in-50 fade-in duration-300"
+                aria-hidden="true"
+              />
+            ),
             title: "Spot confirmed",
             message: "You are all set. See you at the event.",
           }

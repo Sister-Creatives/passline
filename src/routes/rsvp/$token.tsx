@@ -47,10 +47,10 @@ function RsvpConfirmationContent({ token }: { token: string }) {
     <div className="mx-auto max-w-lg p-4 sm:p-8">
       {/* Authors may embed inline <i>/<em>/<br>/<strong> in the title. */}
       <h1
-        className="text-2xl font-semibold sm:text-3xl"
+        className="text-2xl font-semibold tracking-tight sm:text-3xl"
         dangerouslySetInnerHTML={{ __html: ticket.eventTitle }}
       />
-      <Card className="mt-6">
+      <Card className="mt-6 animate-in fade-in-0 zoom-in-95 duration-300">
         <CardHeader>
           <Badge variant={ticket.status === "confirmed" ? "default" : "secondary"}>
             {STATUS_LABEL[ticket.status] ?? ticket.status}

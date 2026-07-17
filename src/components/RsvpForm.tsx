@@ -1,3 +1,4 @@
+import type { CSSProperties } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -7,6 +8,7 @@ import { LoaderCircle } from "lucide-react";
 import { toast } from "sonner";
 
 import { api } from "../../convex/_generated/api";
+import { readableTextColor } from "@/lib/contrast";
 import { Button } from "@/components/ui/button";
 import {
   Form,
@@ -29,6 +31,10 @@ interface RsvpFormProps {
   slug: string;
   /** When the event is at capacity, the form collects a waitlist join instead. */
   isFull: boolean;
+  /** Organizer-supplied label (e.g. "Register", "Donate") for the primary RSVP button; falls back to "RSVP" when unset. Never applied to the waitlist button -- that copy stays fixed regardless of `ctaLabel`. */
+  ctaLabel?: string;
+  /** Validated "#RRGGBB" brand color for the primary button; the caller is responsible for checking `isValidHexColor` before passing this. */
+  accentColor?: string;
 }
 
 /**
@@ -36,13 +42,14 @@ interface RsvpFormProps {
  * result (confirmed vs. waitlisted), then routes the attendee to their
  * ticket/confirmation page keyed by the returned token.
  */
-export function RsvpForm({ slug, isFull }: RsvpFormProps) {
+export function RsvpForm({ slug, isFull, ctaLabel, accentColor }: RsvpFormProps) {
   const navigate = useNavigate();
   const rsvp = useMutation(api.rsvps.rsvp);
 
   const form = useForm<RsvpFormValues>({
     resolver: zodResolver(rsvpFormSchema),
     defaultValues: { name: "", email: "" },
+    mode: "onTouched",
   });
 
   const isSubmitting = form.formState.isSubmitting;
@@ -99,9 +106,24 @@ export function RsvpForm({ slug, isFull }: RsvpFormProps) {
             </FormItem>
           )}
         />
-        <Button type="submit" disabled={isSubmitting}>
+        <Button
+          type="submit"
+          disabled={isSubmitting}
+          // Recolour the Button through its --primary tokens (not a flat
+          // background-color, which the variant's gradient fill paints over)
+          // so the gradient, hover and active-inset shadow all recompute
+          // against the brand hue.
+          style={
+            !isFull && accentColor
+              ? ({
+                  "--primary": accentColor,
+                  "--primary-foreground": readableTextColor(accentColor),
+                } as CSSProperties)
+              : undefined
+          }
+        >
           {isSubmitting && <LoaderCircle className="animate-spin" />}
-          {isFull ? "Join the waitlist" : "RSVP"}
+          {isFull ? "Join the waitlist" : (ctaLabel ?? "RSVP")}
         </Button>
       </form>
     </Form>

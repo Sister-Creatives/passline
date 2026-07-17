@@ -3,6 +3,7 @@ import { Navigate } from "@tanstack/react-router";
 import { useEffect, useRef } from "react";
 
 import { api } from "../../convex/_generated/api";
+import { Skeleton } from "@/components/ui/skeleton";
 
 /**
  * Ensures an organizer row exists for the signed-in user.
@@ -40,7 +41,10 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
   return (
     <>
       <AuthLoading>
-        <div className="p-8 text-sm text-muted-foreground">Loading…</div>
+        <div className="flex flex-col gap-3 p-8">
+          <Skeleton className="h-8 w-48" />
+          <Skeleton className="h-40 w-full" />
+        </div>
       </AuthLoading>
       <Unauthenticated>
         <Navigate to="/login" />

@@ -1,94 +1,431 @@
-import { Suspense } from "react";
+import { useId } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useSuspenseQuery } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { convexQuery } from "@convex-dev/react-query";
-import { useAuthActions } from "@convex-dev/auth/react";
-import { LogOut, Plus } from "lucide-react";
+import { PlusIcon } from "lucide-react";
+import { Area, AreaChart, CartesianGrid, Label, Pie, PieChart, XAxis } from "recharts";
 
 import { api } from "../../convex/_generated/api";
-import { AuthGuard } from "@/components/AuthGuard";
+import { DashboardLayout } from "@/components/DashboardLayout";
+import { formatMoney } from "@/lib/format-money";
+import { formatInteger } from "@/lib/formater";
+import { Delta, DeltaIcon, DeltaValue } from "@/components/delta";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
-  Table,
-  TableBody,
-  TableCaption,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import {
+  type ChartConfig,
+  ChartContainer,
+  ChartLegend,
+  ChartLegendContent,
+  ChartTooltip,
+  ChartTooltipContent,
+} from "@/components/ui/chart";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Empty, EmptyHeader, EmptyTitle, EmptyDescription } from "@/components/ui/empty";
+import { StatCard } from "@/components/stat-card";
+import { formatShortDate, formatRelative } from "@/lib/format-date";
 
-export const Route = createFileRoute("/dashboard")({ component: DashboardPage });
+export const Route = createFileRoute("/dashboard")({ component: OverviewPage });
 
-function DashboardPage() {
+function OverviewPage() {
   return (
-    <AuthGuard>
-      <Suspense fallback={<div className="p-8 text-sm text-muted-foreground">Loading events…</div>}>
-        <DashboardContent />
-      </Suspense>
-    </AuthGuard>
+    <DashboardLayout wide>
+      <div className="p-4 md:p-6">
+        <OverviewContent />
+      </div>
+    </DashboardLayout>
   );
 }
 
-function DashboardContent() {
-  const { data: events } = useSuspenseQuery(convexQuery(api.events.listMyEvents, {}));
-  const { signOut } = useAuthActions();
+/** "Jul 20" tick label from a "YYYY-MM-DD" bucket date. */
+function formatDayTick(date: string): string {
+  return new Date(date).toLocaleDateString(undefined, { month: "short", day: "numeric" });
+}
 
+/**
+ * A "big number + trend badge + gradient area chart" metric card (the
+ * dashboard-5 aesthetic), wired to real 30-day data. Falls back to a dashed
+ * placeholder when the metric has no activity in the window.
+ */
+function MetricChartCard({
+  headline,
+  description,
+  deltaPct,
+  data,
+  dataKey,
+  color,
+  isEmpty,
+  emptyLabel,
+  heightClass = "h-40",
+}: {
+  headline: string;
+  description: string;
+  deltaPct: number | null;
+  data: Array<Record<string, number | string>>;
+  dataKey: string;
+  color: string;
+  isEmpty: boolean;
+  emptyLabel: string;
+  heightClass?: string;
+}) {
+  const gradientId = `trend-${useId().replace(/:/g, "")}`;
+  const config: ChartConfig = { [dataKey]: { label: description, color } };
   return (
-    <div className="mx-auto max-w-4xl p-4 sm:p-8">
-      <div className="flex flex-wrap items-center justify-between gap-4">
-        <h1 className="text-2xl font-semibold">Your events</h1>
-        <div className="flex items-center gap-2">
-          <Button asChild>
-            <Link to="/events/new">
-              <Plus /> New event
-            </Link>
-          </Button>
-          <Button variant="outline" onClick={() => signOut()}>
-            <LogOut /> Sign out
-          </Button>
+    <Card>
+      <CardHeader className="flex flex-row items-start justify-between">
+        <div className="flex flex-col gap-1">
+          <CardTitle className="text-2xl tabular-nums tracking-tight">{headline}</CardTitle>
+          <CardDescription className="text-pretty">{description}</CardDescription>
+        </div>
+        {!isEmpty && deltaPct !== null && (
+          <Delta value={Math.round(deltaPct)} variant="badge">
+            <DeltaIcon variant="trend" />
+            <DeltaValue suffix="%" />
+          </Delta>
+        )}
+      </CardHeader>
+      <CardContent>
+        {isEmpty ? (
+          <div
+            className={`flex ${heightClass} items-center justify-center rounded-lg border border-dashed px-4 text-center text-sm text-muted-foreground`}
+          >
+            {emptyLabel}
+          </div>
+        ) : (
+          <ChartContainer className={`aspect-auto ${heightClass} w-full`} config={config}>
+            <AreaChart accessibilityLayer data={data} margin={{ left: 12, right: 12 }}>
+              <defs>
+                <linearGradient id={gradientId} x1="0" x2="0" y1="0" y2="1">
+                  <stop offset="0%" stopColor={`var(--color-${dataKey})`} stopOpacity={0.35} />
+                  <stop offset="100%" stopColor={`var(--color-${dataKey})`} stopOpacity={0} />
+                </linearGradient>
+              </defs>
+              <CartesianGrid vertical={false} />
+              <XAxis
+                dataKey="date"
+                axisLine={false}
+                tickLine={false}
+                tickMargin={8}
+                minTickGap={32}
+                tickFormatter={(value) => formatDayTick(String(value))}
+              />
+              <ChartTooltip
+                content={
+                  <ChartTooltipContent
+                    indicator="dashed"
+                    labelFormatter={(value) => formatDayTick(String(value))}
+                  />
+                }
+                cursor={{
+                  stroke: `var(--color-${dataKey})`,
+                  strokeDasharray: "3 3",
+                  strokeLinecap: "round",
+                }}
+                wrapperStyle={{ outline: "none" }}
+              />
+              <Area
+                dataKey={dataKey}
+                type="monotone"
+                fill={`url(#${gradientId})`}
+                isAnimationActive={false}
+                stroke={`var(--color-${dataKey})`}
+                strokeWidth={2}
+              />
+            </AreaChart>
+          </ChartContainer>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+// Two categorical slices. chart-1 (light amber) vs chart-3 (dark amber): a large
+// lightness delta, which stays distinguishable under colour-vision deficiency
+// (CVD affects hue, not lightness), and the legend means identity is never
+// colour-alone.
+const eventsByStatusConfig = {
+  published: { label: "Published", color: "var(--chart-1)" },
+  draft: { label: "Draft", color: "var(--chart-3)" },
+} satisfies ChartConfig;
+
+/** Donut of the organizer's events split by publish status, with the total in
+ *  the hole. A part-to-whole snapshot to sit alongside the trend cards. */
+function EventsByStatusCard({ published, draft }: { published: number; draft: number }) {
+  const total = published + draft;
+  const data = [
+    { status: "published", value: published, fill: "var(--color-published)" },
+    { status: "draft", value: draft, fill: "var(--color-draft)" },
+  ];
+  return (
+    <Card className="flex flex-col">
+      <CardHeader>
+        <CardTitle className="text-base">Events by status</CardTitle>
+        <CardDescription>Published vs draft</CardDescription>
+      </CardHeader>
+      <CardContent className="flex flex-1 items-center justify-center">
+        {total === 0 ? (
+          <p className="text-sm text-muted-foreground">No events yet.</p>
+        ) : (
+          <ChartContainer config={eventsByStatusConfig} className="mx-auto aspect-square max-h-[220px] w-full">
+            <PieChart>
+              <ChartTooltip cursor={false} content={<ChartTooltipContent nameKey="status" hideLabel />} />
+              <Pie
+                data={data}
+                dataKey="value"
+                nameKey="status"
+                innerRadius={55}
+                outerRadius={85}
+                stroke="var(--card)"
+                strokeWidth={2}
+                paddingAngle={2}
+              >
+                <Label
+                  content={({ viewBox }) => {
+                    if (viewBox && "cx" in viewBox && "cy" in viewBox) {
+                      return (
+                        <text x={viewBox.cx} y={viewBox.cy} textAnchor="middle" dominantBaseline="middle">
+                          <tspan
+                            x={viewBox.cx}
+                            y={viewBox.cy}
+                            className="fill-foreground text-2xl font-bold tabular-nums"
+                          >
+                            {total}
+                          </tspan>
+                          <tspan
+                            x={viewBox.cx}
+                            y={(viewBox.cy ?? 0) + 20}
+                            className="fill-muted-foreground text-xs"
+                          >
+                            Events
+                          </tspan>
+                        </text>
+                      );
+                    }
+                    return null;
+                  }}
+                />
+              </Pie>
+              <ChartLegend content={<ChartLegendContent nameKey="status" />} />
+            </PieChart>
+          </ChartContainer>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+function OverviewContent() {
+  const { data, isPending } = useQuery(convexQuery(api.dashboard.getOverview, {}));
+
+  if (isPending || !data) {
+    return (
+      <div className="flex flex-col gap-4">
+        <Skeleton className="h-8 w-40" />
+        <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
+          {Array.from({ length: 5 }).map((_, i) => (
+            <Skeleton key={i} className="h-24 w-full" />
+          ))}
+        </div>
+        <Skeleton className="h-72 w-full" />
+        <div className="grid gap-3 md:grid-cols-3">
+          {Array.from({ length: 3 }).map((_, i) => (
+            <Skeleton key={i} className="h-56 w-full" />
+          ))}
+        </div>
+        <div className="grid gap-3 lg:grid-cols-2">
+          {Array.from({ length: 2 }).map((_, i) => (
+            <Skeleton key={i} className="h-64 w-full" />
+          ))}
         </div>
       </div>
+    );
+  }
 
-      <div className="mt-6">
-        {events.length === 0 ? (
-          <p className="text-sm text-muted-foreground">
-            No events yet. Create your first event to get started.
-          </p>
-        ) : (
-          <Table>
-            <TableCaption>A list of your events.</TableCaption>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Title</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead className="text-right">Capacity</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {events.map((event) => (
-                <TableRow key={event._id}>
-                  <TableCell className="font-medium">
-                    <Link
-                      to="/events/$id"
-                      params={{ id: event._id }}
-                      className="hover:underline"
-                    >
-                      {event.title}
-                    </Link>
-                  </TableCell>
-                  <TableCell>
-                    <Badge variant={event.status === "published" ? "default" : "secondary"}>
-                      {event.status}
-                    </Badge>
-                  </TableCell>
-                  <TableCell className="text-right">{event.capacity}</TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        )}
+  if (data.events.total === 0) {
+    return (
+      <Empty className="mt-12">
+        <EmptyHeader>
+          <EmptyTitle>No events yet</EmptyTitle>
+          <EmptyDescription>Create your first event to get started.</EmptyDescription>
+        </EmptyHeader>
+        <Button asChild className="mt-4">
+          <Link to="/events/new">
+            <PlusIcon /> Create event
+          </Link>
+        </Button>
+      </Empty>
+    );
+  }
+
+  const { events, attendance, sales, timeseries, deltas, upcomingEvents, recentActivity, cards } =
+    data;
+  const totalRegistrations = timeseries.reduce((sum, d) => sum + d.registrations, 0);
+  const totalCheckIns = timeseries.reduce((sum, d) => sum + d.checkIns, 0);
+  const nextUpcoming = upcomingEvents[0];
+  const avgOrderCents = sales.orders > 0 ? Math.round(sales.revenueCents / sales.orders) : 0;
+  const checkInRate =
+    attendance.attendees > 0
+      ? Math.round((attendance.checkedIn / attendance.attendees) * 100)
+      : 0;
+
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="flex flex-wrap items-center justify-between gap-4">
+        <h1 className="text-2xl font-semibold">Overview</h1>
+        <Button asChild>
+          <Link to="/events/new">
+            <PlusIcon /> Create event
+          </Link>
+        </Button>
+      </div>
+
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
+        <StatCard
+          label="Events"
+          value={events.total}
+          sub={`${events.published} published · ${events.draft} draft`}
+          deltaPct={cards.events.deltaPct}
+          spark={cards.events.spark}
+        />
+        <StatCard
+          label="Upcoming"
+          value={events.upcoming}
+          sub={nextUpcoming ? `Next ${formatRelative(nextUpcoming.startsAt)}` : "None scheduled"}
+          deltaPct={cards.upcoming.deltaPct}
+          spark={cards.upcoming.spark}
+        />
+        <StatCard
+          label="Check-in rate"
+          value={`${checkInRate}%`}
+          sub={`${formatInteger(attendance.checkedIn)} of ${formatInteger(attendance.attendees)} checked in`}
+        />
+        <StatCard
+          label="Orders"
+          value={sales.orders}
+          sub={sales.orders > 0 ? `${formatMoney(avgOrderCents, sales.currency)} avg order` : undefined}
+          deltaPct={cards.orders.deltaPct}
+          spark={cards.orders.spark}
+        />
+        <StatCard
+          label="Tickets sold"
+          value={sales.ticketsSold}
+          sub={sales.revenueCents > 0 ? `${formatMoney(sales.revenueCents, sales.currency)} revenue` : undefined}
+          deltaPct={cards.ticketsSold.deltaPct}
+          spark={cards.ticketsSold.spark}
+        />
+      </div>
+
+      <MetricChartCard
+        headline={formatInteger(deltas.registrations.current)}
+        description="Registrations · last 30 days"
+        deltaPct={deltas.registrations.pct}
+        data={timeseries}
+        dataKey="registrations"
+        color="var(--chart-1)"
+        isEmpty={totalRegistrations === 0}
+        emptyLabel="No registrations yet."
+        heightClass="h-72"
+      />
+
+      <div className="grid gap-3 md:grid-cols-3">
+        <MetricChartCard
+          headline={formatInteger(deltas.checkIns.current)}
+          description="Check-ins · last 30 days"
+          deltaPct={deltas.checkIns.pct}
+          data={timeseries}
+          dataKey="checkIns"
+          color="var(--chart-4)"
+          isEmpty={totalCheckIns === 0}
+          emptyLabel="No check-ins yet."
+        />
+        <MetricChartCard
+          headline={formatMoney(deltas.revenue.current, sales.currency)}
+          description="Revenue · last 30 days"
+          deltaPct={deltas.revenue.pct}
+          data={timeseries.map((d) => ({ date: d.date, revenue: Math.round(d.revenueCents / 100) }))}
+          dataKey="revenue"
+          color="var(--chart-2)"
+          isEmpty={sales.revenueCents === 0}
+          emptyLabel="No sales yet."
+        />
+        <EventsByStatusCard published={events.published} draft={events.draft} />
+      </div>
+
+      <div className="grid gap-3 lg:grid-cols-2">
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Upcoming events</CardTitle>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-4">
+            {upcomingEvents.length === 0 ? (
+              <p className="text-sm text-muted-foreground">No upcoming events.</p>
+            ) : (
+              upcomingEvents.map((e) => {
+                const pct = e.capacity > 0 ? Math.min(100, (e.seatsTaken / e.capacity) * 100) : 0;
+                return (
+                  <div key={e.id} className="flex flex-col gap-1.5">
+                    <div className="flex items-center justify-between gap-2">
+                      <Link
+                        to="/events/$id"
+                        params={{ id: e.id }}
+                        className="truncate font-medium hover:underline"
+                      >
+                        {e.title}
+                      </Link>
+                      <Badge variant={e.status === "published" ? "default" : "secondary"}>
+                        {e.status === "published" ? "Published" : "Draft"}
+                      </Badge>
+                    </div>
+                    <div className="text-xs text-muted-foreground">{formatShortDate(e.startsAt)}</div>
+                    <div className="flex items-center gap-2">
+                      <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-muted">
+                        <div
+                          className="h-full rounded-full bg-primary transition-all"
+                          style={{ width: `${pct}%` }}
+                        />
+                      </div>
+                      <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
+                        {e.seatsTaken}/{e.capacity}
+                      </span>
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Recent activity</CardTitle>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-3">
+            {recentActivity.length === 0 ? (
+              <p className="text-sm text-muted-foreground">No activity yet.</p>
+            ) : (
+              recentActivity.map((a) => (
+                <div key={a.id} className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="text-sm">{a.summary}</p>
+                    {a.eventTitle && (
+                      <p className="truncate text-xs text-muted-foreground">{a.eventTitle}</p>
+                    )}
+                  </div>
+                  <span className="shrink-0 text-xs text-muted-foreground">
+                    {formatRelative(a.createdAt)}
+                  </span>
+                </div>
+              ))
+            )}
+          </CardContent>
+        </Card>
       </div>
     </div>
   );

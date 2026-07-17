@@ -1,0 +1,286 @@
+import { mutation, query, type QueryCtx, type MutationCtx } from "./_generated/server";
+import { v } from "convex/values";
+import type { Id } from "./_generated/dataModel";
+import { getAuthOrganizerId } from "./auth";
+import { emitTicketTypeEvent } from "./webhooks";
+import { recordAudit } from "./audit";
+
+const kindValidator = v.union(v.literal("paid"), v.literal("free"), v.literal("donation"));
+const visibilityValidator = v.union(v.literal("visible"), v.literal("hidden"));
+
+/** Load an event and enforce that it belongs to the authenticated organizer. */
+async function requireOwnedEvent(ctx: QueryCtx | MutationCtx, eventId: Id<"events">) {
+  const organizerId = await getAuthOrganizerId(ctx);
+  if (!organizerId) throw new Error("Not authenticated");
+  const event = await ctx.db.get(eventId);
+  if (!event || event.organizerId !== organizerId) throw new Error("Not found");
+  return event;
+}
+
+/** Load a ticket type + its event, enforcing organizer ownership of the event. */
+async function requireOwnedTicketType(ctx: QueryCtx | MutationCtx, ticketTypeId: Id<"ticketTypes">) {
+  const organizerId = await getAuthOrganizerId(ctx);
+  if (!organizerId) throw new Error("Not authenticated");
+  const ticketType = await ctx.db.get(ticketTypeId);
+  if (!ticketType) throw new Error("Not found");
+  const event = await ctx.db.get(ticketType.eventId);
+  if (!event || event.organizerId !== organizerId) throw new Error("Not found");
+  return { ticketType, event };
+}
+
+type TicketTypeInput = {
+  name: string;
+  kind: "paid" | "free" | "donation";
+  priceCents: number;
+  capacity?: number;
+  minPerOrder?: number;
+  maxPerOrder?: number;
+};
+
+/** Shared invariant checks for create + update (throws on the first violation). */
+function validateTicketTypeInput(input: TicketTypeInput, eventCapacity: number) {
+  if (input.name.trim().length === 0) throw new Error("Name is required");
+  if (!Number.isInteger(input.priceCents) || input.priceCents < 0) {
+    throw new Error("Price must be a whole number of cents of at least 0");
+  }
+  if (input.kind === "free" && input.priceCents !== 0) {
+    throw new Error("Free ticket types must have a price of 0");
+  }
+  if (input.kind === "paid" && input.priceCents <= 0) {
+    throw new Error("Paid ticket types must have a price greater than 0");
+  }
+  if (input.capacity !== undefined) {
+    if (!Number.isInteger(input.capacity) || input.capacity < 1) {
+      throw new Error("Capacity must be a whole number of at least 1");
+    }
+    if (input.capacity > eventCapacity) {
+      throw new Error(`Capacity cannot exceed the event capacity of ${eventCapacity}`);
+    }
+  }
+  if (
+    input.minPerOrder !== undefined &&
+    input.maxPerOrder !== undefined &&
+    input.minPerOrder > input.maxPerOrder
+  ) {
+    throw new Error("Min per order cannot exceed max per order");
+  }
+}
+
+export const create = mutation({
+  args: {
+    eventId: v.id("events"),
+    name: v.string(),
+    kind: kindValidator,
+    priceCents: v.number(),
+    capacity: v.optional(v.number()),
+    badge: v.optional(v.string()),
+    minPerOrder: v.optional(v.number()),
+    maxPerOrder: v.optional(v.number()),
+    visibility: v.optional(visibilityValidator),
+    gateAlert: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const event = await requireOwnedEvent(ctx, args.eventId);
+    validateTicketTypeInput(args, event.capacity);
+    const existing = await ctx.db
+      .query("ticketTypes")
+      .withIndex("by_event", (q) => q.eq("eventId", args.eventId))
+      .collect();
+    const sortOrder = existing.reduce((max, t) => Math.max(max, t.sortOrder), -1) + 1;
+    const id = await ctx.db.insert("ticketTypes", {
+      eventId: args.eventId,
+      name: args.name.trim(),
+      kind: args.kind,
+      priceCents: args.priceCents,
+      capacity: args.capacity,
+      sold: 0,
+      badge: args.badge,
+      minPerOrder: args.minPerOrder,
+      maxPerOrder: args.maxPerOrder,
+      visibility: args.visibility ?? "visible",
+      sortOrder,
+      status: "active",
+      gateAlert: args.gateAlert,
+    });
+    try {
+      await emitTicketTypeEvent(
+        ctx,
+        event.organizerId,
+        "ticket_type.created",
+        JSON.stringify({
+          id,
+          eventId: args.eventId,
+          name: args.name.trim(),
+          kind: args.kind,
+          priceCents: args.priceCents,
+          capacity: args.capacity,
+          badge: args.badge,
+          minPerOrder: args.minPerOrder,
+          maxPerOrder: args.maxPerOrder,
+          visibility: args.visibility ?? "visible",
+          sortOrder,
+        }),
+      );
+    } catch {
+      // Best-effort: webhook emission must not fail the ticket-type mutation (spec §5).
+    }
+    await recordAudit(ctx, {
+      organizerId: event.organizerId,
+      eventId: args.eventId,
+      action: "ticket_type.created",
+      summary: `Created ticket type "${args.name.trim()}"`,
+    });
+    return id;
+  },
+});
+
+export const listForEvent = query({
+  args: { eventId: v.id("events") },
+  handler: async (ctx, { eventId }) => {
+    await requireOwnedEvent(ctx, eventId);
+    const types = await ctx.db
+      .query("ticketTypes")
+      .withIndex("by_event", (q) => q.eq("eventId", eventId))
+      .collect();
+    return types.sort((a, b) => a.sortOrder - b.sortOrder);
+  },
+});
+
+export const update = mutation({
+  args: {
+    ticketTypeId: v.id("ticketTypes"),
+    name: v.string(),
+    kind: kindValidator,
+    priceCents: v.number(),
+    capacity: v.optional(v.number()),
+    badge: v.optional(v.string()),
+    minPerOrder: v.optional(v.number()),
+    maxPerOrder: v.optional(v.number()),
+    visibility: visibilityValidator,
+    gateAlert: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const { event } = await requireOwnedTicketType(ctx, args.ticketTypeId);
+    validateTicketTypeInput(args, event.capacity);
+    await ctx.db.patch(args.ticketTypeId, {
+      name: args.name.trim(),
+      kind: args.kind,
+      priceCents: args.priceCents,
+      capacity: args.capacity,
+      badge: args.badge,
+      minPerOrder: args.minPerOrder,
+      maxPerOrder: args.maxPerOrder,
+      visibility: args.visibility,
+      gateAlert: args.gateAlert,
+    });
+    try {
+      await emitTicketTypeEvent(
+        ctx,
+        event.organizerId,
+        "ticket_type.updated",
+        JSON.stringify({
+          id: args.ticketTypeId,
+          eventId: event._id,
+          name: args.name.trim(),
+          kind: args.kind,
+          priceCents: args.priceCents,
+          capacity: args.capacity,
+          badge: args.badge,
+          minPerOrder: args.minPerOrder,
+          maxPerOrder: args.maxPerOrder,
+          visibility: args.visibility,
+        }),
+      );
+    } catch {
+      // Best-effort: webhook emission must not fail the ticket-type mutation (spec §5).
+    }
+    await recordAudit(ctx, {
+      organizerId: event.organizerId,
+      eventId: event._id,
+      action: "ticket_type.updated",
+      summary: `Updated ticket type "${args.name.trim()}"`,
+    });
+    return null;
+  },
+});
+
+export const remove = mutation({
+  args: { ticketTypeId: v.id("ticketTypes") },
+  handler: async (ctx, { ticketTypeId }) => {
+    const { ticketType, event } = await requireOwnedTicketType(ctx, ticketTypeId);
+    await ctx.db.delete(ticketTypeId);
+    try {
+      await emitTicketTypeEvent(
+        ctx,
+        event.organizerId,
+        "ticket_type.deleted",
+        JSON.stringify({ id: ticketTypeId, eventId: event._id }),
+      );
+    } catch {
+      // Best-effort: webhook emission must not fail the ticket-type mutation (spec §5).
+    }
+    await recordAudit(ctx, {
+      organizerId: event.organizerId,
+      eventId: event._id,
+      action: "ticket_type.removed",
+      summary: `Removed ticket type "${ticketType.name}"`,
+    });
+    return null;
+  },
+});
+
+/**
+ * Public storefront query: the active + visible ticket types of a *published*
+ * event, sorted by sortOrder. No auth / no ownership check (mirrors the public
+ * checkoutQuestions.listForEvent). Returns all kinds -- the storefront shows
+ * paid/donation tiers as "coming soon" while only free ones are purchasable
+ * this slice. Hidden/archived types and draft events never leak.
+ */
+export const listPublicForEvent = query({
+  args: { eventId: v.id("events") },
+  handler: async (ctx, { eventId }) => {
+    const event = await ctx.db.get(eventId);
+    if (!event || event.status !== "published") return [];
+    const types = await ctx.db
+      .query("ticketTypes")
+      .withIndex("by_event", (q) => q.eq("eventId", eventId))
+      .collect();
+    return types
+      .filter((t) => t.status === "active" && t.visibility === "visible")
+      .sort((a, b) => a.sortOrder - b.sortOrder)
+      .map((t) => ({
+        _id: t._id,
+        name: t.name,
+        kind: t.kind,
+        priceCents: t.priceCents,
+        capacity: t.capacity,
+        sold: t.sold,
+        badge: t.badge,
+        minPerOrder: t.minPerOrder,
+        maxPerOrder: t.maxPerOrder,
+      }));
+  },
+});
+
+export const reorder = mutation({
+  args: { eventId: v.id("events"), orderedIds: v.array(v.id("ticketTypes")) },
+  handler: async (ctx, { eventId, orderedIds }) => {
+    await requireOwnedEvent(ctx, eventId);
+    const types = await ctx.db
+      .query("ticketTypes")
+      .withIndex("by_event", (q) => q.eq("eventId", eventId))
+      .collect();
+    const idSet = new Set(types.map((t) => t._id));
+    if (
+      orderedIds.length !== types.length ||
+      new Set(orderedIds).size !== orderedIds.length ||
+      !orderedIds.every((id) => idSet.has(id))
+    ) {
+      throw new Error("orderedIds must be a permutation of the event's ticket types");
+    }
+    for (let i = 0; i < orderedIds.length; i++) {
+      await ctx.db.patch(orderedIds[i], { sortOrder: i });
+    }
+    return null;
+  },
+});
