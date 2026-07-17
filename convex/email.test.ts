@@ -1,5 +1,6 @@
 // @vitest-environment edge-runtime
-import { convexTest, type TestConvex } from "convex-test";
+import { convexTest as rawConvexTest, type TestConvex } from "convex-test";
+import { register as registerRateLimiter } from "@convex-dev/rate-limiter/test";
 import { expect, test } from "vitest";
 import schema from "./schema";
 import { api } from "./_generated/api";
@@ -8,6 +9,17 @@ import { escapeHtml } from "./email";
 // Passed explicitly for the same pnpm module-resolution reason documented in
 // schema.test.ts.
 const modules = import.meta.glob("./**/*.*s");
+
+// `rsvp` now calls the rate limiter component synchronously (before its
+// dedupe/insert work -- see convex/rateLimits.ts and convex/rsvps.ts), so
+// every test instance needs that component registered. Wrapping convex-test's
+// constructor here means every `convexTest(schema, modules)` call below gets
+// it for free, with no changes to the test bodies themselves.
+function convexTest(schemaArg: typeof schema, modulesArg: typeof modules) {
+  const t = rawConvexTest(schemaArg, modulesArg);
+  registerRateLimiter(t);
+  return t;
+}
 
 // Authenticate as an organizer by inserting a real users + session row and
 // handing withIdentity the `${userId}|${sessionId}` subject Convex Auth uses

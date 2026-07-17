@@ -17,6 +17,7 @@
   "dependencies": {
     "@convex-dev/auth": "^0.0.94",
     "@convex-dev/migrations": "^0.3.5",
+    "@convex-dev/rate-limiter": "^0.3.2",
     "@convex-dev/react-query": "^0.1.0",
     "@convex-dev/resend": "^0.2.5",
     "@fontsource-variable/inter": "^5.2.8",

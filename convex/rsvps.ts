@@ -6,6 +6,7 @@ import { countSeatsTaken, nextWaitlistPosition } from "./lib/capacity";
 import { SEAT_HOLDING_STATUSES } from "./lib/constants";
 import { promoteNext } from "./waitlist";
 import { getAuthOrganizerId } from "./auth";
+import { rateLimiter } from "./rateLimits";
 import { recomputeEventStats } from "./lib/eventStats";
 
 async function rsvpByToken(ctx: MutationCtx, token: string) {
@@ -74,10 +75,23 @@ async function findActiveRsvpByEmail(
  * the event, that existing ticket is returned as-is -- no duplicate row, no
  * second email -- so one address cannot consume multiple seats or flood the
  * waitlist by repeating the same request.
+ *
+ * Rate limited by email (see convex/rateLimits.ts) before any other work, so a
+ * bot hammering this mutation is rejected cheaply -- before the slug lookup,
+ * the dedupe scan, or the capacity read. This is defense-in-depth on top of
+ * the dedupe behavior above, not a replacement for it: dedupe stops one email
+ * from ever holding two seats, while the rate limit stops one email from
+ * being used to spam the mutation (and its scheduled emails) in the first
+ * place. IP-based / edge rate limiting is a separate, hosting-layer concern.
  */
 export const rsvp = mutation({
   args: { slug: v.string(), name: v.string(), email: v.string() },
   handler: async (ctx, { slug, name, email }) => {
+    const rateLimit = await rateLimiter.limit(ctx, "rsvp", { key: email });
+    if (!rateLimit.ok) {
+      throw new Error("Too many RSVP attempts. Please try again in a moment.");
+    }
+
     const event = await publishedEventBySlug(ctx, slug);
 
     const existing = await findActiveRsvpByEmail(ctx, event._id, email);

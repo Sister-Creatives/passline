@@ -1,5 +1,6 @@
 // @vitest-environment edge-runtime
-import { convexTest, type TestConvex } from "convex-test";
+import { convexTest as rawConvexTest, type TestConvex } from "convex-test";
+import { register as registerRateLimiter } from "@convex-dev/rate-limiter/test";
 import { expect, test } from "vitest";
 import schema from "./schema";
 import { api, internal } from "./_generated/api";
@@ -9,6 +10,15 @@ import { sanitizePixelId } from "./marketing";
 // Passed explicitly for the same pnpm module-resolution reason documented in
 // schema.test.ts.
 const modules = import.meta.glob("./**/*.*s");
+
+// `rsvp` calls the rate limiter component synchronously (see convex/rateLimits.ts),
+// and the tests below drive it, so every test instance needs that component
+// registered. Mirrors the wrapper in rsvps.test.ts.
+function convexTest(schemaArg: typeof schema, modulesArg: typeof modules) {
+  const t = rawConvexTest(schemaArg, modulesArg);
+  registerRateLimiter(t);
+  return t;
+}
 
 // Mirrors convex/analytics.test.ts / convex/email.test.ts: insert a real
 // users row + session and hand withIdentity a matching subject so

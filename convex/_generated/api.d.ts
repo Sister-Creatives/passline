@@ -40,6 +40,7 @@ import type * as migrations from "../migrations.js";
 import type * as orders from "../orders.js";
 import type * as organizers from "../organizers.js";
 import type * as promoCodes from "../promoCodes.js";
+import type * as rateLimits from "../rateLimits.js";
 import type * as reports from "../reports.js";
 import type * as rsvps from "../rsvps.js";
 import type * as seats from "../seats.js";
@@ -92,6 +93,7 @@ declare const fullApi: ApiFromModules<{
   orders: typeof orders;
   organizers: typeof organizers;
   promoCodes: typeof promoCodes;
+  rateLimits: typeof rateLimits;
   reports: typeof reports;
   rsvps: typeof rsvps;
   seats: typeof seats;
@@ -134,5 +136,6 @@ export declare const internal: FilterApi<
 
 export declare const components: {
   resend: import("@convex-dev/resend/_generated/component.js").ComponentApi<"resend">;
+  rateLimiter: import("@convex-dev/rate-limiter/_generated/component.js").ComponentApi<"rateLimiter">;
   migrations: import("@convex-dev/migrations/_generated/component.js").ComponentApi<"migrations">;
 };
