@@ -77,9 +77,9 @@ function SettingsProfilePage() {
       ) : (
         <Card>
           <CardContent className="space-y-5 pt-6">
-            <Avatar className="size-14 rounded-lg">
+            <Avatar className="size-14">
               {logoUrl ? <AvatarImage src={logoUrl} /> : null}
-              <AvatarFallback className="rounded-lg text-lg">
+              <AvatarFallback className="text-lg">
                 {(name || "?").charAt(0).toUpperCase()}
               </AvatarFallback>
             </Avatar>
