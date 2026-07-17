@@ -3,6 +3,7 @@ import { convexTest, type TestConvex } from "convex-test";
 import { expect, test } from "vitest";
 import schema from "./schema";
 import { api } from "./_generated/api";
+import type { Id } from "./_generated/dataModel";
 
 // Passed explicitly for the same pnpm module-resolution reason documented in
 // schema.test.ts.
@@ -22,6 +23,15 @@ async function asOrganizer(t: TestConvex<typeof schema>, email: string) {
     return { userId, sessionId };
   });
   return { as: t.withIdentity({ subject: `${userId}|${sessionId}` }), userId };
+}
+
+// Mirrors convex/eventContent.test.ts.
+async function storeN(t: TestConvex<typeof schema>, n: number) {
+  const ids: Id<"_storage">[] = [];
+  for (let i = 0; i < n; i++) {
+    ids.push(await t.run((ctx) => ctx.storage.store(new Blob([`x${i}`], { type: "image/png" }))));
+  }
+  return ids;
 }
 
 test("create then publish makes the event findable by slug", async () => {
@@ -457,6 +467,33 @@ test("deleteEvent removes the event and all of its rsvps", async () => {
       .collect(),
   );
   expect(remainingRsvps).toEqual([]);
+});
+
+test("deleteEvent purges the cover image and gallery files from storage", async () => {
+  const t = convexTest(schema, modules);
+  const { as } = await asOrganizer(t, "ada@example.com");
+  await as.mutation(api.organizers.ensureOrganizer, {});
+
+  const eventId = await as.mutation(api.events.createEvent, {
+    title: "Doomed Event With Media",
+    description: "x",
+    startsAt: 1,
+    endsAt: 2,
+    location: "x",
+    capacity: 5,
+  });
+
+  const [cover, galleryImage] = await storeN(t, 2);
+  await as.mutation(api.eventContent.setCoverImage, { eventId, storageId: cover });
+  await as.mutation(api.eventContent.setGallery, {
+    eventId,
+    images: [{ storageId: galleryImage }],
+  });
+
+  await as.mutation(api.events.deleteEvent, { eventId });
+
+  expect(await t.run((ctx) => ctx.storage.getUrl(cover))).toBeNull();
+  expect(await t.run((ctx) => ctx.storage.getUrl(galleryImage))).toBeNull();
 });
 
 test("duplicateEvent creates a draft copy with a distinct slug, deep-copies config, and excludes orders/tickets", async () => {

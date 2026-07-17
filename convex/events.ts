@@ -295,6 +295,15 @@ export const deleteEvent = mutation({
       await ctx.db.delete(rsvp._id);
     }
 
+    // Purge the uploaded cover + gallery files so a deleted event never leaves
+    // orphaned storage blobs behind.
+    const content = await ctx.db
+      .query("eventContent")
+      .withIndex("by_event", (q) => q.eq("eventId", eventId))
+      .unique();
+    if (content?.coverImageId) await ctx.storage.delete(content.coverImageId);
+    for (const g of content?.gallery ?? []) await ctx.storage.delete(g.storageId);
+
     await ctx.db.delete(eventId);
     return null;
   },
