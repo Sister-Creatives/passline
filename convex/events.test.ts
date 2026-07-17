@@ -1447,11 +1447,12 @@ test("listMyEventsPage: tab filter, sort, search, and numbered slicing", async (
     await t.run((ctx) => ctx.db.patch(id, { seatsTaken }));
     return id;
   };
-  // 3 upcoming, 1 past.
+  // 3 upcoming, 2 past.
   await mk("Alpha", now + 3000, now + 4000, 10, 100); // fill 0.10
   await mk("Bravo", now + 1000, now + 2000, 90, 100); // fill 0.90, soonest
   await mk("Charlie", now + 5000, now + 6000, 50, 100);
   await mk("Delta Past", now - 4000, now - 3000, 25, 100);
+  await mk("Echo Past", now - 8000, now - 7000, 15, 100); // older than Delta Past
 
   // Upcoming tab, date sort (soonest first), page 1 of 2.
   const p1 = await as.query(api.events.listMyEventsPage, {
@@ -1471,18 +1472,24 @@ test("listMyEventsPage: tab filter, sort, search, and numbered slicing", async (
   });
   expect(byFill.rows.map((r) => r.title)).toEqual(["Bravo", "Charlie", "Alpha"]);
 
-  // Past tab.
+  // Past tab, date sort -> most-recent-first (Delta is more recent than Echo).
   const past = await as.query(api.events.listMyEventsPage, {
     tab: "past", status: "all", sort: "date", search: "", page: 1, pageSize: 10, now,
   });
-  expect(past.rows.map((r) => r.title)).toEqual(["Delta Past"]);
+  expect(past.rows.map((r) => r.title)).toEqual(["Delta Past", "Echo Past"]);
 
-  // Search matches location on the All tab (all four share "Town Hall").
+  // All tab, date sort -> by startsAt descending (most recent first) across the whole set.
+  const allByDate = await as.query(api.events.listMyEventsPage, {
+    tab: "all", status: "all", sort: "date", search: "", page: 1, pageSize: 10, now,
+  });
+  expect(allByDate.rows.map((r) => r.title)).toEqual(["Charlie", "Alpha", "Bravo", "Delta Past", "Echo Past"]);
+
+  // Search matches location on the All tab (all five share "Town Hall").
   const search = await as.query(api.events.listMyEventsPage, {
     tab: "all", status: "all", sort: "name", search: "town hall", page: 1, pageSize: 10, now,
   });
-  expect(search.total).toBe(4);
-  expect(search.rows.map((r) => r.title)).toEqual(["Alpha", "Bravo", "Charlie", "Delta Past"]);
+  expect(search.total).toBe(5);
+  expect(search.rows.map((r) => r.title)).toEqual(["Alpha", "Bravo", "Charlie", "Delta Past", "Echo Past"]);
 
   // Page clamps beyond the end.
   const clamped = await as.query(api.events.listMyEventsPage, {
