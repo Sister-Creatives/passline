@@ -1407,3 +1407,30 @@ test("getMyEventsKpis returns zeros when unauthenticated", async () => {
   const k = await t.query(api.events.getMyEventsKpis, { now: 1 });
   expect(k).toEqual({ total: 0, published: 0, draft: 0, upcoming: 0, attendees: 0, revenueCents: 0, ticketsSold: 0, currency: "USD" });
 });
+
+test("getMyEventsKpis treats pre-backfill (undefined) counters as 0, not NaN", async () => {
+  const t = convexTest(schema, modules);
+  const { as } = await asOrganizer(t, "ada@example.com");
+  await as.mutation(api.organizers.ensureOrganizer, {});
+  const now = 1_000_000_000_000;
+  const e1 = await as.mutation(api.events.createEvent, {
+    title: "Has stats", description: "x", startsAt: now + 1000, endsAt: now + 2000, location: "H", capacity: 100,
+  });
+  const organizerId = (await t.run((ctx) => ctx.db.get(e1)))!.organizerId;
+  await t.run((ctx) => ctx.db.patch(e1, { seatsTaken: 7, ticketsSold: 3, revenueCents: 5000 }));
+  // Raw event WITHOUT the denormalized counters (simulates pre-backfill data).
+  await t.run((ctx) =>
+    ctx.db.insert("events", {
+      organizerId, title: "No stats", description: "x", startsAt: now + 1000, endsAt: now + 2000,
+      location: "H", capacity: 50, status: "draft", slug: "no-stats-xyz",
+    }),
+  );
+
+  const k = await as.query(api.events.getMyEventsKpis, { now });
+  expect(k.total).toBe(2);
+  // Undefined counters must fold in as 0, not NaN -> only passes with `?? 0`.
+  expect(k.attendees).toBe(7);
+  expect(k.ticketsSold).toBe(3);
+  expect(k.revenueCents).toBe(5000);
+  expect(Number.isFinite(k.attendees)).toBe(true);
+});
