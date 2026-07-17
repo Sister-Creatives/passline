@@ -80,8 +80,30 @@ function EventManagePage() {
                   <Skeleton className="h-7 w-20" />
                 </div>
               </div>
-              <div className="mt-6">
-                <Skeleton className="h-64 w-full" />
+              <div className="mt-6 flex flex-col gap-6">
+                <Skeleton className="h-6 w-40" />
+                <div>
+                  <div className="flex items-center justify-between">
+                    <Skeleton className="h-4 w-20" />
+                    <Skeleton className="h-4 w-28" />
+                  </div>
+                  <Skeleton className="mt-2 h-2 w-full rounded-full" />
+                </div>
+                <div className="flex max-w-2xl flex-col gap-5">
+                  <div className="space-y-2">
+                    <Skeleton className="h-4 w-16" />
+                    <Skeleton className="h-9 w-full" />
+                  </div>
+                  <div className="space-y-2">
+                    <Skeleton className="h-4 w-24" />
+                    <Skeleton className="h-24 w-full" />
+                  </div>
+                  <div className="space-y-2">
+                    <Skeleton className="h-4 w-20" />
+                    <Skeleton className="h-9 w-full" />
+                  </div>
+                  <Skeleton className="h-9 w-32" />
+                </div>
               </div>
             </div>
           </div>
