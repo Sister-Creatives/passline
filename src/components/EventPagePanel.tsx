@@ -10,6 +10,7 @@ import { Plus, X } from "lucide-react";
 import { api } from "../../convex/_generated/api";
 import type { Doc, Id } from "../../convex/_generated/dataModel";
 import { isValidHexColor, parseVideoEmbed } from "../../convex/lib/eventContent";
+import { ImageDropzone } from "@/components/ImageDropzone";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -25,7 +26,6 @@ import {
 } from "@/components/ui/form";
 
 const pageFormSchema = z.object({
-  coverImageUrl: z.string(),
   brandColor: z.string().refine((v) => v.trim() === "" || isValidHexColor(v.trim()), {
     message: "Must be a 6-digit hex code like #1a2b3c",
   }),
@@ -60,7 +60,6 @@ type OrganizerEventContent = {
 
 function toFormValues(content: OrganizerEventContent): PageFormValues {
   return {
-    coverImageUrl: content.coverImageUrl ?? "",
     brandColor: content.brandColor ?? "",
     ctaLabel: content.ctaLabel ?? "",
     videoUrl: content.videoUrl ?? "",
@@ -309,18 +308,28 @@ function EventPageForm({
   initial: OrganizerEventContent;
 }) {
   const update = useMutation(api.eventContent.update);
+  const setCoverImage = useMutation(api.eventContent.setCoverImage);
   const form = useForm<PageFormValues>({
     resolver: zodResolver(pageFormSchema),
     defaultValues: toFormValues(initial),
   });
 
   const brandColor = form.watch("brandColor");
+  const coverUrl = initial.coverImageUrl;
+
+  async function handleRemoveCover() {
+    try {
+      await setCoverImage({ eventId, storageId: null });
+      toast.success("Cover image removed");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to remove cover image");
+    }
+  }
 
   async function onSubmit(values: PageFormValues) {
     try {
       await update({
         eventId,
-        coverImageUrl: values.coverImageUrl,
         brandColor: values.brandColor,
         ctaLabel: values.ctaLabel,
         videoUrl: values.videoUrl,
@@ -342,19 +351,34 @@ function EventPageForm({
             <CardTitle>Branding</CardTitle>
           </CardHeader>
           <CardContent className="flex flex-col gap-4">
-            <FormField
-              control={form.control}
-              name="coverImageUrl"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Cover image URL</FormLabel>
-                  <FormControl>
-                    <Input placeholder="https://…" {...field} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
+            <div className="flex flex-col gap-2">
+              <FormLabel>Cover image</FormLabel>
+              {coverUrl ? (
+                <div className="relative overflow-hidden rounded-lg border">
+                  <img src={coverUrl} alt="Cover preview" className="max-h-48 w-full object-cover" />
+                  <div className="absolute right-2 top-2 flex gap-2">
+                    <ImageDropzone
+                      eventId={eventId}
+                      label="Replace"
+                      className="border-0 bg-background/80 p-2 backdrop-blur"
+                      onUploaded={async (storageId) => {
+                        await setCoverImage({ eventId, storageId });
+                      }}
+                    />
+                    <Button type="button" variant="secondary" size="sm" onClick={handleRemoveCover}>
+                      Remove
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <ImageDropzone
+                  eventId={eventId}
+                  onUploaded={async (storageId) => {
+                    await setCoverImage({ eventId, storageId });
+                  }}
+                />
               )}
-            />
+            </div>
             <FormField
               control={form.control}
               name="brandColor"
