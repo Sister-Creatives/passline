@@ -112,6 +112,32 @@ function normalizeAccessibility(a: Accessibility | undefined): Accessibility | u
   return hasAnyField ? normalized : undefined;
 }
 
+/** Resolve storage IDs to URLs for a content row (or the empty default). Uploaded
+ *  cover wins over the legacy URL; gallery entries whose file is gone are dropped.
+ *  `keepStorageId` includes each gallery entry's storageId (owner editor only). */
+async function withResolvedMedia<
+  T extends {
+    coverImageId?: Id<"_storage">;
+    coverImageUrl?: string;
+    gallery?: { storageId: Id<"_storage">; alt?: string }[];
+  } & Record<string, unknown>,
+>(ctx: QueryCtx, content: T, keepStorageId: boolean) {
+  const coverImageUrl = content.coverImageId
+    ? ((await ctx.storage.getUrl(content.coverImageId)) ?? undefined)
+    : content.coverImageUrl;
+  const gallery = (
+    await Promise.all(
+      (content.gallery ?? []).map(async (g) => {
+        const url = await ctx.storage.getUrl(g.storageId);
+        if (!url) return null;
+        return keepStorageId ? { storageId: g.storageId, url, alt: g.alt } : { url, alt: g.alt };
+      }),
+    )
+  ).filter((g) => g !== null);
+  const { coverImageId: _drop, gallery: _dropGallery, ...rest } = content;
+  return { ...rest, coverImageUrl, gallery };
+}
+
 /** Owner-only: an event's page content, or an empty default if none has been saved yet. */
 export const get = query({
   args: { eventId: v.id("events") },
@@ -121,7 +147,7 @@ export const get = query({
       .query("eventContent")
       .withIndex("by_event", (q) => q.eq("eventId", eventId))
       .unique();
-    return content ?? emptyContent();
+    return withResolvedMedia(ctx, content ?? emptyContent(), true);
   },
 });
 
@@ -311,6 +337,6 @@ export const getBySlug = query({
       .query("eventContent")
       .withIndex("by_event", (q) => q.eq("eventId", event._id))
       .unique();
-    return content ?? emptyContent();
+    return withResolvedMedia(ctx, content ?? emptyContent(), false);
   },
 });

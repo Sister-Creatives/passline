@@ -122,7 +122,7 @@ test("get returns an empty default when no content has been saved yet", async ()
   const eventId = await makeEvent(as);
 
   const content = await as.query(api.eventContent.get, { eventId });
-  expect(content).toEqual({ agenda: [], speakers: [], faqs: [] });
+  expect(content).toEqual({ agenda: [], speakers: [], faqs: [], gallery: [] });
 });
 
 test("get is owner-only", async () => {
@@ -310,7 +310,7 @@ test("getBySlug returns an empty default for a published event with no saved con
   await as.mutation(api.events.publishEvent, { eventId });
 
   const content = await t.query(api.eventContent.getBySlug, { slug: event!.slug });
-  expect(content).toEqual({ agenda: [], speakers: [], faqs: [] });
+  expect(content).toEqual({ agenda: [], speakers: [], faqs: [], gallery: [] });
 });
 
 test("getBySlug returns null for an unpublished (draft) event", async () => {
@@ -394,6 +394,75 @@ test("setCoverImage replacing an uploaded cover deletes the previous file and cl
   );
   expect(row?.coverImageId).toBe(b);
   expect(row?.coverImageUrl).toBeUndefined();
+});
+
+test("get resolves an uploaded cover and gallery to urls", async () => {
+  const t = convexTest(schema, modules);
+  const { as } = await asOrganizer(t, "ada@example.com");
+  await as.mutation(api.organizers.ensureOrganizer, {});
+  const eventId = await makeEvent(as);
+  const [cover, g1] = await storeN(t, 2);
+
+  await as.mutation(api.eventContent.setCoverImage, { eventId, storageId: cover });
+  await as.mutation(api.eventContent.setGallery, { eventId, images: [{ storageId: g1, alt: "one" }] });
+
+  const res = await as.query(api.eventContent.get, { eventId });
+  expect(res.coverImageUrl).toEqual(expect.stringContaining("http"));
+  expect(res.gallery).toHaveLength(1);
+  expect(res.gallery[0]).toMatchObject({ alt: "one", storageId: g1 });
+  expect(res.gallery[0].url).toEqual(expect.stringContaining("http"));
+});
+
+test("get falls back to a legacy coverImageUrl when there is no uploaded cover", async () => {
+  const t = convexTest(schema, modules);
+  const { as } = await asOrganizer(t, "ada@example.com");
+  await as.mutation(api.organizers.ensureOrganizer, {});
+  const eventId = await makeEvent(as);
+
+  await as.mutation(api.eventContent.update, { eventId, agenda: [], speakers: [], faqs: [] });
+  // update no longer writes coverImageUrl (Task 1 step 6), so set it directly for the legacy case.
+  await t.run(async (ctx) => {
+    const row = await ctx.db
+      .query("eventContent")
+      .withIndex("by_event", (q) => q.eq("eventId", eventId))
+      .unique();
+    await ctx.db.patch(row!._id, { coverImageUrl: "https://legacy.example/x.jpg" });
+  });
+
+  const res = await as.query(api.eventContent.get, { eventId });
+  expect(res.coverImageUrl).toBe("https://legacy.example/x.jpg");
+  expect(res.gallery).toEqual([]);
+});
+
+test("update does not clobber the cover image or gallery set by the image mutations", async () => {
+  const t = convexTest(schema, modules);
+  const { as } = await asOrganizer(t, "ada@example.com");
+  await as.mutation(api.organizers.ensureOrganizer, {});
+  const eventId = await makeEvent(as);
+  const [cover, g1] = await storeN(t, 2);
+
+  await as.mutation(api.eventContent.setCoverImage, { eventId, storageId: cover });
+  await as.mutation(api.eventContent.setGallery, { eventId, images: [{ storageId: g1, alt: "one" }] });
+
+  await as.mutation(api.eventContent.update, {
+    eventId,
+    brandColor: "#1a2b3c",
+    ctaLabel: "Register",
+    agenda: [],
+    speakers: [],
+    faqs: [],
+  });
+
+  const res = await as.query(api.eventContent.get, { eventId });
+  expect(res.coverImageUrl).toEqual(expect.stringContaining("http"));
+  expect(res.gallery).toEqual([{ storageId: g1, url: expect.stringContaining("http"), alt: "one" }]);
+
+  const row = await t.run((ctx) =>
+    ctx.db.query("eventContent").withIndex("by_event", (q) => q.eq("eventId", eventId)).unique(),
+  );
+  expect(row?.coverImageId).toBe(cover);
+  expect(row?.coverImageUrl).toBeUndefined();
+  expect(row?.gallery).toEqual([{ storageId: g1, alt: "one" }]);
 });
 
 // --- updateAccessibility ------------------------------------------------
