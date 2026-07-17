@@ -24,6 +24,7 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
+import { authErrorMessage } from "@/lib/auth-errors";
 
 export const Route = createFileRoute("/login")({ component: LoginPage });
 
@@ -53,7 +54,7 @@ function LoginPage() {
       // confirmed authenticated, which avoids racing the auth token here.
       navigate({ to: "/events" });
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Something went wrong. Try again.");
+      toast.error(authErrorMessage(error, flow));
     }
   }
 
