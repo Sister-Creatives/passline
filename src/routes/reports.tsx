@@ -147,7 +147,7 @@ function ReportsPage() {
                       <TableCell className="text-right tabular-nums">
                         {row.checkedIn}
                       </TableCell>
-                      <TableCell className="text-right text-muted-foreground">
+                      <TableCell className="text-right text-muted-foreground tabular-nums">
                         {row.capacity > 0
                           ? `${Math.round((row.registrations / row.capacity) * 100)}%`
                           : "—"}

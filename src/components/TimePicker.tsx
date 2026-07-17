@@ -136,9 +136,9 @@ function TimeColumn({
             onClick={() => onSelect(option)}
             className={cn(
               "flex h-8 shrink-0 items-center justify-center rounded-md text-sm tabular-nums transition-colors outline-none",
-              "hover:bg-accent hover:text-accent-foreground focus-visible:bg-accent focus-visible:text-accent-foreground",
+              "hover:bg-accent hover:text-accent-foreground focus-visible:bg-accent focus-visible:text-accent-foreground active:bg-accent active:text-accent-foreground",
               isSelected
-                ? "bg-primary font-medium text-primary-foreground hover:bg-primary hover:text-primary-foreground"
+                ? "bg-primary font-medium text-primary-foreground hover:bg-primary hover:text-primary-foreground active:bg-primary/90"
                 : "text-foreground",
             )}
           >

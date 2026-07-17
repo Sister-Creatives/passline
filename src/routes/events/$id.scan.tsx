@@ -1,4 +1,4 @@
-import { Suspense, useState } from "react";
+import { Suspense, useRef, useState } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useSuspenseQuery } from "@tanstack/react-query";
 import { convexQuery } from "@convex-dev/react-query";
@@ -8,7 +8,11 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { ArrowLeft, LoaderCircle, TriangleAlert } from "lucide-react";
+import { motion } from "motion/react";
 import { toast } from "sonner";
+
+import { spring } from "@/lib/motion";
+import { playScanFeedback, signalForResult } from "@/lib/scan-feedback";
 
 import { api } from "../../../convex/_generated/api";
 import type { Id } from "../../../convex/_generated/dataModel";
@@ -89,6 +93,10 @@ function ScanContent({ eventId }: { eventId: Id<"events"> }) {
   const checkOutTicket = useMutation(api.ticketCheckin.checkOutTicket);
   const [mode, setMode] = useState<ScanMode>("in");
   const [outcome, setOutcome] = useState<ScanOutcome | null>(null);
+  // Monotonic sequence so the result card re-mounts (and re-flashes) on every
+  // scan, even when two identical verdicts land back to back.
+  const [seq, setSeq] = useState(0);
+  const inputRef = useRef<HTMLInputElement>(null);
 
   const form = useForm<ScanValues>({
     resolver: zodResolver(scanSchema),
@@ -97,18 +105,23 @@ function ScanContent({ eventId }: { eventId: Id<"events"> }) {
 
   async function onSubmit(values: ScanValues) {
     try {
-      if (mode === "in") {
-        const data = await checkInTicket({ code: values.code.trim() });
-        setOutcome({ mode: "in", data });
-      } else {
-        const data = await checkOutTicket({ code: values.code.trim() });
-        setOutcome({ mode: "out", data });
-      }
+      const data =
+        mode === "in"
+          ? await checkInTicket({ code: values.code.trim() })
+          : await checkOutTicket({ code: values.code.trim() });
+      setOutcome({ mode, data } as ScanOutcome);
+      setSeq((n) => n + 1);
+      playScanFeedback(signalForResult(data.result));
       form.reset();
     } catch (error) {
+      playScanFeedback("error");
       toast.error(
         error instanceof Error ? error.message : mode === "in" ? "Check-in failed" : "Check-out failed",
       );
+    } finally {
+      // Keyboard-wedge scanners type into whatever is focused; re-pin the
+      // input so the next scan never lands in the void after a toggle/tap.
+      inputRef.current?.focus();
     }
   }
 
@@ -158,7 +171,15 @@ function ScanContent({ eventId }: { eventId: Id<"events"> }) {
               <FormItem className="flex-1">
                 <FormLabel className="sr-only">Ticket code</FormLabel>
                 <FormControl>
-                  <Input placeholder="Scan or enter ticket code" autoFocus {...field} />
+                  <Input
+                    placeholder="Scan or enter ticket code"
+                    autoFocus
+                    {...field}
+                    ref={(el) => {
+                      field.ref(el);
+                      inputRef.current = el;
+                    }}
+                  />
                 </FormControl>
                 <FormMessage />
               </FormItem>
@@ -171,7 +192,16 @@ function ScanContent({ eventId }: { eventId: Id<"events"> }) {
         </form>
       </Form>
 
-      {outcome && <ScanResultCard outcome={outcome} />}
+      {outcome && (
+        <motion.div
+          key={seq}
+          initial={{ opacity: 0, scale: 0.96 }}
+          animate={{ opacity: 1, scale: 1 }}
+          transition={spring.snappy}
+        >
+          <ScanResultCard outcome={outcome} />
+        </motion.div>
+      )}
     </div>
   );
 }

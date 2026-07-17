@@ -10,6 +10,7 @@ import type { ConvexQueryClient } from '@convex-dev/react-query'
 import type { ConvexReactClient } from 'convex/react'
 
 import { ThemeProvider } from 'next-themes'
+import { MotionConfig } from 'motion/react'
 
 import { Toaster } from '@/components/ui/sonner'
 import { TooltipProvider } from '@/components/ui/tooltip'
@@ -61,8 +62,13 @@ function RootDocument({ children }: { children: React.ReactNode }) {
           enableSystem
           disableTransitionOnChange
         >
-          <TooltipProvider>{children}</TooltipProvider>
-          <Toaster />
+          {/* reducedMotion="user" makes every Motion spring respect the OS
+              prefers-reduced-motion setting (transforms disabled, opacity
+              kept), matching the CSS accessibility layer in styles.css. */}
+          <MotionConfig reducedMotion="user">
+            <TooltipProvider>{children}</TooltipProvider>
+            <Toaster />
+          </MotionConfig>
         </ThemeProvider>
         {import.meta.env.DEV && (
           <TanStackDevtools

@@ -1,3 +1,4 @@
+import type { CSSProperties } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -48,6 +49,7 @@ export function RsvpForm({ slug, isFull, ctaLabel, accentColor }: RsvpFormProps)
   const form = useForm<RsvpFormValues>({
     resolver: zodResolver(rsvpFormSchema),
     defaultValues: { name: "", email: "" },
+    mode: "onTouched",
   });
 
   const isSubmitting = form.formState.isSubmitting;
@@ -107,13 +109,16 @@ export function RsvpForm({ slug, isFull, ctaLabel, accentColor }: RsvpFormProps)
         <Button
           type="submit"
           disabled={isSubmitting}
+          // Recolour the Button through its --primary tokens (not a flat
+          // background-color, which the variant's gradient fill paints over)
+          // so the gradient, hover and active-inset shadow all recompute
+          // against the brand hue.
           style={
             !isFull && accentColor
-              ? {
-                  backgroundColor: accentColor,
-                  borderColor: accentColor,
-                  color: readableTextColor(accentColor),
-                }
+              ? ({
+                  "--primary": accentColor,
+                  "--primary-foreground": readableTextColor(accentColor),
+                } as CSSProperties)
               : undefined
           }
         >

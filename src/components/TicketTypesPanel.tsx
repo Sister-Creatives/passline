@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { convexQuery } from "@convex-dev/react-query";
 import { useMutation } from "convex/react";
@@ -6,7 +6,10 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { toast } from "sonner";
+import { motion } from "motion/react";
 import { ChevronDown, ChevronUp, LoaderCircle, Plus, Trash2 } from "lucide-react";
+
+import { spring } from "@/lib/motion";
 
 import { api } from "../../convex/_generated/api";
 import type { Doc, Id } from "../../convex/_generated/dataModel";
@@ -331,6 +334,10 @@ function TicketTypeEditor({
   );
 }
 
+// Motion-capable table row so reorders FLIP-animate to their new slot instead
+// of teleporting. Keys stay stable (tt._id) so Motion can track each row.
+const MotionTableRow = motion.create(TableRow);
+
 export function TicketTypesPanel({
   eventId,
   currency,
@@ -345,15 +352,32 @@ export function TicketTypesPanel({
   const reorder = useMutation(api.ticketTypes.reorder);
   const [editing, setEditing] = useState<Doc<"ticketTypes"> | null>(null);
   const [creating, setCreating] = useState(false);
+  // Optimistic order: applied on the click frame so the row moves immediately,
+  // then cleared once the server confirms (or reverted on failure).
+  const [pendingOrder, setPendingOrder] = useState<Array<Id<"ticketTypes">> | null>(null);
+
+  const rows = types ?? [];
+  const orderedRows = useMemo(() => {
+    if (!pendingOrder) return rows;
+    const byId = new Map(rows.map((t) => [t._id, t]));
+    const next = pendingOrder
+      .map((id) => byId.get(id))
+      .filter((t): t is (typeof rows)[number] => Boolean(t));
+    // Fall back to server order if membership changed (add/delete elsewhere).
+    return next.length === rows.length ? next : rows;
+  }, [rows, pendingOrder]);
 
   async function move(index: number, direction: -1 | 1) {
-    const ids = rows.map((t) => t._id);
+    const ids = orderedRows.map((t) => t._id);
     const target = index + direction;
     if (target < 0 || target >= ids.length) return;
     [ids[index], ids[target]] = [ids[target], ids[index]];
+    setPendingOrder(ids);
     try {
       await reorder({ eventId, orderedIds: ids });
+      setPendingOrder(null);
     } catch (error) {
+      setPendingOrder(null);
       toast.error(error instanceof Error ? error.message : "Failed to reorder ticket types");
     }
   }
@@ -376,8 +400,6 @@ export function TicketTypesPanel({
       </div>
     );
   }
-
-  const rows = types ?? [];
 
   // Rendered above both the table and the empty state so "New ticket type"
   // is always reachable, even with zero ticket types.
@@ -433,8 +455,8 @@ export function TicketTypesPanel({
           </TableRow>
         </TableHeader>
         <TableBody>
-          {rows.map((tt, index) => (
-            <TableRow key={tt._id}>
+          {orderedRows.map((tt, index) => (
+            <MotionTableRow key={tt._id} layout transition={spring.snappy}>
               <TableCell className="font-medium">
                 {tt.name}
                 {tt.badge ? (
@@ -471,7 +493,7 @@ export function TicketTypesPanel({
                     variant="ghost"
                     size="icon-sm"
                     onClick={() => move(index, 1)}
-                    disabled={index === rows.length - 1}
+                    disabled={index === orderedRows.length - 1}
                     aria-label="Move down"
                   >
                     <ChevronDown />
@@ -523,7 +545,7 @@ export function TicketTypesPanel({
                   </AlertDialog>
                 </div>
               </TableCell>
-            </TableRow>
+            </MotionTableRow>
           ))}
         </TableBody>
       </Table>

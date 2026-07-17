@@ -140,6 +140,7 @@ export function EventForm({ event, onDone }: EventFormProps) {
 
   const form = useForm<EventFormValues>({
     resolver: zodResolver(buildEventFormSchema(isEditMode)),
+    mode: "onTouched",
     defaultValues: event
       ? {
           title: event.title,
@@ -442,7 +443,7 @@ export function EventForm({ event, onDone }: EventFormProps) {
                             type="button"
                             onClick={() => field.onChange(field.value.filter((k) => k !== keyword))}
                             aria-label={`Remove ${keyword}`}
-                            className="rounded-full opacity-70 hover:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                            className="rounded-full opacity-70 hover:opacity-100 active:opacity-100 active:scale-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                           >
                             <X className="size-3" />
                           </button>

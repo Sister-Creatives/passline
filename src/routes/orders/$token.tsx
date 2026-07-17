@@ -1,5 +1,5 @@
 import { Suspense, useState } from "react";
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useSuspenseQuery } from "@tanstack/react-query";
 import { convexQuery } from "@convex-dev/react-query";
 import { useMutation } from "convex/react";
@@ -117,11 +117,11 @@ function OrderPageContent({ token }: { token: string }) {
       {event ? (
         // Authors may embed inline <i>/<em>/<br>/<strong> in the title.
         <h1
-          className="text-2xl font-semibold sm:text-3xl"
+          className="text-2xl font-semibold tracking-tight sm:text-3xl"
           dangerouslySetInnerHTML={{ __html: event.title }}
         />
       ) : (
-        <h1 className="text-2xl font-semibold sm:text-3xl">Your order</h1>
+        <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">Your order</h1>
       )}
       {event && (
         <p className="mt-2 text-sm text-muted-foreground">
@@ -129,7 +129,7 @@ function OrderPageContent({ token }: { token: string }) {
         </p>
       )}
 
-      <Card className="mt-6">
+      <Card className="mt-6 animate-in fade-in-0 zoom-in-95 duration-300">
         <CardHeader>
           <Badge variant={ORDER_STATUS_VARIANT[order.status]}>
             {ORDER_STATUS_LABEL[order.status]}
@@ -159,6 +159,16 @@ function OrderPageContent({ token }: { token: string }) {
           tickets.map((ticket) => <TicketRow key={ticket._id} token={token} ticket={ticket} />)
         )}
       </div>
+
+      {event && (
+        <div className="mt-8">
+          <Button asChild variant="ghost" size="sm">
+            <Link to="/e/$slug" params={{ slug: event.slug }}>
+              Back to event
+            </Link>
+          </Button>
+        </div>
+      )}
     </div>
   );
 }
@@ -225,6 +235,7 @@ function TransferTicketForm({
   const transferTicket = useMutation(api.tickets.transferTicket);
   const form = useForm<TransferFormValues>({
     resolver: zodResolver(transferFormSchema),
+    mode: "onTouched",
     defaultValues: {
       attendeeName: ticket.attendeeName ?? "",
       attendeeEmail: ticket.attendeeEmail ?? "",

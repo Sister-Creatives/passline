@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { convexQuery } from "@convex-dev/react-query";
 import { useMutation } from "convex/react";
@@ -6,7 +6,10 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { toast } from "sonner";
+import { motion } from "motion/react";
 import { ChevronDown, ChevronUp, LoaderCircle, Plus, Trash2 } from "lucide-react";
+
+import { spring } from "@/lib/motion";
 
 import { api } from "../../convex/_generated/api";
 import type { Doc, Id } from "../../convex/_generated/dataModel";
@@ -144,6 +147,10 @@ function AddOnForm({ eventId, onDone }: { eventId: Id<"events">; onDone: () => v
   );
 }
 
+// Motion-capable table row so reorders FLIP-animate to their new slot instead
+// of teleporting. Keys stay stable (addOn._id) so Motion can track each row.
+const MotionTableRow = motion.create(TableRow);
+
 /**
  * Add-ons tab: a Table of the event's add-ons (name, price, cap, sold), a
  * create Dialog, up/down reorder, and AlertDialog-confirmed removal. Mirrors
@@ -160,15 +167,32 @@ export function AddOnsPanel({
   const remove = useMutation(api.addOns.remove);
   const reorder = useMutation(api.addOns.reorder);
   const [creating, setCreating] = useState(false);
+  // Optimistic order: applied on the click frame so the row moves immediately,
+  // then cleared once the server confirms (or reverted on failure).
+  const [pendingOrder, setPendingOrder] = useState<Array<Id<"addOns">> | null>(null);
+
+  const rows = addOns ?? [];
+  const orderedRows = useMemo(() => {
+    if (!pendingOrder) return rows;
+    const byId = new Map(rows.map((a) => [a._id, a]));
+    const next = pendingOrder
+      .map((id) => byId.get(id))
+      .filter((a): a is (typeof rows)[number] => Boolean(a));
+    // Fall back to server order if membership changed (add/delete elsewhere).
+    return next.length === rows.length ? next : rows;
+  }, [rows, pendingOrder]);
 
   async function move(index: number, direction: -1 | 1) {
-    const ids = rows.map((a) => a._id);
+    const ids = orderedRows.map((a) => a._id);
     const target = index + direction;
     if (target < 0 || target >= ids.length) return;
     [ids[index], ids[target]] = [ids[target], ids[index]];
+    setPendingOrder(ids);
     try {
       await reorder({ eventId, orderedIds: ids });
+      setPendingOrder(null);
     } catch (error) {
+      setPendingOrder(null);
       toast.error(error instanceof Error ? error.message : "Failed to reorder add-ons");
     }
   }
@@ -191,8 +215,6 @@ export function AddOnsPanel({
       </div>
     );
   }
-
-  const rows = addOns ?? [];
 
   // Rendered above both the table and the empty state so "New add-on" is
   // always reachable, even with zero add-ons.
@@ -245,8 +267,8 @@ export function AddOnsPanel({
           </TableRow>
         </TableHeader>
         <TableBody>
-          {rows.map((addOn: Doc<"addOns">, index) => (
-            <TableRow key={addOn._id}>
+          {orderedRows.map((addOn: Doc<"addOns">, index) => (
+            <MotionTableRow key={addOn._id} layout transition={spring.snappy}>
               <TableCell className="font-medium">{addOn.name}</TableCell>
               <TableCell className="text-right tabular-nums">
                 {formatMoney(addOn.priceCents, currency)}
@@ -268,7 +290,7 @@ export function AddOnsPanel({
                     variant="ghost"
                     size="icon-sm"
                     onClick={() => move(index, 1)}
-                    disabled={index === rows.length - 1}
+                    disabled={index === orderedRows.length - 1}
                     aria-label="Move down"
                   >
                     <ChevronDown />
@@ -297,7 +319,7 @@ export function AddOnsPanel({
                   </AlertDialog>
                 </div>
               </TableCell>
-            </TableRow>
+            </MotionTableRow>
           ))}
         </TableBody>
       </Table>

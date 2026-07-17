@@ -69,7 +69,7 @@ export function AuditLogPanel({ eventId }: { eventId: Id<"events"> }) {
         <TableBody>
           {rows.map((entry: Doc<"auditLogs">) => (
             <TableRow key={entry._id}>
-              <TableCell className="whitespace-nowrap text-muted-foreground">
+              <TableCell className="whitespace-nowrap text-muted-foreground tabular-nums">
                 {new Date(entry.createdAt).toLocaleString()}
               </TableCell>
               <TableCell>

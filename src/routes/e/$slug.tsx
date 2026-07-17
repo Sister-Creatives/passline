@@ -1,6 +1,6 @@
 import { Suspense } from "react";
 import type { CSSProperties } from "react";
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useSuspenseQuery } from "@tanstack/react-query";
 import { convexQuery } from "@convex-dev/react-query";
 
@@ -20,6 +20,7 @@ import {
 } from "@/components/ui/accordion";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Empty, EmptyHeader, EmptyTitle, EmptyDescription } from "@/components/ui/empty";
 
@@ -153,37 +154,67 @@ function EventDetails({ slug, event }: { slug: string; event: Doc<"events"> }) {
   const accessibilityNotes = accessibility?.notes;
   const hasAccessibilityInfo = enabledAccessibilityFeatures.length > 0 || !!accessibilityNotes;
 
+  // Header CTA scrolls to the ticket/RSVP section rather than repeating the form.
+  const headerCta =
+    ticketTypes.length > 0
+      ? "Get tickets"
+      : isFull
+        ? "Join the waitlist"
+        : (content?.ctaLabel ?? "RSVP");
+  const remaining = Math.max(0, publicState.capacity - publicState.seatsTaken);
+  const takenPct =
+    publicState.capacity > 0
+      ? Math.min(100, (publicState.seatsTaken / publicState.capacity) * 100)
+      : 0;
+
   return (
-    <div
-      className="mx-auto max-w-2xl p-4 sm:p-8"
-      style={brandColor ? ({ "--brand": brandColor } as CSSProperties) : undefined}
-    >
-      <TrackingPixels
-        metaPixelId={event.metaPixelId}
-        googleAnalyticsId={event.googleAnalyticsId}
-        gtmId={event.gtmId}
-      />
+    <div style={brandColor ? ({ "--brand": brandColor } as CSSProperties) : undefined}>
+      {/* Translucent sticky chrome: a persistent home link + CTA so the page
+          is never a wayfinding dead-end and tickets are always one tap away. */}
+      <header className="sticky top-0 z-30 border-b border-border/50 bg-background/70 backdrop-blur-md supports-[backdrop-filter]:bg-background/60">
+        <div className="mx-auto flex h-14 max-w-2xl items-center justify-between gap-3 px-4 sm:px-8">
+          <Link to="/" className="text-sm font-semibold tracking-tight">
+            Passline
+          </Link>
+          <Button asChild size="sm">
+            <a href="#get-tickets">{headerCta}</a>
+          </Button>
+        </div>
+      </header>
 
-      {content?.coverImageUrl && (
-        <img
-          src={content.coverImageUrl}
-          alt={content.coverImageAlt || stripHtml(event.title)}
-          loading="lazy"
-          className="mb-6 max-h-80 w-full max-w-full rounded-lg object-cover"
+      <div className="mx-auto max-w-2xl p-4 sm:p-8">
+        <TrackingPixels
+          metaPixelId={event.metaPixelId}
+          googleAnalyticsId={event.googleAnalyticsId}
+          gtmId={event.gtmId}
         />
-      )}
 
-      {/* Authors may embed inline <i>/<em>/<br>/<strong> in the title. */}
-      <h1
-        className="text-2xl font-semibold sm:text-3xl"
-        style={brandColor ? { color: "var(--brand)" } : undefined}
-        dangerouslySetInnerHTML={{ __html: event.title }}
-      />
-      <p className="mt-2 text-sm text-muted-foreground">
-        {formatEventDateRange(event.startsAt, event.endsAt)}
-      </p>
-      <p className="text-sm text-muted-foreground">{event.location}</p>
-      <p className="mt-4 text-sm whitespace-pre-line">{event.description}</p>
+        {content?.coverImageUrl && (
+          <div className="mb-6 overflow-hidden rounded-2xl shadow-sm ring-1 ring-border/60">
+            <img
+              src={content.coverImageUrl}
+              alt={content.coverImageAlt || stripHtml(event.title)}
+              loading="lazy"
+              className="max-h-80 w-full max-w-full object-cover"
+            />
+          </div>
+        )}
+
+        {/* Brand colour used as a safe accent rule, never as the title text
+            colour (arbitrary organizer hex fails contrast on the page bg). */}
+        {brandColor && (
+          <div className="mb-3 h-1 w-12 rounded-full" style={{ backgroundColor: "var(--brand)" }} />
+        )}
+        {/* Authors may embed inline <i>/<em>/<br>/<strong> in the title. */}
+        <h1
+          className="text-2xl font-semibold tracking-tight text-balance sm:text-3xl"
+          dangerouslySetInnerHTML={{ __html: event.title }}
+        />
+        <p className="mt-2 text-sm text-muted-foreground">
+          {formatEventDateRange(event.startsAt, event.endsAt)}
+        </p>
+        <p className="text-sm text-muted-foreground">{event.location}</p>
+        <p className="mt-4 text-sm whitespace-pre-line">{event.description}</p>
 
       {embedSrc && (
         <div className="relative mt-6 aspect-video w-full overflow-hidden rounded-lg bg-muted">
@@ -308,23 +339,45 @@ function EventDetails({ slug, event }: { slug: string; event: Doc<"events"> }) {
         </section>
       )}
 
-      <p className="mt-6 text-sm font-medium">
-        {publicState.seatsTaken} of {publicState.capacity} spots taken
-      </p>
-
-      <div className="mt-6">
-        {ticketTypes.length > 0 ? (
-          <Checkout event={event} />
-        ) : (
-          <div className="max-w-sm">
-            <RsvpForm
-              slug={slug}
-              isFull={isFull}
-              ctaLabel={content?.ctaLabel}
-              accentColor={brandColor}
+        {/* Scarcity is the product's emotional hook — render it as a live
+            meter, not a line of grey text. The fill eases as seats sell
+            (the query is reactive), and turns destructive at capacity. */}
+        <div className="mt-8">
+          <div className="flex items-baseline justify-between text-sm">
+            <span className="font-medium">
+              {isFull
+                ? "Sold out"
+                : `${remaining} spot${remaining === 1 ? "" : "s"} left`}
+            </span>
+            <span className="tabular-nums text-muted-foreground">
+              {publicState.seatsTaken} / {publicState.capacity}
+            </span>
+          </div>
+          <div className="mt-2 h-2 w-full overflow-hidden rounded-full bg-muted">
+            <div
+              className="h-full rounded-full transition-[width] duration-700 ease-out motion-reduce:transition-none"
+              style={{
+                width: `${takenPct}%`,
+                backgroundColor: isFull ? "var(--destructive)" : (brandColor ?? "var(--primary)"),
+              }}
             />
           </div>
-        )}
+        </div>
+
+        <div id="get-tickets" className="mt-6 scroll-mt-20">
+          {ticketTypes.length > 0 ? (
+            <Checkout event={event} />
+          ) : (
+            <div className="max-w-sm">
+              <RsvpForm
+                slug={slug}
+                isFull={isFull}
+                ctaLabel={content?.ctaLabel}
+                accentColor={brandColor}
+              />
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );

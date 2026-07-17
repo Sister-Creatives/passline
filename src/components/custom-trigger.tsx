@@ -13,7 +13,7 @@ export function CustomTrigger({ place }: { place: Place }) {
 	return (
 		<SidebarTrigger
 			className={cn(
-				"transition-opacity duration-0 ease-out motion-reduce:transition-none",
+				"transition-opacity duration-0 ease-out",
 				!sidebarOpen &&
 					place === "navbar" &&
 					"fill-mode-forwards delay-100 duration-300",

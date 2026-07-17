@@ -79,7 +79,7 @@ function MetricChartCard({
     <Card>
       <CardHeader className="flex flex-row items-start justify-between">
         <div className="flex flex-col gap-1">
-          <CardTitle className="font-mono text-2xl tabular-nums">{headline}</CardTitle>
+          <CardTitle className="text-2xl tabular-nums tracking-tight">{headline}</CardTitle>
           <CardDescription className="text-pretty">{description}</CardDescription>
         </div>
         {!isEmpty && deltaPct !== null && (
@@ -132,6 +132,7 @@ function MetricChartCard({
                 dataKey={dataKey}
                 type="natural"
                 fill={`url(#${gradientId})`}
+                isAnimationActive={false}
                 stroke={`var(--color-${dataKey})`}
                 strokeWidth={2}
               />
@@ -150,14 +151,20 @@ function OverviewContent() {
     return (
       <div className="flex flex-col gap-4">
         <Skeleton className="h-8 w-40" />
-        <div className="grid gap-3 lg:grid-cols-3">
-          {Array.from({ length: 3 }).map((_, i) => (
-            <Skeleton key={i} className="h-64 w-full" />
-          ))}
-        </div>
-        <div className="grid gap-3 grid-cols-2 md:grid-cols-5">
+        <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
           {Array.from({ length: 5 }).map((_, i) => (
             <Skeleton key={i} className="h-24 w-full" />
+          ))}
+        </div>
+        <Skeleton className="h-72 w-full" />
+        <div className="grid gap-3 md:grid-cols-2">
+          {Array.from({ length: 2 }).map((_, i) => (
+            <Skeleton key={i} className="h-56 w-full" />
+          ))}
+        </div>
+        <div className="grid gap-3 lg:grid-cols-2">
+          {Array.from({ length: 2 }).map((_, i) => (
+            <Skeleton key={i} className="h-64 w-full" />
           ))}
         </div>
       </div>

@@ -53,7 +53,11 @@ function AttendeesPage() {
         <h1 className="text-2xl font-semibold tracking-tight">Attendees</h1>
         <p className="mt-1 text-sm text-muted-foreground">
           Everyone who has registered across your events.{" "}
-          {rows ? `${rows.length} registrations` : ""}
+          {rows
+            ? q
+              ? `${filtered.length} of ${rows.length} registrations`
+              : `${rows.length} registrations`
+            : ""}
         </p>
       </div>
 
@@ -79,6 +83,15 @@ function AttendeesPage() {
             <EmptyTitle>No attendees yet</EmptyTitle>
             <EmptyDescription>
               Registrations across your events will appear here.
+            </EmptyDescription>
+          </EmptyHeader>
+        </Empty>
+      ) : filtered.length === 0 ? (
+        <Empty className="mt-12">
+          <EmptyHeader>
+            <EmptyTitle>No matching registrations</EmptyTitle>
+            <EmptyDescription>
+              No results for that search. Try a different name, email, or event.
             </EmptyDescription>
           </EmptyHeader>
         </Empty>

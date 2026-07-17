@@ -121,7 +121,7 @@ export function OrdersPanel({ eventId }: { eventId: Id<"events"> }) {
               <TableCell className="text-right tabular-nums">
                 {formatMoney(order.totalCents, order.currency)}
               </TableCell>
-              <TableCell className="text-right text-muted-foreground">
+              <TableCell className="text-right text-muted-foreground tabular-nums">
                 {new Date(order.createdAt).toLocaleDateString()}
               </TableCell>
               <TableCell className="text-right">

@@ -28,7 +28,7 @@ export function StatCard({
             </Delta>
           )}
         </div>
-        <CardTitle className="font-mono text-3xl tabular-nums">{value}</CardTitle>
+        <CardTitle className="text-3xl tabular-nums tracking-tight">{value}</CardTitle>
         {sub && <div className="text-xs text-muted-foreground">{sub}</div>}
       </CardHeader>
       {spark && <Sparkline data={spark} />}

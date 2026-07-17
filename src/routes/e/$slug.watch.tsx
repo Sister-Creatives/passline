@@ -10,7 +10,6 @@ import { api } from "../../../convex/_generated/api";
 import { VirtualHubView, type VirtualHubViewData } from "@/components/VirtualHubView";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Skeleton } from "@/components/ui/skeleton";
 import { Empty, EmptyHeader, EmptyTitle, EmptyDescription } from "@/components/ui/empty";
 import {
   Form,
@@ -83,34 +82,27 @@ function WatchPage() {
         </p>
       </div>
 
-      {isSubmitting ? (
-        <div className="flex flex-col gap-3">
-          <Skeleton className="h-9 w-full" />
-          <Skeleton className="h-9 w-24" />
-        </div>
-      ) : (
-        <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="flex flex-col gap-4">
-            <FormField
-              control={form.control}
-              name="password"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Password</FormLabel>
-                  <FormControl>
-                    <Input type="password" autoComplete="off" autoFocus {...field} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-            <Button type="submit" disabled={isSubmitting} className="w-fit">
-              {isSubmitting && <LoaderCircle className="animate-spin" />}
-              Watch
-            </Button>
-          </form>
-        </Form>
-      )}
+      <Form {...form}>
+        <form onSubmit={form.handleSubmit(onSubmit)} className="flex flex-col gap-4">
+          <FormField
+            control={form.control}
+            name="password"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Password</FormLabel>
+                <FormControl>
+                  <Input type="password" autoComplete="off" autoFocus {...field} />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+          <Button type="submit" disabled={isSubmitting} className="w-fit">
+            {isSubmitting && <LoaderCircle className="animate-spin" />}
+            Watch
+          </Button>
+        </form>
+      </Form>
 
       {denied && !isSubmitting && (
         <Empty>

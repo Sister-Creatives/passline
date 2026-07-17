@@ -79,6 +79,7 @@ export function Checkout({ event }: { event: Doc<"events"> }) {
   const form = useForm<CheckoutFormValues>({
     resolver: zodResolver(buildCheckoutSchema(questions ?? [])),
     defaultValues: { buyerName: "", buyerEmail: "", answers: {} },
+    mode: "onTouched",
   });
 
   if (types === undefined || questions === undefined || sessions === undefined) {
@@ -116,14 +117,10 @@ export function Checkout({ event }: { event: Doc<"events"> }) {
       .filter((t) => (quantities[t._id] ?? 0) > 0)
       .map((t) => ({ ticketTypeId: t._id, quantity: quantities[t._id]! }));
 
-    if (items.length === 0) {
-      toast.error("Select at least one ticket");
-      return;
-    }
-    if (hasSessions && sessionId === "") {
-      toast.error("Choose a session");
-      return;
-    }
+    // Both conditions are surfaced inline and gate the submit button below, so
+    // these are just defensive guards, not the user-facing feedback path.
+    if (items.length === 0) return;
+    if (hasSessions && sessionId === "") return;
 
     const answerList = questions!
       .filter((q) => (values.answers[q._id] ?? "") !== "")
@@ -304,7 +301,19 @@ export function Checkout({ event }: { event: Doc<"events"> }) {
               </span>
               <span className="font-medium">Free</span>
             </div>
-            <Button type="submit" disabled={form.formState.isSubmitting}>
+            {totalTickets === 0 ? (
+              <p className="text-sm text-muted-foreground">Select at least one ticket to continue.</p>
+            ) : hasSessions && sessionId === "" ? (
+              <p className="text-sm text-muted-foreground">Choose a session to continue.</p>
+            ) : null}
+            <Button
+              type="submit"
+              disabled={
+                form.formState.isSubmitting ||
+                totalTickets === 0 ||
+                (hasSessions && sessionId === "")
+              }
+            >
               {form.formState.isSubmitting && <LoaderCircle className="animate-spin" />}
               Complete registration
             </Button>

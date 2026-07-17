@@ -1,4 +1,4 @@
-import { Suspense } from "react";
+import { Suspense, useRef } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { useSuspenseQuery } from "@tanstack/react-query";
 import { convexQuery } from "@convex-dev/react-query";
@@ -8,6 +8,8 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { LoaderCircle } from "lucide-react";
 import { toast } from "sonner";
+
+import { playScanFeedback, signalForResult } from "@/lib/scan-feedback";
 
 import { api } from "../../../convex/_generated/api";
 import type { Id } from "../../../convex/_generated/dataModel";
@@ -60,6 +62,7 @@ function DoorContent({ eventId }: { eventId: Id<"events"> }) {
   // the counters and recent list update live with no manual refetch.
   const { data } = useSuspenseQuery(convexQuery(api.rsvps.getDoorState, { eventId }));
   const checkIn = useMutation(api.rsvps.checkIn);
+  const inputRef = useRef<HTMLInputElement>(null);
 
   const form = useForm<CheckInValues>({
     resolver: zodResolver(checkInSchema),
@@ -69,6 +72,7 @@ function DoorContent({ eventId }: { eventId: Id<"events"> }) {
   async function onSubmit(values: CheckInValues) {
     try {
       const result = await checkIn({ token: values.token.trim() });
+      playScanFeedback(signalForResult(result.status));
       if (result.status === "checked_in") {
         toast.success("Checked in");
       } else if (result.status === "already") {
@@ -78,7 +82,11 @@ function DoorContent({ eventId }: { eventId: Id<"events"> }) {
       }
       form.reset();
     } catch (error) {
+      playScanFeedback("error");
       toast.error(error instanceof Error ? error.message : "Check-in failed");
+    } finally {
+      // Re-pin focus so the next keyboard-wedge scan doesn't drop silently.
+      inputRef.current?.focus();
     }
   }
 
@@ -105,7 +113,15 @@ function DoorContent({ eventId }: { eventId: Id<"events"> }) {
               <FormItem className="flex-1">
                 <FormLabel className="sr-only">Ticket token</FormLabel>
                 <FormControl>
-                  <Input placeholder="Paste or scan ticket token" autoFocus {...field} />
+                  <Input
+                    placeholder="Paste or scan ticket token"
+                    autoFocus
+                    {...field}
+                    ref={(el) => {
+                      field.ref(el);
+                      inputRef.current = el;
+                    }}
+                  />
                 </FormControl>
                 <FormMessage />
               </FormItem>

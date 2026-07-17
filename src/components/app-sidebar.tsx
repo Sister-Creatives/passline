@@ -56,7 +56,7 @@ export function AppSidebar() {
   };
 
   return (
-    <Sidebar collapsible="icon" variant="sidebar" className="group-data-[side=left]:border-r-0">
+    <Sidebar collapsible="icon" variant="sidebar">
       {/* Workspace / org identity -- replaces the static "Passline" wordmark */}
       <SidebarHeader className="h-(--app-header-height,3rem) border-b p-0">
         <NavWorkspace />

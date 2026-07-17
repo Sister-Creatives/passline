@@ -186,6 +186,10 @@ function EventManageContent({ eventId }: { eventId: Id<"events"> }) {
   );
 }
 
+// TODO: Continue button and section-nav links navigate immediately and can
+// silently discard unsaved EventForm edits (formState.isDirty is scoped
+// inside EventForm, not available here). Wire a useBlocker-based confirm
+// prompt once form dirty state is lifted to this level.
 function ContinueFooter({ eventId, section }: { eventId: Id<"events">; section: EventSectionKey }) {
   const editSections = EVENT_SECTIONS.filter((s) => s.group === "edit");
   const index = editSections.findIndex((s) => s.key === section);
@@ -194,7 +198,7 @@ function ContinueFooter({ eventId, section }: { eventId: Id<"events">; section: 
   if (!next) return null;
 
   return (
-    <div className="sticky bottom-0 mt-6 flex justify-end border-t bg-muted py-4 dark:bg-background">
+    <div className="sticky bottom-0 mt-6 flex justify-end border-t border-border/40 bg-background/75 py-4 backdrop-blur-md supports-[backdrop-filter]:bg-background/60">
       <Button asChild>
         <Link to="/events/$id" params={{ id: eventId }} search={{ section: next.key }}>
           Continue
@@ -251,7 +255,7 @@ function DetailsSection({ event, seatsTaken }: { event: EventWithRsvps["event"];
           aria-valuemax={100}
           aria-label="Capacity"
         >
-          <div className="h-full rounded-full bg-primary transition-all" style={{ width: `${capacityPercent}%` }} />
+          <div className="h-full rounded-full bg-primary transition-[width] duration-500 ease-out motion-reduce:transition-none" style={{ width: `${capacityPercent}%` }} />
         </div>
       </div>
       <EventForm event={event} />

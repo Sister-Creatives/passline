@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { convexQuery } from "@convex-dev/react-query";
 import { useMutation } from "convex/react";
@@ -6,7 +6,10 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { toast } from "sonner";
+import { motion } from "motion/react";
 import { ChevronDown, ChevronUp, LoaderCircle, Plus, Trash2 } from "lucide-react";
+
+import { spring } from "@/lib/motion";
 
 import { api } from "../../convex/_generated/api";
 import type { Doc, Id } from "../../convex/_generated/dataModel";
@@ -165,6 +168,10 @@ function SessionForm({ eventId, onDone }: { eventId: Id<"events">; onDone: () =>
   );
 }
 
+// Motion-capable table row so reorders FLIP-animate to their new slot instead
+// of teleporting. Keys stay stable (session._id) so Motion can track each row.
+const MotionTableRow = motion.create(TableRow);
+
 /**
  * Sessions tab (F13.4): a Table of the event's sessions (date range,
  * capacity, sold, remaining), a create Dialog, up/down reorder, and
@@ -179,17 +186,32 @@ export function SessionsPanel({ eventId }: { eventId: Id<"events"> }) {
   const remove = useMutation(api.eventSessions.remove);
   const reorder = useMutation(api.eventSessions.reorder);
   const [creating, setCreating] = useState(false);
+  // Optimistic order: applied on the click frame so the row moves immediately,
+  // then cleared once the server confirms (or reverted on failure).
+  const [pendingOrder, setPendingOrder] = useState<Array<Id<"eventSessions">> | null>(null);
 
   const rows = sessions ?? [];
+  const orderedRows = useMemo(() => {
+    if (!pendingOrder) return rows;
+    const byId = new Map(rows.map((s) => [s._id, s]));
+    const next = pendingOrder
+      .map((id) => byId.get(id))
+      .filter((s): s is (typeof rows)[number] => Boolean(s));
+    // Fall back to server order if membership changed (add/delete elsewhere).
+    return next.length === rows.length ? next : rows;
+  }, [rows, pendingOrder]);
 
   async function move(index: number, direction: -1 | 1) {
-    const ids = rows.map((s) => s._id);
+    const ids = orderedRows.map((s) => s._id);
     const target = index + direction;
     if (target < 0 || target >= ids.length) return;
     [ids[index], ids[target]] = [ids[target], ids[index]];
+    setPendingOrder(ids);
     try {
       await reorder({ eventId, orderedIds: ids });
+      setPendingOrder(null);
     } catch (error) {
+      setPendingOrder(null);
       toast.error(error instanceof Error ? error.message : "Failed to reorder sessions");
     }
   }
@@ -265,8 +287,8 @@ export function SessionsPanel({ eventId }: { eventId: Id<"events"> }) {
           </TableRow>
         </TableHeader>
         <TableBody>
-          {rows.map((session: Doc<"eventSessions">, index: number) => (
-            <TableRow key={session._id}>
+          {orderedRows.map((session: Doc<"eventSessions">, index: number) => (
+            <MotionTableRow key={session._id} layout transition={spring.snappy}>
               <TableCell className="font-medium">
                 {new Date(session.startsAt).toLocaleString()} &ndash;{" "}
                 {new Date(session.endsAt).toLocaleString()}
@@ -292,7 +314,7 @@ export function SessionsPanel({ eventId }: { eventId: Id<"events"> }) {
                     variant="ghost"
                     size="icon-sm"
                     onClick={() => move(index, 1)}
-                    disabled={index === rows.length - 1}
+                    disabled={index === orderedRows.length - 1}
                     aria-label="Move down"
                   >
                     <ChevronDown />
@@ -326,7 +348,7 @@ export function SessionsPanel({ eventId }: { eventId: Id<"events"> }) {
                   </AlertDialog>
                 </div>
               </TableCell>
-            </TableRow>
+            </MotionTableRow>
           ))}
         </TableBody>
       </Table>

@@ -189,7 +189,7 @@ function AnalyticsContent({
         <Card>
           <CardHeader>
             <CardDescription>Net revenue</CardDescription>
-            <CardTitle className="text-2xl tabular-nums">
+            <CardTitle className="text-2xl tabular-nums tracking-tight">
               {formatMoney(revenue.netPayoutCents, currency)}
             </CardTitle>
           </CardHeader>
@@ -204,7 +204,7 @@ function AnalyticsContent({
           <CardContent>
             <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
               <div
-                className="h-full rounded-full bg-primary transition-all"
+                className="h-full rounded-full bg-primary transition-[width] duration-500 ease-out motion-reduce:transition-none"
                 style={{ width: `${capacityPercent}%` }}
               />
             </div>
@@ -220,7 +220,7 @@ function AnalyticsContent({
           <CardContent>
             <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
               <div
-                className="h-full rounded-full bg-primary transition-all"
+                className="h-full rounded-full bg-primary transition-[width] duration-500 ease-out motion-reduce:transition-none"
                 style={{ width: `${checkedInPercent}%` }}
               />
             </div>
@@ -271,7 +271,7 @@ function AnalyticsContent({
               <ChartTooltip
                 content={
                   <ChartTooltipContent
-                    indicator="dot"
+                    indicator="dashed"
                     labelFormatter={(value) => formatDayLabel(String(value))}
                     formatter={(value, name) => (
                       <div className="flex w-full items-center justify-between gap-4">
@@ -298,7 +298,7 @@ function AnalyticsContent({
                 name={chartConfig.revenue.label}
                 stroke="var(--color-revenue)"
                 strokeWidth={2}
-                type="linear"
+                type="natural"
               />
             </AreaChart>
           </ChartContainer>

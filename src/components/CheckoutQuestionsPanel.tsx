@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { convexQuery } from "@convex-dev/react-query";
 import { useMutation } from "convex/react";
@@ -6,7 +6,10 @@ import { useFieldArray, useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { toast } from "sonner";
+import { motion } from "motion/react";
 import { ChevronDown, ChevronUp, Plus, Trash2, X } from "lucide-react";
+
+import { spring } from "@/lib/motion";
 
 import { api } from "../../convex/_generated/api";
 import type { Doc, Id } from "../../convex/_generated/dataModel";
@@ -206,6 +209,10 @@ function QuestionForm({ eventId, onDone }: { eventId: Id<"events">; onDone: () =
   );
 }
 
+// Motion-capable table row so reorders FLIP-animate to their new slot instead
+// of teleporting. Keys stay stable (question._id) so Motion can track each row.
+const MotionTableRow = motion.create(TableRow);
+
 /**
  * Checkout questions tab: a Table of the event's questions (label, kind
  * Badge, required, option count), a create Dialog, up/down reorder, and
@@ -219,15 +226,32 @@ export function CheckoutQuestionsPanel({ eventId }: { eventId: Id<"events"> }) {
   const remove = useMutation(api.checkoutQuestions.remove);
   const reorder = useMutation(api.checkoutQuestions.reorder);
   const [creating, setCreating] = useState(false);
+  // Optimistic order: applied on the click frame so the row moves immediately,
+  // then cleared once the server confirms (or reverted on failure).
+  const [pendingOrder, setPendingOrder] = useState<Array<Id<"checkoutQuestions">> | null>(null);
+
+  const rows = questions ?? [];
+  const orderedRows = useMemo(() => {
+    if (!pendingOrder) return rows;
+    const byId = new Map(rows.map((q) => [q._id, q]));
+    const next = pendingOrder
+      .map((id) => byId.get(id))
+      .filter((q): q is (typeof rows)[number] => Boolean(q));
+    // Fall back to server order if membership changed (add/delete elsewhere).
+    return next.length === rows.length ? next : rows;
+  }, [rows, pendingOrder]);
 
   async function move(index: number, direction: -1 | 1) {
-    const ids = rows.map((q) => q._id);
+    const ids = orderedRows.map((q) => q._id);
     const target = index + direction;
     if (target < 0 || target >= ids.length) return;
     [ids[index], ids[target]] = [ids[target], ids[index]];
+    setPendingOrder(ids);
     try {
       await reorder({ eventId, orderedIds: ids });
+      setPendingOrder(null);
     } catch (error) {
+      setPendingOrder(null);
       toast.error(error instanceof Error ? error.message : "Failed to reorder questions");
     }
   }
@@ -250,8 +274,6 @@ export function CheckoutQuestionsPanel({ eventId }: { eventId: Id<"events"> }) {
       </div>
     );
   }
-
-  const rows = questions ?? [];
 
   // Rendered above both the table and the empty state so "New question" is
   // always reachable, even with zero questions.
@@ -304,8 +326,8 @@ export function CheckoutQuestionsPanel({ eventId }: { eventId: Id<"events"> }) {
           </TableRow>
         </TableHeader>
         <TableBody>
-          {rows.map((question: Doc<"checkoutQuestions">, index) => (
-            <TableRow key={question._id}>
+          {orderedRows.map((question: Doc<"checkoutQuestions">, index) => (
+            <MotionTableRow key={question._id} layout transition={spring.snappy}>
               <TableCell className="font-medium">
                 {question.label}
                 {!question.active ? (
@@ -336,7 +358,7 @@ export function CheckoutQuestionsPanel({ eventId }: { eventId: Id<"events"> }) {
                     variant="ghost"
                     size="icon-sm"
                     onClick={() => move(index, 1)}
-                    disabled={index === rows.length - 1}
+                    disabled={index === orderedRows.length - 1}
                     aria-label="Move down"
                   >
                     <ChevronDown />
@@ -365,7 +387,7 @@ export function CheckoutQuestionsPanel({ eventId }: { eventId: Id<"events"> }) {
                   </AlertDialog>
                 </div>
               </TableCell>
-            </TableRow>
+            </MotionTableRow>
           ))}
         </TableBody>
       </Table>
