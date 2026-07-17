@@ -105,7 +105,10 @@ function SessionForm({ eventId, onDone }: { eventId: Id<"events">; onDone: () =>
   return (
     <Form {...form}>
       <form onSubmit={form.handleSubmit(onSubmit)} className="flex flex-col gap-4">
-        <div className="grid gap-4 sm:grid-cols-2">
+        {/* Stacked, not side by side: two DateTimePickers (each a date button
+            plus a fixed 124px time button) do not fit two-up in this narrow
+            dialog and overflow their grid tracks, overlapping each other. */}
+        <div className="grid gap-4">
           <FormField
             control={form.control}
             name="startsAt"
