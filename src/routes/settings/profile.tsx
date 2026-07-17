@@ -7,6 +7,7 @@ import { toast } from "sonner";
 
 import { api } from "../../../convex/_generated/api";
 import { DashboardLayout } from "@/components/DashboardLayout";
+import { ImageDropzone } from "@/components/ImageDropzone";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -19,16 +20,18 @@ export const Route = createFileRoute("/settings/profile")({ component: SettingsP
 function SettingsProfilePage() {
   const { data: me } = useQuery(convexQuery(api.organizers.getMe, {}));
   const updateProfile = useMutation(api.organizers.updateProfile);
+  const generateUploadUrl = useMutation(api.files.generateUploadUrl);
+  const setImage = useMutation(api.organizers.setImage);
 
   const [name, setName] = React.useState("");
-  const [image, setImage] = React.useState("");
   const [saving, setSaving] = React.useState(false);
 
   React.useEffect(() => {
     if (!me) return;
     setName(me.name ?? "");
-    setImage(me.image ?? "");
   }, [me]);
+
+  const logoUrl = me?.image ?? undefined;
 
   async function save() {
     setSaving(true);
@@ -75,7 +78,7 @@ function SettingsProfilePage() {
         <Card>
           <CardContent className="space-y-5 pt-6">
             <Avatar className="size-14 rounded-lg">
-              {image ? <AvatarImage src={image} /> : null}
+              {logoUrl ? <AvatarImage src={logoUrl} /> : null}
               <AvatarFallback className="rounded-lg text-lg">
                 {(name || "?").charAt(0).toUpperCase()}
               </AvatarFallback>
@@ -87,13 +90,27 @@ function SettingsProfilePage() {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="logo">Logo URL</Label>
-              <Input
-                id="logo"
-                value={image}
-                onChange={(e) => setImage(e.target.value)}
-                placeholder="https://…"
+              <Label>Logo</Label>
+              <ImageDropzone
+                getUploadUrl={() => generateUploadUrl({})}
+                onUploaded={async (storageId) => {
+                  await setImage({ storageId });
+                  toast.success("Logo updated");
+                }}
+                label={logoUrl ? "Drop a new image to replace" : "Drag an image here, or click to upload"}
               />
+              {logoUrl ? (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={async () => {
+                    await setImage({ storageId: null });
+                    toast.success("Logo removed");
+                  }}
+                >
+                  Remove logo
+                </Button>
+              ) : null}
               <p className="text-xs text-muted-foreground">Shown on your public event pages.</p>
             </div>
 
