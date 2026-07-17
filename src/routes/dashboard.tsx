@@ -3,7 +3,7 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { convexQuery } from "@convex-dev/react-query";
 import { PlusIcon } from "lucide-react";
-import { Area, AreaChart, CartesianGrid, XAxis } from "recharts";
+import { Area, AreaChart, CartesianGrid, Label, Pie, PieChart, XAxis } from "recharts";
 
 import { api } from "../../convex/_generated/api";
 import { DashboardLayout } from "@/components/DashboardLayout";
@@ -22,6 +22,8 @@ import {
 import {
   type ChartConfig,
   ChartContainer,
+  ChartLegend,
+  ChartLegendContent,
   ChartTooltip,
   ChartTooltipContent,
 } from "@/components/ui/chart";
@@ -130,13 +132,88 @@ function MetricChartCard({
               />
               <Area
                 dataKey={dataKey}
-                type="natural"
+                type="monotone"
                 fill={`url(#${gradientId})`}
                 isAnimationActive={false}
                 stroke={`var(--color-${dataKey})`}
                 strokeWidth={2}
               />
             </AreaChart>
+          </ChartContainer>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+// Two categorical slices. chart-1 (light amber) vs chart-3 (dark amber): a large
+// lightness delta, which stays distinguishable under colour-vision deficiency
+// (CVD affects hue, not lightness), and the legend means identity is never
+// colour-alone.
+const eventsByStatusConfig = {
+  published: { label: "Published", color: "var(--chart-1)" },
+  draft: { label: "Draft", color: "var(--chart-3)" },
+} satisfies ChartConfig;
+
+/** Donut of the organizer's events split by publish status, with the total in
+ *  the hole. A part-to-whole snapshot to sit alongside the trend cards. */
+function EventsByStatusCard({ published, draft }: { published: number; draft: number }) {
+  const total = published + draft;
+  const data = [
+    { status: "published", value: published, fill: "var(--color-published)" },
+    { status: "draft", value: draft, fill: "var(--color-draft)" },
+  ];
+  return (
+    <Card className="flex flex-col">
+      <CardHeader>
+        <CardTitle className="text-base">Events by status</CardTitle>
+        <CardDescription>Published vs draft</CardDescription>
+      </CardHeader>
+      <CardContent className="flex flex-1 items-center justify-center">
+        {total === 0 ? (
+          <p className="text-sm text-muted-foreground">No events yet.</p>
+        ) : (
+          <ChartContainer config={eventsByStatusConfig} className="mx-auto aspect-square max-h-[220px] w-full">
+            <PieChart>
+              <ChartTooltip cursor={false} content={<ChartTooltipContent nameKey="status" hideLabel />} />
+              <Pie
+                data={data}
+                dataKey="value"
+                nameKey="status"
+                innerRadius={55}
+                outerRadius={85}
+                stroke="var(--card)"
+                strokeWidth={2}
+                paddingAngle={2}
+              >
+                <Label
+                  content={({ viewBox }) => {
+                    if (viewBox && "cx" in viewBox && "cy" in viewBox) {
+                      return (
+                        <text x={viewBox.cx} y={viewBox.cy} textAnchor="middle" dominantBaseline="middle">
+                          <tspan
+                            x={viewBox.cx}
+                            y={viewBox.cy}
+                            className="fill-foreground text-2xl font-bold tabular-nums"
+                          >
+                            {total}
+                          </tspan>
+                          <tspan
+                            x={viewBox.cx}
+                            y={(viewBox.cy ?? 0) + 20}
+                            className="fill-muted-foreground text-xs"
+                          >
+                            Events
+                          </tspan>
+                        </text>
+                      );
+                    }
+                    return null;
+                  }}
+                />
+              </Pie>
+              <ChartLegend content={<ChartLegendContent nameKey="status" />} />
+            </PieChart>
           </ChartContainer>
         )}
       </CardContent>
@@ -157,8 +234,8 @@ function OverviewContent() {
           ))}
         </div>
         <Skeleton className="h-72 w-full" />
-        <div className="grid gap-3 md:grid-cols-2">
-          {Array.from({ length: 2 }).map((_, i) => (
+        <div className="grid gap-3 md:grid-cols-3">
+          {Array.from({ length: 3 }).map((_, i) => (
             <Skeleton key={i} className="h-56 w-full" />
           ))}
         </div>
@@ -257,7 +334,7 @@ function OverviewContent() {
         heightClass="h-72"
       />
 
-      <div className="grid gap-3 md:grid-cols-2">
+      <div className="grid gap-3 md:grid-cols-3">
         <MetricChartCard
           headline={formatInteger(deltas.checkIns.current)}
           description="Check-ins · last 30 days"
@@ -278,6 +355,7 @@ function OverviewContent() {
           isEmpty={sales.revenueCents === 0}
           emptyLabel="No sales yet."
         />
+        <EventsByStatusCard published={events.published} draft={events.draft} />
       </div>
 
       <div className="grid gap-3 lg:grid-cols-2">
