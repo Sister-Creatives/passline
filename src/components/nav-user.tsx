@@ -39,11 +39,11 @@ export function NavUser() {
             <SidebarMenuButton
               size="lg"
               tooltip={name}
-              className="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
+              className="group-data-[collapsible=icon]:mx-auto data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
             >
-              <Avatar className="size-8 shrink-0 rounded-md">
-                {me?.image ? <AvatarImage src={me.image} className="rounded-md" /> : null}
-                <AvatarFallback className="rounded-md bg-primary text-xs font-semibold text-primary-foreground">
+              <Avatar className="size-8 shrink-0">
+                {me?.image ? <AvatarImage src={me.image} className="object-contain p-0.5" /> : null}
+                <AvatarFallback className="bg-primary text-xs font-semibold text-primary-foreground">
                   {name.charAt(0).toUpperCase()}
                 </AvatarFallback>
               </Avatar>

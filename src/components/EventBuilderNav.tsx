@@ -49,7 +49,7 @@ export function EventBuilderNav({
             : group.items.some((s) => s.key === activeSection);
         return (
           <Collapsible key={group.key} defaultOpen={defaultOpen} className="group/collapsible">
-            <CollapsibleTrigger className="flex w-full items-center justify-between rounded-md px-2 py-1 text-xs font-medium uppercase text-muted-foreground hover:bg-accent">
+            <CollapsibleTrigger className="flex h-8 w-full items-center justify-between rounded-md px-2 text-xs font-medium uppercase text-muted-foreground hover:bg-accent">
               <span>{group.label}</span>
               <ChevronRight className="size-3.5 transition-transform duration-200 ease-out group-data-[state=open]/collapsible:rotate-90 motion-reduce:transition-none" />
             </CollapsibleTrigger>

@@ -66,10 +66,45 @@ function EventManagePage() {
       <Suspense
         fallback={
           <div className="flex flex-col gap-6 p-4 md:p-6 lg:flex-row lg:gap-8">
-            <Skeleton className="hidden h-96 w-60 shrink-0 lg:block" />
-            <div className="flex min-w-0 flex-1 flex-col gap-3 lg:max-w-5xl">
-              <Skeleton className="h-9 w-64" />
-              <Skeleton className="h-64 w-full" />
+            <Skeleton className="h-40 w-full shrink-0 lg:h-96 lg:w-60" />
+            <div className="min-w-0 flex-1 lg:max-w-5xl">
+              <div className="flex flex-wrap items-center justify-between gap-4">
+                <div>
+                  <Skeleton className="h-8 w-64" />
+                  <Skeleton className="mt-2 h-5 w-20" />
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <Skeleton className="h-7 w-20" />
+                  <Skeleton className="h-7 w-20" />
+                  <Skeleton className="h-7 w-24" />
+                  <Skeleton className="h-7 w-20" />
+                </div>
+              </div>
+              <div className="mt-6 flex flex-col gap-6">
+                <Skeleton className="h-6 w-40" />
+                <div>
+                  <div className="flex items-center justify-between">
+                    <Skeleton className="h-4 w-20" />
+                    <Skeleton className="h-4 w-28" />
+                  </div>
+                  <Skeleton className="mt-2 h-2 w-full rounded-full" />
+                </div>
+                <div className="flex max-w-2xl flex-col gap-5">
+                  <div className="space-y-2">
+                    <Skeleton className="h-4 w-16" />
+                    <Skeleton className="h-9 w-full" />
+                  </div>
+                  <div className="space-y-2">
+                    <Skeleton className="h-4 w-24" />
+                    <Skeleton className="h-24 w-full" />
+                  </div>
+                  <div className="space-y-2">
+                    <Skeleton className="h-4 w-20" />
+                    <Skeleton className="h-9 w-full" />
+                  </div>
+                  <Skeleton className="h-9 w-32" />
+                </div>
+              </div>
             </div>
           </div>
         }
@@ -331,7 +366,7 @@ function AttendeesSection({ event, rsvps }: { event: EventWithRsvps["event"]; rs
           onValueChange={(v) => { if (v) { setStatus(v as AttendeeStatusFilter); setPage(1); } }}
         >
           {FILTERS.map((f) => (
-            <ToggleGroupItem key={f.value} value={f.value}>
+            <ToggleGroupItem key={f.value} value={f.value} className="h-9">
               {f.label} <span className="ml-1 tabular-nums text-muted-foreground">{counts[f.value]}</span>
             </ToggleGroupItem>
           ))}
@@ -341,7 +376,7 @@ function AttendeesSection({ event, rsvps }: { event: EventWithRsvps["event"]; rs
             value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }}
             placeholder="Search name or email" className="w-56"
           />
-          <Button variant="outline" size="sm" onClick={handleExportCsv}><Download /> Export CSV</Button>
+          <Button variant="outline" onClick={handleExportCsv}><Download /> Export CSV</Button>
         </div>
       </div>
 

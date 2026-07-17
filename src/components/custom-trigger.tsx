@@ -13,12 +13,13 @@ export function CustomTrigger({ place }: { place: Place }) {
 	return (
 		<SidebarTrigger
 			className={cn(
-				"transition-opacity duration-0 ease-out",
-				!sidebarOpen &&
-					place === "navbar" &&
-					"fill-mode-forwards delay-100 duration-300",
-				sidebarOpen && place === "navbar" && "pointer-events-none opacity-0",
-				!sidebarOpen && place === "sidebar" && "pointer-events-none opacity-0"
+				"transition-opacity duration-200 ease-out",
+				// The navbar trigger stays visible in both states so there's always an
+				// obvious toggle. The sidebar-placed variant (unused now that
+				// SidebarRail owns the edge-collapse affordance) fades with state.
+				place === "sidebar" &&
+					!sidebarOpen &&
+					"pointer-events-none opacity-0"
 			)}
 		/>
 	);
