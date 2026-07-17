@@ -66,10 +66,23 @@ function EventManagePage() {
       <Suspense
         fallback={
           <div className="flex flex-col gap-6 p-4 md:p-6 lg:flex-row lg:gap-8">
-            <Skeleton className="hidden h-96 w-60 shrink-0 lg:block" />
-            <div className="flex min-w-0 flex-1 flex-col gap-3 lg:max-w-5xl">
-              <Skeleton className="h-9 w-64" />
-              <Skeleton className="h-64 w-full" />
+            <Skeleton className="h-40 w-full shrink-0 lg:h-96 lg:w-60" />
+            <div className="min-w-0 flex-1 lg:max-w-5xl">
+              <div className="flex flex-wrap items-center justify-between gap-4">
+                <div>
+                  <Skeleton className="h-8 w-64" />
+                  <Skeleton className="mt-2 h-5 w-20" />
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <Skeleton className="h-7 w-20" />
+                  <Skeleton className="h-7 w-20" />
+                  <Skeleton className="h-7 w-24" />
+                  <Skeleton className="h-7 w-20" />
+                </div>
+              </div>
+              <div className="mt-6">
+                <Skeleton className="h-64 w-full" />
+              </div>
             </div>
           </div>
         }
