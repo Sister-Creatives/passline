@@ -17,6 +17,7 @@ import {
   SidebarMenuSub,
   SidebarMenuSubButton,
   SidebarMenuSubItem,
+  SidebarRail,
 } from "@/components/ui/sidebar";
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
@@ -164,6 +165,9 @@ export function AppSidebar() {
       <SidebarFooter>
         <NavUser />
       </SidebarFooter>
+      {/* Border-edge toggle: a persistent, discoverable way to collapse/expand
+          the sidebar (the navbar trigger stays visible too). */}
+      <SidebarRail />
     </Sidebar>
   );
 }
