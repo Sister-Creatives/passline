@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { convexQuery } from "@convex-dev/react-query";
 import { useMutation } from "convex/react";
@@ -6,6 +7,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { toast } from "sonner";
 import { Plus, X } from "lucide-react";
+import { Reorder } from "motion/react";
 
 import { api } from "../../convex/_generated/api";
 import type { Doc, Id } from "../../convex/_generated/dataModel";
@@ -56,6 +58,7 @@ type OrganizerEventContent = {
   agenda: Doc<"eventContent">["agenda"];
   speakers: Doc<"eventContent">["speakers"];
   faqs: Doc<"eventContent">["faqs"];
+  gallery?: { storageId: Id<"_storage">; url: string; alt?: string }[];
 };
 
 function toFormValues(content: OrganizerEventContent): PageFormValues {
@@ -295,6 +298,95 @@ function FaqsEditor({ control }: { control: Control<PageFormValues> }) {
 }
 
 /**
+ * Reorderable gallery editor: drag to reorder, edit alt text, remove, upload
+ * (up to 8). Reorder/remove/add persist immediately via `setGallery`; alt
+ * text is kept as a local draft (seeded from `gallery`, re-synced only when
+ * the persisted content actually changes) so a background query update
+ * mid-edit can't clobber in-progress keystrokes, and persists on blur.
+ */
+function GalleryEditor({
+  eventId,
+  gallery,
+}: {
+  eventId: Id<"events">;
+  gallery: { storageId: Id<"_storage">; url: string; alt?: string }[];
+}) {
+  const setGallery = useMutation(api.eventContent.setGallery);
+  const [altDrafts, setAltDrafts] = useState<Record<string, string>>({});
+
+  const galleryKey = gallery.map((g) => `${g.storageId}:${g.alt ?? ""}`).join("|");
+  useEffect(() => {
+    setAltDrafts(Object.fromEntries(gallery.map((g) => [g.storageId, g.alt ?? ""])));
+    // galleryKey is a content-derived fingerprint; re-sync only on real data changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [galleryKey]);
+
+  async function persist(next: { storageId: Id<"_storage">; alt?: string }[]) {
+    try {
+      await setGallery({ eventId, images: next.map((g) => ({ storageId: g.storageId, alt: g.alt })) });
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to update gallery");
+    }
+  }
+
+  return (
+    <div className="flex flex-col gap-4">
+      <Reorder.Group
+        axis="y"
+        values={gallery}
+        onReorder={(next) => void persist(next)}
+        className="flex flex-col gap-2"
+      >
+        {gallery.map((g) => (
+          <Reorder.Item key={g.storageId} value={g} className="flex items-center gap-3 rounded-lg border p-2">
+            {g.url ? (
+              <img src={g.url} alt="" className="size-16 shrink-0 rounded object-cover" />
+            ) : (
+              <div className="flex size-16 shrink-0 items-center justify-center rounded bg-muted text-xs text-muted-foreground">
+                …
+              </div>
+            )}
+            <Input
+              placeholder="Alt text (optional)"
+              value={altDrafts[g.storageId] ?? ""}
+              onChange={(e) => setAltDrafts((prev) => ({ ...prev, [g.storageId]: e.target.value }))}
+              onBlur={() =>
+                void persist(
+                  gallery.map((x) => ({
+                    storageId: x.storageId,
+                    alt: x.storageId === g.storageId ? altDrafts[g.storageId] || undefined : x.alt,
+                  })),
+                )
+              }
+              className="flex-1"
+            />
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-sm"
+              onClick={() => void persist(gallery.filter((x) => x.storageId !== g.storageId))}
+              aria-label="Remove image"
+            >
+              <X />
+            </Button>
+          </Reorder.Item>
+        ))}
+      </Reorder.Group>
+      {gallery.length < 8 ? (
+        <ImageDropzone
+          eventId={eventId}
+          onUploaded={async (storageId) => {
+            await persist([...gallery.map((g) => ({ storageId: g.storageId, alt: g.alt })), { storageId, alt: undefined }]);
+          }}
+        />
+      ) : (
+        <p className="text-sm text-muted-foreground">Gallery is full (8 images)</p>
+      )}
+    </div>
+  );
+}
+
+/**
  * The page/branding form itself, prefilled from `initial`. Rendered only
  * once the initial values have loaded, so defaultValues are always correct
  * on mount (mirrors EventForm's edit-mode prefill / MarketingPanel's
@@ -427,6 +519,15 @@ function EventPageForm({
                 </FormItem>
               )}
             />
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Gallery</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <GalleryEditor eventId={eventId} gallery={initial.gallery ?? []} />
           </CardContent>
         </Card>
 
