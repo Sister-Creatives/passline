@@ -258,7 +258,7 @@ function AnalyticsContent({
                 tickFormatter={formatDayLabel}
                 tickLine={false}
                 tickMargin={8}
-                label={{ value: "Date", position: "insideBottom", offset: -4 }}
+                minTickGap={24}
               />
               <YAxis
                 axisLine={false}
@@ -266,7 +266,6 @@ function AnalyticsContent({
                 tickMargin={8}
                 width={72}
                 tickFormatter={(value: number) => formatMoney(value, currency)}
-                label={{ value: "Revenue", angle: -90, position: "insideLeft" }}
               />
               <ChartTooltip
                 content={
@@ -298,7 +297,7 @@ function AnalyticsContent({
                 name={chartConfig.revenue.label}
                 stroke="var(--color-revenue)"
                 strokeWidth={2}
-                type="natural"
+                type="monotone"
               />
             </AreaChart>
           </ChartContainer>
