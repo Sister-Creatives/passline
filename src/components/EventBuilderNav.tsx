@@ -51,24 +51,26 @@ export function EventBuilderNav({
           <Collapsible key={group.key} defaultOpen={defaultOpen} className="group/collapsible">
             <CollapsibleTrigger className="flex w-full items-center justify-between rounded-md px-2 py-1 text-xs font-medium uppercase text-muted-foreground hover:bg-accent">
               <span>{group.label}</span>
-              <ChevronRight className="size-3.5 transition-transform group-data-[state=open]/collapsible:rotate-90" />
+              <ChevronRight className="size-3.5 transition-transform duration-200 ease-out group-data-[state=open]/collapsible:rotate-90 motion-reduce:transition-none" />
             </CollapsibleTrigger>
-            <CollapsibleContent className="mt-1 flex flex-col">
-              {group.items.map((s) => (
-                <Link
-                  key={s.key}
-                  to="/events/$id"
-                  params={{ id: eventId }}
-                  search={{ section: s.key }}
-                  className={cn(
-                    "flex items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-accent",
-                    s.key === activeSection && "bg-accent font-medium",
-                  )}
-                >
-                  {group.key === "edit" ? <StatusGlyph status={sectionStatus[s.key]} /> : null}
-                  <span>{s.label}</span>
-                </Link>
-              ))}
+            <CollapsibleContent className="overflow-hidden data-[state=open]:animate-collapsible-down data-[state=closed]:animate-collapsible-up motion-reduce:animate-none">
+              <div className="flex flex-col pt-1">
+                {group.items.map((s) => (
+                  <Link
+                    key={s.key}
+                    to="/events/$id"
+                    params={{ id: eventId }}
+                    search={{ section: s.key }}
+                    className={cn(
+                      "flex items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-accent",
+                      s.key === activeSection && "bg-accent font-medium",
+                    )}
+                  >
+                    {group.key === "edit" ? <StatusGlyph status={sectionStatus[s.key]} /> : null}
+                    <span>{s.label}</span>
+                  </Link>
+                ))}
+              </div>
             </CollapsibleContent>
           </Collapsible>
         );
