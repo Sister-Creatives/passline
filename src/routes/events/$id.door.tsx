@@ -121,7 +121,10 @@ function DoorContent({ eventId }: { eventId: Id<"events"> }) {
       />
 
       <Form {...form}>
-        <form onSubmit={form.handleSubmit(onSubmit)} className="mt-6 flex items-start gap-2">
+        <form
+          onSubmit={form.handleSubmit(onSubmit)}
+          className="mt-6 flex flex-col gap-3 sm:flex-row sm:items-start"
+        >
           <FormField
             control={form.control}
             name="token"
@@ -147,7 +150,12 @@ function DoorContent({ eventId }: { eventId: Id<"events"> }) {
               </FormItem>
             )}
           />
-          <Button type="submit" size="lg" className="h-12 px-6" disabled={form.formState.isSubmitting}>
+          <Button
+            type="submit"
+            size="lg"
+            className="h-12 w-full px-6 sm:w-auto"
+            disabled={form.formState.isSubmitting}
+          >
             {form.formState.isSubmitting && <LoaderCircle className="animate-spin" />}
             Check in
           </Button>

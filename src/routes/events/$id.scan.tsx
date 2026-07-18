@@ -160,14 +160,17 @@ function ScanContent({ eventId }: { eventId: Id<"events"> }) {
         value={mode}
         onValueChange={(value) => value && setMode(value as ScanMode)}
         variant="outline"
-        className="mt-6"
+        className="mt-6 grid w-full grid-cols-2 sm:flex sm:w-fit"
       >
-        <ToggleGroupItem value="in">Check in</ToggleGroupItem>
-        <ToggleGroupItem value="out">Check out</ToggleGroupItem>
+        <ToggleGroupItem value="in" className="h-10">Check in</ToggleGroupItem>
+        <ToggleGroupItem value="out" className="h-10">Check out</ToggleGroupItem>
       </ToggleGroup>
 
       <Form {...form}>
-        <form onSubmit={form.handleSubmit(onSubmit)} className="mt-4 flex items-start gap-2">
+        <form
+          onSubmit={form.handleSubmit(onSubmit)}
+          className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-start"
+        >
           <FormField
             control={form.control}
             name="code"
@@ -193,7 +196,12 @@ function ScanContent({ eventId }: { eventId: Id<"events"> }) {
               </FormItem>
             )}
           />
-          <Button type="submit" size="lg" className="h-12 px-6" disabled={form.formState.isSubmitting}>
+          <Button
+            type="submit"
+            size="lg"
+            className="h-12 w-full px-6 sm:w-auto"
+            disabled={form.formState.isSubmitting}
+          >
             {form.formState.isSubmitting && <LoaderCircle className="animate-spin" />}
             {mode === "in" ? "Check in" : "Check out"}
           </Button>

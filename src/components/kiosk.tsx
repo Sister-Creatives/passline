@@ -8,7 +8,11 @@ import type { ReactNode } from "react";
  * type scale rather than new colors or fonts.
  */
 
-/** Full-height stage with a subtle primary glow at the top, for kiosk use. */
+/**
+ * Full-height stage with a subtle primary glow at the top, for kiosk use.
+ * Mobile-first: tight padding and full width on a phone, relaxing on larger
+ * screens where a narrow reading column reads better.
+ */
 export function KioskShell({ children }: { children: ReactNode }) {
   return (
     <div className="relative min-h-svh">
@@ -16,12 +20,16 @@ export function KioskShell({ children }: { children: ReactNode }) {
         aria-hidden
         className="pointer-events-none absolute inset-x-0 top-0 h-72 bg-[radial-gradient(80%_100%_at_50%_0%,color-mix(in_oklab,var(--primary)_11%,transparent),transparent)]"
       />
-      <div className="relative mx-auto max-w-2xl p-4 sm:p-8">{children}</div>
+      <div className="relative mx-auto w-full max-w-2xl px-4 py-6 sm:p-8">{children}</div>
     </div>
   );
 }
 
-/** Eyebrow (event) + title, an optional live pill, and right-aligned actions. */
+/**
+ * Eyebrow (event) + title, an optional live pill, and actions. Mobile-first:
+ * the title and actions stack on a phone (actions get a full-width row below
+ * the title); on `sm`+ they sit on one line with the actions pushed right.
+ */
 export function KioskHeader({
   eventTitle,
   title,
@@ -34,7 +42,7 @@ export function KioskHeader({
   actions?: ReactNode;
 }) {
   return (
-    <div className="flex items-start justify-between gap-3">
+    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
       <div className="min-w-0">
         {eventTitle ? (
           <p className="truncate text-xs font-medium uppercase tracking-wider text-muted-foreground">
@@ -42,11 +50,15 @@ export function KioskHeader({
           </p>
         ) : null}
         <div className="mt-1 flex items-center gap-2.5">
-          <h1 className="text-2xl font-semibold tracking-tight">{title}</h1>
+          <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">{title}</h1>
           {live ? <LivePill /> : null}
         </div>
       </div>
-      {actions ? <div className="flex shrink-0 items-center gap-2">{actions}</div> : null}
+      {actions ? (
+        <div className="flex shrink-0 items-center gap-2 [&>*]:flex-1 sm:[&>*]:flex-none">
+          {actions}
+        </div>
+      ) : null}
     </div>
   );
 }
