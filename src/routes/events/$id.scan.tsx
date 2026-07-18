@@ -7,7 +7,7 @@ import type { FunctionReturnType } from "convex/server";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { ArrowLeft, LoaderCircle, TriangleAlert } from "lucide-react";
+import { ArrowLeft, LoaderCircle, ScanLine, TriangleAlert, Users } from "lucide-react";
 import { motion } from "motion/react";
 import { toast } from "sonner";
 
@@ -18,9 +18,9 @@ import { api } from "../../../convex/_generated/api";
 import type { Id } from "../../../convex/_generated/dataModel";
 import { AuthGuard } from "@/components/AuthGuard";
 import { BoxOfficeSaleDialog } from "@/components/BoxOfficeSaleDialog";
+import { KioskShell, KioskHeader, StatMeterCard } from "@/components/kiosk";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Form,
   FormControl,
@@ -68,11 +68,12 @@ function ScanPage() {
 
 function ScanSkeleton() {
   return (
-    <div className="mx-auto max-w-2xl p-4 sm:p-8">
-      <Skeleton className="h-8 w-48" />
-      <Skeleton className="mt-6 h-24 w-full" />
-      <Skeleton className="mt-8 h-10 w-full" />
-    </div>
+    <KioskShell>
+      <Skeleton className="h-4 w-40" />
+      <Skeleton className="mt-2 h-8 w-48" />
+      <Skeleton className="mt-6 h-36 w-full rounded-2xl" />
+      <Skeleton className="mt-6 h-12 w-full rounded-md" />
+    </KioskShell>
   );
 }
 
@@ -125,43 +126,34 @@ function ScanContent({ eventId }: { eventId: Id<"events"> }) {
     }
   }
 
-  return (
-    <div className="mx-auto max-w-2xl p-4 sm:p-8">
-      <div className="flex items-start justify-between gap-2">
-        <div className="min-w-0">
-          <p className="truncate text-sm text-muted-foreground">{eventData.event.title}</p>
-          <h1 className="text-2xl font-semibold tracking-tight">Scan tickets</h1>
-        </div>
-        <div className="flex items-center gap-2">
-          <BoxOfficeSaleDialog eventId={eventId} currency={currency} />
-          <Button asChild variant="ghost" size="sm">
-            <Link to="/events/$id" params={{ id: eventId }}>
-              <ArrowLeft /> Back to event
-            </Link>
-          </Button>
-        </div>
-      </div>
+  const insidePercent = data.total > 0 ? Math.round((data.currentlyInside / data.total) * 100) : 0;
 
-      <Card className="mt-6">
-        <CardHeader>
-          <CardDescription>Currently inside</CardDescription>
-          <CardTitle className="text-4xl font-bold tabular-nums">
-            {data.currentlyInside}
-            <span className="text-2xl font-medium text-muted-foreground"> / {data.total}</span>
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-2">
-          <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
-            <div
-              className="h-full rounded-full bg-primary transition-[width] duration-500 ease-out motion-reduce:transition-none"
-              style={{ width: `${data.total > 0 ? Math.round((data.currentlyInside / data.total) * 100) : 0}%` }}
-            />
-          </div>
-          <p className="text-sm text-muted-foreground tabular-nums">
-            {data.currentlyInside} of {data.total} checked in
-          </p>
-        </CardContent>
-      </Card>
+  return (
+    <KioskShell>
+      <KioskHeader
+        eventTitle={eventData.event.title}
+        title="Scan tickets"
+        live
+        actions={
+          <>
+            <BoxOfficeSaleDialog eventId={eventId} currency={currency} />
+            <Button asChild variant="ghost" size="sm">
+              <Link to="/events/$id" params={{ id: eventId }}>
+                <ArrowLeft /> Back to event
+              </Link>
+            </Button>
+          </>
+        }
+      />
+
+      <StatMeterCard
+        icon={<Users />}
+        label="Currently inside"
+        value={data.currentlyInside}
+        total={data.total}
+        percent={insidePercent}
+        sub={`${data.currentlyInside} of ${data.total} checked in`}
+      />
 
       <ToggleGroup
         type="single"
@@ -183,21 +175,25 @@ function ScanContent({ eventId }: { eventId: Id<"events"> }) {
               <FormItem className="flex-1">
                 <FormLabel className="sr-only">Ticket code</FormLabel>
                 <FormControl>
-                  <Input
-                    placeholder="Scan or enter ticket code"
-                    autoFocus
-                    {...field}
-                    ref={(el) => {
-                      field.ref(el);
-                      inputRef.current = el;
-                    }}
-                  />
+                  <div className="relative">
+                    <ScanLine className="pointer-events-none absolute left-3 top-1/2 size-5 -translate-y-1/2 text-muted-foreground" />
+                    <Input
+                      className="h-12 pl-10 text-base"
+                      placeholder="Scan or enter ticket code"
+                      autoFocus
+                      {...field}
+                      ref={(el) => {
+                        field.ref(el);
+                        inputRef.current = el;
+                      }}
+                    />
+                  </div>
                 </FormControl>
                 <FormMessage />
               </FormItem>
             )}
           />
-          <Button type="submit" disabled={form.formState.isSubmitting}>
+          <Button type="submit" size="lg" className="h-12 px-6" disabled={form.formState.isSubmitting}>
             {form.formState.isSubmitting && <LoaderCircle className="animate-spin" />}
             {mode === "in" ? "Check in" : "Check out"}
           </Button>
@@ -214,7 +210,7 @@ function ScanContent({ eventId }: { eventId: Id<"events"> }) {
           <ScanResultCard outcome={outcome} />
         </motion.div>
       )}
-    </div>
+    </KioskShell>
   );
 }
 

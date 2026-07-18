@@ -6,7 +6,7 @@ import { useMutation } from "convex/react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { ArrowLeft, LoaderCircle } from "lucide-react";
+import { ArrowLeft, DoorOpen, LoaderCircle, ScanLine } from "lucide-react";
 import { toast } from "sonner";
 
 import { playScanFeedback, signalForResult } from "@/lib/scan-feedback";
@@ -14,9 +14,9 @@ import { playScanFeedback, signalForResult } from "@/lib/scan-feedback";
 import { api } from "../../../convex/_generated/api";
 import type { Id } from "../../../convex/_generated/dataModel";
 import { AuthGuard } from "@/components/AuthGuard";
+import { KioskShell, KioskHeader, StatMeterCard } from "@/components/kiosk";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Form,
   FormControl,
@@ -51,12 +51,12 @@ function DoorPage() {
 
 function DoorSkeleton() {
   return (
-    <div className="mx-auto max-w-2xl p-4 sm:p-8">
+    <KioskShell>
       <Skeleton className="h-4 w-40" />
       <Skeleton className="mt-2 h-8 w-48" />
-      <Skeleton className="mt-6 h-32 w-full" />
-      <Skeleton className="mt-6 h-10 w-full" />
-    </div>
+      <Skeleton className="mt-6 h-36 w-full rounded-2xl" />
+      <Skeleton className="mt-6 h-12 w-full rounded-md" />
+    </KioskShell>
   );
 }
 
@@ -97,39 +97,28 @@ function DoorContent({ eventId }: { eventId: Id<"events"> }) {
   }
 
   return (
-    <div className="mx-auto max-w-2xl p-4 sm:p-8">
-      <div className="flex items-start justify-between gap-2">
-        <div className="min-w-0">
-          <p className="truncate text-sm text-muted-foreground">{data.eventTitle}</p>
-          <h1 className="text-2xl font-semibold tracking-tight">Door check-in</h1>
-        </div>
-        <Button asChild variant="ghost" size="sm">
-          <Link to="/events/$id" params={{ id: eventId }}>
-            <ArrowLeft /> Back to event
-          </Link>
-        </Button>
-      </div>
+    <KioskShell>
+      <KioskHeader
+        eventTitle={data.eventTitle}
+        title="Door check-in"
+        live
+        actions={
+          <Button asChild variant="ghost" size="sm">
+            <Link to="/events/$id" params={{ id: eventId }}>
+              <ArrowLeft /> Back to event
+            </Link>
+          </Button>
+        }
+      />
 
-      <Card className="mt-6">
-        <CardHeader>
-          <CardDescription>Checked in</CardDescription>
-          <CardTitle className="text-4xl font-bold tabular-nums">
-            {data.checkedIn}
-            <span className="text-2xl font-medium text-muted-foreground"> / {data.confirmed}</span>
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-2">
-          <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
-            <div
-              className="h-full rounded-full bg-primary transition-[width] duration-500 ease-out motion-reduce:transition-none"
-              style={{ width: `${percent}%` }}
-            />
-          </div>
-          <p className="text-sm text-muted-foreground tabular-nums">
-            {percent}% &middot; {remaining} still to arrive
-          </p>
-        </CardContent>
-      </Card>
+      <StatMeterCard
+        icon={<DoorOpen />}
+        label="Checked in"
+        value={data.checkedIn}
+        total={data.confirmed}
+        percent={percent}
+        sub={`${percent}% · ${remaining} still to arrive`}
+      />
 
       <Form {...form}>
         <form onSubmit={form.handleSubmit(onSubmit)} className="mt-6 flex items-start gap-2">
@@ -140,22 +129,25 @@ function DoorContent({ eventId }: { eventId: Id<"events"> }) {
               <FormItem className="flex-1">
                 <FormLabel className="sr-only">Ticket token</FormLabel>
                 <FormControl>
-                  <Input
-                    className="h-11 text-base"
-                    placeholder="Paste or scan ticket token"
-                    autoFocus
-                    {...field}
-                    ref={(el) => {
-                      field.ref(el);
-                      inputRef.current = el;
-                    }}
-                  />
+                  <div className="relative">
+                    <ScanLine className="pointer-events-none absolute left-3 top-1/2 size-5 -translate-y-1/2 text-muted-foreground" />
+                    <Input
+                      className="h-12 pl-10 text-base"
+                      placeholder="Paste or scan ticket token"
+                      autoFocus
+                      {...field}
+                      ref={(el) => {
+                        field.ref(el);
+                        inputRef.current = el;
+                      }}
+                    />
+                  </div>
                 </FormControl>
                 <FormMessage />
               </FormItem>
             )}
           />
-          <Button type="submit" size="lg" className="h-11" disabled={form.formState.isSubmitting}>
+          <Button type="submit" size="lg" className="h-12 px-6" disabled={form.formState.isSubmitting}>
             {form.formState.isSubmitting && <LoaderCircle className="animate-spin" />}
             Check in
           </Button>
@@ -163,18 +155,20 @@ function DoorContent({ eventId }: { eventId: Id<"events"> }) {
       </Form>
 
       <section className="mt-8">
-        <h2 className="text-sm font-medium text-muted-foreground">Recent check-ins</h2>
+        <h2 className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+          Recent check-ins
+        </h2>
         {data.recent.length === 0 ? (
           <p className="mt-3 text-sm text-muted-foreground">No check-ins yet.</p>
         ) : (
-          <ul className="mt-3 divide-y divide-border/60">
+          <ul className="mt-3 divide-y divide-border/50 overflow-hidden rounded-xl border border-border/60 bg-card/50">
             {data.recent.map((attendee, index) => (
               <li
                 key={`${attendee.name}-${attendee.at}-${index}`}
-                className="flex items-center gap-3 py-2.5"
+                className="flex items-center gap-3 px-4 py-3"
               >
-                <Avatar className="size-8 shrink-0">
-                  <AvatarFallback className="bg-primary text-xs font-semibold text-primary-foreground">
+                <Avatar className="size-8 shrink-0 ring-1 ring-border">
+                  <AvatarFallback className="bg-primary/10 text-xs font-semibold text-primary">
                     {attendee.name.charAt(0).toUpperCase()}
                   </AvatarFallback>
                 </Avatar>
@@ -187,6 +181,6 @@ function DoorContent({ eventId }: { eventId: Id<"events"> }) {
           </ul>
         )}
       </section>
-    </div>
+    </KioskShell>
   );
 }
