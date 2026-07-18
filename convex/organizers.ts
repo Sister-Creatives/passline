@@ -4,10 +4,18 @@ import { getAuthUserId } from "@convex-dev/auth/server";
 import { getAuthOrganizerId } from "./auth";
 
 /**
- * Ensure an `organizers` row exists for the currently authenticated user.
+ * Ensure the currently authenticated user has an org membership.
  *
- * Called on first sign-in. Idempotent: if a row already exists for the user's
- * email it returns that row's id instead of inserting a duplicate.
+ * Called on first sign-in. Idempotent, with three paths:
+ * - Pending invite / returning member: a `memberships` row already exists for
+ *   this email. If it has no `userId` yet (a teammate added by email who is
+ *   signing in for the first time), link it to this user. Either way, return
+ *   its `organizerId` -- no new org is created.
+ * - Legacy self-heal: no membership, but a pre-migration `organizers` row
+ *   exists for this email (an owner from before the membership model). Create
+ *   the missing owner membership and return that org's id.
+ * - Brand-new solo user: no membership and no legacy org -- create both the
+ *   `organizers` row and an owner membership for this email.
  */
 export const ensureOrganizer = mutation({
   args: {},
@@ -16,16 +24,47 @@ export const ensureOrganizer = mutation({
     if (!userId) throw new Error("Not authenticated");
     const user = await ctx.db.get(userId);
     if (!user?.email) throw new Error("No email on account");
-    const existing = await ctx.db
+    const email = user.email.toLowerCase();
+
+    const membership = await ctx.db
+      .query("memberships")
+      .withIndex("by_email", (q) => q.eq("email", email))
+      .first();
+    if (membership) {
+      if (!membership.userId) {
+        await ctx.db.patch(membership._id, { userId });
+      }
+      return membership.organizerId;
+    }
+
+    const legacy = await ctx.db
       .query("organizers")
       .withIndex("by_email", (q) => q.eq("email", user.email!))
       .unique();
-    if (existing) return existing._id;
-    return await ctx.db.insert("organizers", {
+    if (legacy) {
+      await ctx.db.insert("memberships", {
+        organizerId: legacy._id,
+        email,
+        userId,
+        role: "owner",
+        createdAt: Date.now(),
+      });
+      return legacy._id;
+    }
+
+    const organizerId = await ctx.db.insert("organizers", {
       name: user.name ?? user.email,
       email: user.email,
       image: user.image ?? undefined,
     });
+    await ctx.db.insert("memberships", {
+      organizerId,
+      email,
+      userId,
+      role: "owner",
+      createdAt: Date.now(),
+    });
+    return organizerId;
   },
 });
 
