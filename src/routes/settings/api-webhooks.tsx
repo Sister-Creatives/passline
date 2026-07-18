@@ -7,13 +7,20 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { toast } from "sonner";
-import { Copy, Plus } from "lucide-react";
+import { Check, Copy, Plus } from "lucide-react";
 
 import { api } from "../../../convex/_generated/api";
 import type { Id } from "../../../convex/_generated/dataModel";
 import { DashboardLayout } from "@/components/DashboardLayout";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -420,7 +427,7 @@ function ApiKeysSection() {
 
   const header = (
     <div className="mb-4 flex items-center justify-between">
-      <h1 className="text-lg font-medium">API keys</h1>
+      <h2 className="text-lg font-medium">API keys</h2>
       <CreateKeyDialog />
     </div>
   );
@@ -505,7 +512,7 @@ function WebhooksSection() {
 
   const header = (
     <div className="mb-4 flex items-center justify-between">
-      <h1 className="text-lg font-medium">Webhooks</h1>
+      <h2 className="text-lg font-medium">Webhooks</h2>
       <CreateWebhookDialog />
     </div>
   );
@@ -584,12 +591,172 @@ function WebhooksSection() {
   );
 }
 
+const API_BASE =
+  (import.meta.env.VITE_CONVEX_SITE_URL as string | undefined) ??
+  "https://<your-deployment>.convex.site";
+
+const API_ENDPOINTS: { method: string; path: string; desc: string }[] = [
+  { method: "GET", path: "/v1/events", desc: "List your events" },
+  { method: "GET", path: "/v1/events/{eventId}/ticket-types", desc: "An event's ticket types" },
+  { method: "GET", path: "/v1/events/{eventId}/questions", desc: "Checkout questions" },
+  { method: "GET", path: "/v1/events/{eventId}/add-ons", desc: "Add-ons" },
+  { method: "GET", path: "/v1/events/{eventId}/sessions", desc: "Sessions" },
+  { method: "GET", path: "/v1/events/{eventId}/seats", desc: "Seats" },
+  { method: "POST", path: "/v1/orders", desc: "Create an order (headless checkout)" },
+];
+
+const WEBHOOK_EVENTS: { type: string; desc: string }[] = [
+  { type: "ticket_type.created", desc: "A ticket type was created" },
+  { type: "ticket_type.updated", desc: "A ticket type's details or price changed" },
+  { type: "ticket_type.deleted", desc: "A ticket type was deleted" },
+];
+
+/** A copy-to-clipboard code block; monospace, horizontally scrollable. */
+function CodeBlock({ code, label }: { code: string; label?: string }) {
+  const [copied, setCopied] = useState(false);
+  async function copy() {
+    try {
+      await navigator.clipboard.writeText(code);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      toast.error("Could not copy");
+    }
+  }
+  return (
+    <div className="group/code relative">
+      {label ? (
+        <div className="mb-1 text-xs font-medium text-muted-foreground">{label}</div>
+      ) : null}
+      <pre className="overflow-x-auto rounded-lg border bg-muted/50 p-3 pr-10 font-mono text-xs leading-relaxed">
+        <code>{code}</code>
+      </pre>
+      <Button
+        variant="ghost"
+        size="icon-sm"
+        onClick={copy}
+        aria-label="Copy"
+        className="absolute right-1.5 top-1.5 text-muted-foreground"
+      >
+        {copied ? <Check /> : <Copy />}
+      </Button>
+    </div>
+  );
+}
+
+function ApiReferenceCard() {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Using the API</CardTitle>
+        <CardDescription>
+          A read API over HTTP, authenticated with a Bearer key. Create a key above, then:
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <CodeBlock label="Base URL" code={API_BASE} />
+        <CodeBlock
+          label="Authenticate every request"
+          code={'Authorization: Bearer pl_live_your_key_here'}
+        />
+        <div>
+          <div className="mb-2 text-xs font-medium text-muted-foreground">Endpoints</div>
+          <div className="overflow-x-auto rounded-lg border">
+            <Table>
+              <TableBody>
+                {API_ENDPOINTS.map((e) => (
+                  <TableRow key={`${e.method} ${e.path}`}>
+                    <TableCell className="w-14 py-2 align-top">
+                      <Badge variant={e.method === "POST" ? "default" : "secondary"} className="font-mono text-[0.7rem]">
+                        {e.method}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="py-2 font-mono text-xs">{e.path}</TableCell>
+                    <TableCell className="py-2 text-xs text-muted-foreground">{e.desc}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        </div>
+        <CodeBlock
+          label="Example"
+          code={`curl ${API_BASE}/v1/events \\\n  -H "Authorization: Bearer pl_live_your_key_here"`}
+        />
+      </CardContent>
+    </Card>
+  );
+}
+
+function WebhooksReferenceCard() {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Receiving webhooks</CardTitle>
+        <CardDescription>
+          When you register an endpoint, Passline POSTs a signed JSON body on these events.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div>
+          <div className="mb-2 text-xs font-medium text-muted-foreground">Event types</div>
+          <div className="overflow-x-auto rounded-lg border">
+            <Table>
+              <TableBody>
+                {WEBHOOK_EVENTS.map((e) => (
+                  <TableRow key={e.type}>
+                    <TableCell className="py-2 font-mono text-xs">{e.type}</TableCell>
+                    <TableCell className="py-2 text-xs text-muted-foreground">{e.desc}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        </div>
+        <div className="space-y-2 text-sm text-muted-foreground">
+          <p>
+            Each delivery includes an{" "}
+            <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs text-foreground">
+              X-Passline-Signature
+            </code>{" "}
+            header: a hex HMAC-SHA256 of the raw request body, keyed by the{" "}
+            <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs text-foreground">whsec_…</code>{" "}
+            secret shown once when you create the webhook. Recompute it over the raw body and
+            compare in constant time before trusting the payload.
+          </p>
+        </div>
+        <CodeBlock
+          label="Verify a delivery (Node)"
+          code={`import { createHmac, timingSafeEqual } from "node:crypto";
+
+const expected = createHmac("sha256", webhookSecret)
+  .update(rawBody)          // the exact bytes received
+  .digest("hex");
+const received = req.headers["x-passline-signature"];
+const ok =
+  expected.length === received.length &&
+  timingSafeEqual(Buffer.from(expected), Buffer.from(received));`}
+        />
+      </CardContent>
+    </Card>
+  );
+}
+
 function SettingsApiWebhooksPage() {
   return (
     <DashboardLayout>
-      <ApiKeysSection />
-      <div className="mt-10">
+      <div className="max-w-3xl space-y-8">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight">API &amp; webhooks</h1>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Programmatic access to your events, and signed notifications when they change.
+          </p>
+        </div>
+
+        <ApiKeysSection />
+        <ApiReferenceCard />
         <WebhooksSection />
+        <WebhooksReferenceCard />
       </div>
     </DashboardLayout>
   );
