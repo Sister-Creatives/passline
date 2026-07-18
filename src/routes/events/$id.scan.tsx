@@ -7,7 +7,7 @@ import type { FunctionReturnType } from "convex/server";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { ArrowLeft, LoaderCircle, ScanLine, TriangleAlert, Users } from "lucide-react";
+import { ArrowLeft, Camera, LoaderCircle, ScanLine, TriangleAlert, Users } from "lucide-react";
 import { motion } from "motion/react";
 import { toast } from "sonner";
 
@@ -18,6 +18,7 @@ import { api } from "../../../convex/_generated/api";
 import type { Id } from "../../../convex/_generated/dataModel";
 import { AuthGuard } from "@/components/AuthGuard";
 import { BoxOfficeSaleDialog } from "@/components/BoxOfficeSaleDialog";
+import { CameraScanner } from "@/components/CameraScanner";
 import { KioskShell, KioskHeader, StatMeterCard } from "@/components/kiosk";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -93,6 +94,7 @@ function ScanContent({ eventId }: { eventId: Id<"events"> }) {
   const checkInTicket = useMutation(api.ticketCheckin.checkInTicket);
   const checkOutTicket = useMutation(api.ticketCheckin.checkOutTicket);
   const [mode, setMode] = useState<ScanMode>("in");
+  const [cameraOn, setCameraOn] = useState(false);
   const [outcome, setOutcome] = useState<ScanOutcome | null>(null);
   // Monotonic sequence so the result card re-mounts (and re-flashes) on every
   // scan, even when two identical verdicts land back to back.
@@ -104,12 +106,16 @@ function ScanContent({ eventId }: { eventId: Id<"events"> }) {
     defaultValues: { code: "" },
   });
 
-  async function onSubmit(values: ScanValues) {
+  // Shared by the manual field and the camera scanner, so both go through the
+  // same mode-aware check-in/out, feedback, and result-card path.
+  async function submitCode(code: string) {
+    const trimmed = code.trim();
+    if (!trimmed) return;
     try {
       const data =
         mode === "in"
-          ? await checkInTicket({ code: values.code.trim() })
-          : await checkOutTicket({ code: values.code.trim() });
+          ? await checkInTicket({ code: trimmed })
+          : await checkOutTicket({ code: trimmed });
       setOutcome({ mode, data } as ScanOutcome);
       setSeq((n) => n + 1);
       playScanFeedback(signalForResult(data.result));
@@ -124,6 +130,10 @@ function ScanContent({ eventId }: { eventId: Id<"events"> }) {
       // input so the next scan never lands in the void after a toggle/tap.
       inputRef.current?.focus();
     }
+  }
+
+  function onSubmit(values: ScanValues) {
+    void submitCode(values.code);
   }
 
   const insidePercent = data.total > 0 ? Math.round((data.currentlyInside / data.total) * 100) : 0;
@@ -155,16 +165,30 @@ function ScanContent({ eventId }: { eventId: Id<"events"> }) {
         sub={`${data.currentlyInside} of ${data.total} checked in`}
       />
 
-      <ToggleGroup
-        type="single"
-        value={mode}
-        onValueChange={(value) => value && setMode(value as ScanMode)}
-        variant="outline"
-        className="mt-6 grid w-full grid-cols-2 sm:flex sm:w-fit"
-      >
-        <ToggleGroupItem value="in" className="h-10">Check in</ToggleGroupItem>
-        <ToggleGroupItem value="out" className="h-10">Check out</ToggleGroupItem>
-      </ToggleGroup>
+      <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <ToggleGroup
+          type="single"
+          value={mode}
+          onValueChange={(value) => value && setMode(value as ScanMode)}
+          variant="outline"
+          className="grid w-full grid-cols-2 sm:flex sm:w-fit"
+        >
+          <ToggleGroupItem value="in" className="h-10">Check in</ToggleGroupItem>
+          <ToggleGroupItem value="out" className="h-10">Check out</ToggleGroupItem>
+        </ToggleGroup>
+        <Button
+          type="button"
+          variant={cameraOn ? "default" : "outline"}
+          className="h-10 w-full sm:w-auto"
+          onClick={() => setCameraOn((v) => !v)}
+        >
+          <Camera /> {cameraOn ? "Stop camera" : "Scan with camera"}
+        </Button>
+      </div>
+
+      {cameraOn ? (
+        <CameraScanner onDecode={(value) => void submitCode(value)} className="mt-4" />
+      ) : null}
 
       <Form {...form}>
         <form

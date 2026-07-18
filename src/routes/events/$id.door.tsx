@@ -1,4 +1,4 @@
-import { Suspense, useRef } from "react";
+import { Suspense, useRef, useState } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useSuspenseQuery } from "@tanstack/react-query";
 import { convexQuery } from "@convex-dev/react-query";
@@ -6,7 +6,7 @@ import { useMutation } from "convex/react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { ArrowLeft, DoorOpen, LoaderCircle, ScanLine } from "lucide-react";
+import { ArrowLeft, Camera, DoorOpen, LoaderCircle, ScanLine } from "lucide-react";
 import { toast } from "sonner";
 
 import { playScanFeedback, signalForResult } from "@/lib/scan-feedback";
@@ -14,6 +14,7 @@ import { playScanFeedback, signalForResult } from "@/lib/scan-feedback";
 import { api } from "../../../convex/_generated/api";
 import type { Id } from "../../../convex/_generated/dataModel";
 import { AuthGuard } from "@/components/AuthGuard";
+import { CameraScanner } from "@/components/CameraScanner";
 import { KioskShell, KioskHeader, StatMeterCard } from "@/components/kiosk";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
@@ -72,12 +73,16 @@ function DoorContent({ eventId }: { eventId: Id<"events"> }) {
     defaultValues: { token: "" },
   });
 
+  const [cameraOn, setCameraOn] = useState(false);
   const remaining = Math.max(0, data.confirmed - data.checkedIn);
   const percent = data.confirmed > 0 ? Math.round((data.checkedIn / data.confirmed) * 100) : 0;
 
-  async function onSubmit(values: CheckInValues) {
+  // Shared by the manual field and the camera scanner.
+  async function submitToken(token: string) {
+    const trimmed = token.trim();
+    if (!trimmed) return;
     try {
-      const result = await checkIn({ token: values.token.trim() });
+      const result = await checkIn({ token: trimmed });
       playScanFeedback(signalForResult(result.status));
       if (result.status === "checked_in") {
         toast.success("Checked in");
@@ -94,6 +99,10 @@ function DoorContent({ eventId }: { eventId: Id<"events"> }) {
       // Re-pin focus so the next keyboard-wedge scan doesn't drop silently.
       inputRef.current?.focus();
     }
+  }
+
+  function onSubmit(values: CheckInValues) {
+    void submitToken(values.token);
   }
 
   return (
@@ -119,6 +128,21 @@ function DoorContent({ eventId }: { eventId: Id<"events"> }) {
         percent={percent}
         sub={`${percent}% · ${remaining} still to arrive`}
       />
+
+      <div className="mt-6 flex justify-end">
+        <Button
+          type="button"
+          variant={cameraOn ? "default" : "outline"}
+          className="h-10 w-full sm:w-auto"
+          onClick={() => setCameraOn((v) => !v)}
+        >
+          <Camera /> {cameraOn ? "Stop camera" : "Scan with camera"}
+        </Button>
+      </div>
+
+      {cameraOn ? (
+        <CameraScanner onDecode={(value) => void submitToken(value)} className="mt-4" />
+      ) : null}
 
       <Form {...form}>
         <form
