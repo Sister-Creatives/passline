@@ -64,8 +64,20 @@ import {
 
 export const Route = createFileRoute("/settings/api-webhooks")({ component: SettingsApiWebhooksPage });
 
+/** API key scopes. Must match `API_SCOPES` in convex/apiKeys.ts. */
+const API_SCOPE_OPTIONS = [
+  { value: "read", label: "Read", desc: "GET endpoints — events, ticket types, questions, add-ons, sessions, seats" },
+  { value: "orders:write", label: "Create orders", desc: "POST /v1/orders (headless checkout)" },
+] as const;
+
+const SCOPE_LABEL: Record<string, string> = {
+  read: "Read",
+  "orders:write": "Orders",
+};
+
 const createKeyFormSchema = z.object({
   name: z.string().min(1, "Name is required"),
+  scopes: z.array(z.string()).min(1, "Select at least one scope"),
 });
 
 type CreateKeyFormValues = z.infer<typeof createKeyFormSchema>;
@@ -99,12 +111,12 @@ function CreateKeyDialog() {
   const create = useMutation(api.apiKeys.create);
   const form = useForm<CreateKeyFormValues>({
     resolver: zodResolver(createKeyFormSchema),
-    defaultValues: { name: "" },
+    defaultValues: { name: "", scopes: ["read", "orders:write"] },
   });
 
   async function onSubmit(values: CreateKeyFormValues) {
     try {
-      const result = await create({ name: values.name });
+      const result = await create({ name: values.name, scopes: values.scopes });
       setSecret(result.secret);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Failed to create API key");
@@ -177,6 +189,47 @@ function CreateKeyDialog() {
                       <FormControl>
                         <Input placeholder="Production storefront" {...field} />
                       </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="scopes"
+                  render={() => (
+                    <FormItem>
+                      <FormLabel>Scopes</FormLabel>
+                      <div className="flex flex-col gap-2">
+                        {API_SCOPE_OPTIONS.map((scope) => (
+                          <FormField
+                            key={scope.value}
+                            control={form.control}
+                            name="scopes"
+                            render={({ field }) => (
+                              <FormItem className="flex flex-row items-start gap-2">
+                                <FormControl>
+                                  <Checkbox
+                                    className="mt-0.5"
+                                    checked={field.value?.includes(scope.value)}
+                                    onCheckedChange={(checked) => {
+                                      const current = field.value ?? [];
+                                      field.onChange(
+                                        checked
+                                          ? [...current, scope.value]
+                                          : current.filter((value) => value !== scope.value),
+                                      );
+                                    }}
+                                  />
+                                </FormControl>
+                                <div className="grid gap-0.5 leading-tight">
+                                  <FormLabel className="font-normal">{scope.label}</FormLabel>
+                                  <span className="text-xs text-muted-foreground">{scope.desc}</span>
+                                </div>
+                              </FormItem>
+                            )}
+                          />
+                        ))}
+                      </div>
                       <FormMessage />
                     </FormItem>
                   )}
@@ -471,6 +524,7 @@ function ApiKeysSection() {
           <TableRow>
             <TableHead>Name</TableHead>
             <TableHead>Key</TableHead>
+            <TableHead>Scopes</TableHead>
             <TableHead>Created</TableHead>
             <TableHead>Last used</TableHead>
             <TableHead>Status</TableHead>
@@ -485,6 +539,19 @@ function ApiKeysSection() {
                 <TableCell className="font-medium">{key.name}</TableCell>
                 <TableCell className="font-mono text-xs text-muted-foreground">
                   {key.prefix}…{key.lastFour}
+                </TableCell>
+                <TableCell>
+                  <div className="flex flex-wrap gap-1">
+                    {key.scopes === undefined ? (
+                      <Badge variant="secondary">Full access</Badge>
+                    ) : (
+                      key.scopes.map((scope) => (
+                        <Badge key={scope} variant="secondary">
+                          {SCOPE_LABEL[scope] ?? scope}
+                        </Badge>
+                      ))
+                    )}
+                  </div>
                 </TableCell>
                 <TableCell>{new Date(key.createdAt).toLocaleDateString()}</TableCell>
                 <TableCell>
@@ -678,6 +745,27 @@ function ApiReferenceCard() {
               </TableBody>
             </Table>
           </div>
+        </div>
+        <div>
+          <div className="mb-2 text-xs font-medium text-muted-foreground">Scopes</div>
+          <div className="overflow-x-auto rounded-lg border">
+            <Table>
+              <TableBody>
+                {API_SCOPE_OPTIONS.map((s) => (
+                  <TableRow key={s.value}>
+                    <TableCell className="w-32 py-2 align-top">
+                      <Badge variant="secondary" className="font-mono text-[0.7rem]">{s.value}</Badge>
+                    </TableCell>
+                    <TableCell className="py-2 text-xs text-muted-foreground">{s.desc}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+          <p className="mt-2 text-xs text-muted-foreground">
+            Choose a key&apos;s scopes when you create it. A request with a key missing the
+            required scope is rejected with <code className="font-mono">403</code>.
+          </p>
         </div>
         <CodeBlock
           label="Example"
