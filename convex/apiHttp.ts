@@ -90,8 +90,12 @@ function jsonResponse(data: unknown, status = 200): Response {
 const unauthorized = () => jsonResponse({ error: "unauthorized" }, 401);
 const notFound = () => jsonResponse({ error: "not found" }, 404);
 const badRequest = (message: string) => jsonResponse({ error: message }, 400);
+const forbiddenScope = (scope: string) =>
+  jsonResponse({ error: `This key lacks the '${scope}' scope` }, 403);
 
 const TOUCH_INTERVAL_MS = 5 * 60 * 1000;
+
+type Authed = { organizerId: Id<"organizers">; scopes: string[] | undefined };
 
 /**
  * Parse `Authorization: Bearer <secret>`, resolve it to an organizer via
@@ -104,7 +108,7 @@ const TOUCH_INTERVAL_MS = 5 * 60 * 1000;
  * hot key under load doesn't OCC-contend on its own `apiKeys` row every
  * request.
  */
-async function authenticate(ctx: ActionCtx, request: Request): Promise<Id<"organizers"> | null> {
+async function authenticate(ctx: ActionCtx, request: Request): Promise<Authed | null> {
   const header = request.headers.get("Authorization");
   if (!header?.startsWith("Bearer ")) return null;
   const secret = header.slice("Bearer ".length).trim();
@@ -117,13 +121,20 @@ async function authenticate(ctx: ActionCtx, request: Request): Promise<Id<"organ
   if (Date.now() - (resolved.lastUsedAt ?? 0) > TOUCH_INTERVAL_MS) {
     await ctx.runMutation(internal.apiKeys.internalTouch, { keyId: resolved.keyId });
   }
-  return resolved.organizerId;
+  return { organizerId: resolved.organizerId, scopes: resolved.scopes };
+}
+
+/** Legacy keys (scopes === undefined) have every scope; otherwise the scope must be listed. */
+function hasScope(scopes: string[] | undefined, required: string): boolean {
+  return scopes === undefined || scopes.includes(required);
 }
 
 /** GET /v1/events — the authenticated organizer's events. */
 export const listEvents = httpAction(async (ctx, request) => {
-  const organizerId = await authenticate(ctx, request);
-  if (!organizerId) return unauthorized();
+  const authed = await authenticate(ctx, request);
+  if (!authed) return unauthorized();
+  if (!hasScope(authed.scopes, "read")) return forbiddenScope("read");
+  const organizerId = authed.organizerId;
 
   const events = await ctx.runQuery(internal.apiHttp.eventsForOrganizer, { organizerId });
   return jsonResponse({ data: events });
@@ -267,8 +278,10 @@ async function handleListSeats(
  * convex/http.ts.
  */
 export const listEventSubResource = httpAction(async (ctx, request) => {
-  const organizerId = await authenticate(ctx, request);
-  if (!organizerId) return unauthorized();
+  const authed = await authenticate(ctx, request);
+  if (!authed) return unauthorized();
+  if (!hasScope(authed.scopes, "read")) return forbiddenScope("read");
+  const organizerId = authed.organizerId;
 
   const pathname = new URL(request.url).pathname;
 
@@ -325,8 +338,10 @@ type CreateOrderBody = {
  * for a GA one) and validates each seat's ownership/availability.
  */
 export const createOrder = httpAction(async (ctx, request) => {
-  const organizerId = await authenticate(ctx, request);
-  if (!organizerId) return unauthorized();
+  const authed = await authenticate(ctx, request);
+  if (!authed) return unauthorized();
+  if (!hasScope(authed.scopes, "orders:write")) return forbiddenScope("orders:write");
+  const organizerId = authed.organizerId;
 
   let body: CreateOrderBody;
   try {
