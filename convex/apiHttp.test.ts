@@ -4,6 +4,7 @@ import { expect, test } from "vitest";
 import schema from "./schema";
 import { api } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
+import { sha256Hex } from "./apiKeys";
 
 const modules = import.meta.glob("./**/*.*s");
 
@@ -991,6 +992,116 @@ test("POST /v1/orders with seatIds marks the seats sold and issues seat-tied tic
   );
   expect(tickets).toHaveLength(2);
   expect(tickets.every((tk) => typeof tk.seatLabel === "string")).toBe(true);
+});
+
+// --- scopes -----------------------------------------------------------------
+
+test("a read-only key can GET /v1/events but is forbidden from POST /v1/orders", async () => {
+  const t = convexTest(schema, modules);
+  const { as } = await asOrganizer(t, "ada@example.com");
+  await as.mutation(api.organizers.ensureOrganizer, {});
+  const { eventId, ticketTypeId } = await seedPublishedEventWithFreeTicketType(as);
+  const { secret } = await as.mutation(api.apiKeys.create, { name: "Read only", scopes: ["read"] });
+
+  const readRes = await t.fetch("/v1/events", {
+    headers: { Authorization: `Bearer ${secret}` },
+  });
+  expect(readRes.status).toBe(200);
+
+  const orderRes = await t.fetch("/v1/orders", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${secret}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      eventId,
+      items: [{ ticketTypeId, quantity: 1 }],
+      buyerName: "Buyer One",
+      buyerEmail: "buyer@example.com",
+    }),
+  });
+  expect(orderRes.status).toBe(403);
+  const body = await orderRes.json();
+  expect(body.error).toMatch(/orders:write/i);
+});
+
+test("an orders:write-only key is forbidden from GET /v1/events but passes the scope check for POST /v1/orders", async () => {
+  const t = convexTest(schema, modules);
+  const { as } = await asOrganizer(t, "ada@example.com");
+  await as.mutation(api.organizers.ensureOrganizer, {});
+  const { eventId, ticketTypeId } = await seedPublishedEventWithFreeTicketType(as);
+  const { secret } = await as.mutation(api.apiKeys.create, {
+    name: "Orders only",
+    scopes: ["orders:write"],
+  });
+
+  const readRes = await t.fetch("/v1/events", {
+    headers: { Authorization: `Bearer ${secret}` },
+  });
+  expect(readRes.status).toBe(403);
+  const readBody = await readRes.json();
+  expect(readBody.error).toMatch(/read/i);
+
+  const orderRes = await t.fetch("/v1/orders", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${secret}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      eventId,
+      items: [{ ticketTypeId, quantity: 1 }],
+      buyerName: "Buyer One",
+      buyerEmail: "buyer@example.com",
+    }),
+  });
+  // Should get past the scope check — 201 (order succeeds) either way, but
+  // must not be a 403 scope rejection.
+  expect(orderRes.status).not.toBe(403);
+});
+
+test("a legacy key with scopes unset has full access (backward compat)", async () => {
+  const t = convexTest(schema, modules);
+  const { as, userId } = await asOrganizer(t, "ada@example.com");
+  void userId;
+  const organizerId = await as.mutation(api.organizers.ensureOrganizer, {});
+  const { eventId, ticketTypeId } = await seedPublishedEventWithFreeTicketType(as);
+
+  // Insert an apiKeys row directly, without a `scopes` field, to simulate a
+  // key created before scopes existed.
+  const secret = "pl_live_legacy00000000000000000000000000";
+  const keyHash = await sha256Hex(secret);
+  await t.run((ctx) =>
+    ctx.db.insert("apiKeys", {
+      organizerId,
+      name: "Legacy key",
+      keyHash,
+      prefix: "pl_live_",
+      lastFour: secret.slice(-4),
+      createdAt: Date.now(),
+    }),
+  );
+
+  const readRes = await t.fetch("/v1/events", {
+    headers: { Authorization: `Bearer ${secret}` },
+  });
+  expect(readRes.status).toBe(200);
+
+  const orderRes = await t.fetch("/v1/orders", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${secret}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      eventId,
+      items: [{ ticketTypeId, quantity: 1 }],
+      buyerName: "Buyer One",
+      buyerEmail: "buyer@example.com",
+    }),
+  });
+  expect(orderRes.status).not.toBe(403);
 });
 
 test("POST /v1/orders with a GA item's seatIds returns 400 and leaves inventory untouched", async () => {

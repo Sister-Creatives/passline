@@ -100,7 +100,11 @@ test("internalResolve returns the organizer for an active key, and null for revo
   const keyHash = await sha256Hex(secret);
 
   const active = await t.query(internal.apiKeys.internalResolve, { keyHash });
-  expect(active).toEqual({ organizerId, keyId: id });
+  expect(active).toEqual({
+    organizerId,
+    keyId: id,
+    scopes: ["read", "orders:write"],
+  });
 
   const unknown = await t.query(internal.apiKeys.internalResolve, { keyHash: "0".repeat(64) });
   expect(unknown).toBeNull();
@@ -108,6 +112,49 @@ test("internalResolve returns the organizer for an active key, and null for revo
   await as.mutation(api.apiKeys.revoke, { keyId: id });
   const revoked = await t.query(internal.apiKeys.internalResolve, { keyHash });
   expect(revoked).toBeNull();
+});
+
+test("create with no scopes arg defaults to full access (both scopes)", async () => {
+  const t = convexTest(schema, modules);
+  const { as } = await asOrganizer(t, "ada@example.com");
+  await as.mutation(api.organizers.ensureOrganizer, {});
+
+  const { id } = await as.mutation(api.apiKeys.create, { name: "Prod" });
+
+  const row = await t.run((ctx) => ctx.db.get(id));
+  expect(row!.scopes).toEqual(["read", "orders:write"]);
+});
+
+test("create with an unknown scope throws", async () => {
+  const t = convexTest(schema, modules);
+  const { as } = await asOrganizer(t, "ada@example.com");
+  await as.mutation(api.organizers.ensureOrganizer, {});
+
+  await expect(
+    as.mutation(api.apiKeys.create, { name: "Prod", scopes: ["bogus"] }),
+  ).rejects.toThrow(/unknown scope/i);
+});
+
+test("create with an empty scopes array throws", async () => {
+  const t = convexTest(schema, modules);
+  const { as } = await asOrganizer(t, "ada@example.com");
+  await as.mutation(api.organizers.ensureOrganizer, {});
+
+  await expect(
+    as.mutation(api.apiKeys.create, { name: "Prod", scopes: [] }),
+  ).rejects.toThrow(/at least one scope/i);
+});
+
+test("list includes each key's scopes", async () => {
+  const t = convexTest(schema, modules);
+  const { as } = await asOrganizer(t, "ada@example.com");
+  await as.mutation(api.organizers.ensureOrganizer, {});
+
+  await as.mutation(api.apiKeys.create, { name: "Read only", scopes: ["read"] });
+
+  const keys = await as.query(api.apiKeys.list, {});
+  expect(keys).toHaveLength(1);
+  expect(keys[0].scopes).toEqual(["read"]);
 });
 
 test("internalTouch sets lastUsedAt", async () => {

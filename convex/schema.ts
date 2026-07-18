@@ -127,6 +127,9 @@ export default defineSchema({
     createdAt: v.number(),
     lastUsedAt: v.optional(v.number()),
     revokedAt: v.optional(v.number()),
+    // Undefined = legacy full-access key (backward compat); otherwise the
+    // exact set of API_SCOPES this key is allowed to use.
+    scopes: v.optional(v.array(v.string())),
   })
     .index("by_organizer", ["organizerId"])
     .index("by_hash", ["keyHash"]),

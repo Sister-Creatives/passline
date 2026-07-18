@@ -12,6 +12,10 @@ import { getAuthOrganizerId } from "./auth";
 
 const SECRET_PREFIX = "pl_live_";
 
+/** The only scopes an API key can be granted. */
+export const API_SCOPES = ["read", "orders:write"] as const;
+export type ApiScope = (typeof API_SCOPES)[number];
+
 /** Lowercase-hex SHA-256 of `input`, via Web Crypto (available in Convex functions). */
 export async function sha256Hex(input: string): Promise<string> {
   const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(input));
@@ -42,10 +46,19 @@ async function requireOwnedKey(
 }
 
 export const create = mutation({
-  args: { name: v.string() },
-  handler: async (ctx, { name }) => {
+  args: { name: v.string(), scopes: v.optional(v.array(v.string())) },
+  handler: async (ctx, { name, scopes }) => {
     const organizerId = await getAuthOrganizerId(ctx);
     if (!organizerId) throw new Error("Not authenticated");
+
+    if (scopes !== undefined) {
+      if (scopes.length === 0) throw new Error("Select at least one scope");
+      for (const scope of scopes) {
+        if (!(API_SCOPES as readonly string[]).includes(scope)) throw new Error("Unknown scope");
+      }
+    }
+    // Omitted `scopes` = full-access key (matches prior, scope-less behavior).
+    const resolvedScopes = scopes ?? [...API_SCOPES];
 
     const secret = generateSecret();
     const keyHash = await sha256Hex(secret);
@@ -57,6 +70,7 @@ export const create = mutation({
       prefix: SECRET_PREFIX,
       lastFour: secret.slice(-4),
       createdAt: Date.now(),
+      scopes: resolvedScopes,
     });
 
     // The only place the full secret is ever returned.
@@ -84,6 +98,7 @@ export const list = query({
       createdAt: key.createdAt,
       lastUsedAt: key.lastUsedAt,
       revokedAt: key.revokedAt,
+      scopes: key.scopes,
     }));
   },
 });
@@ -107,7 +122,12 @@ export const internalResolve = internalQuery({
       .withIndex("by_hash", (q) => q.eq("keyHash", keyHash))
       .unique();
     if (!key || key.revokedAt !== undefined) return null;
-    return { organizerId: key.organizerId, keyId: key._id, lastUsedAt: key.lastUsedAt };
+    return {
+      organizerId: key.organizerId,
+      keyId: key._id,
+      lastUsedAt: key.lastUsedAt,
+      scopes: key.scopes,
+    };
   },
 });
 
