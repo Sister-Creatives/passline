@@ -7,7 +7,7 @@ import type { FunctionReturnType } from "convex/server";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { ArrowLeft, LoaderCircle, TriangleAlert } from "lucide-react";
+import { ArrowLeft, Camera, LoaderCircle, ScanLine, TriangleAlert, Users } from "lucide-react";
 import { motion } from "motion/react";
 import { toast } from "sonner";
 
@@ -18,9 +18,10 @@ import { api } from "../../../convex/_generated/api";
 import type { Id } from "../../../convex/_generated/dataModel";
 import { AuthGuard } from "@/components/AuthGuard";
 import { BoxOfficeSaleDialog } from "@/components/BoxOfficeSaleDialog";
+import { CameraScanner } from "@/components/CameraScanner";
+import { KioskShell, KioskHeader, StatMeterCard } from "@/components/kiosk";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader } from "@/components/ui/card";
 import {
   Form,
   FormControl,
@@ -68,11 +69,12 @@ function ScanPage() {
 
 function ScanSkeleton() {
   return (
-    <div className="mx-auto max-w-2xl p-4 sm:p-8">
-      <Skeleton className="h-8 w-48" />
-      <Skeleton className="mt-6 h-24 w-full" />
-      <Skeleton className="mt-8 h-10 w-full" />
-    </div>
+    <KioskShell>
+      <Skeleton className="h-4 w-40" />
+      <Skeleton className="mt-2 h-8 w-48" />
+      <Skeleton className="mt-6 h-36 w-full rounded-2xl" />
+      <Skeleton className="mt-6 h-12 w-full rounded-md" />
+    </KioskShell>
   );
 }
 
@@ -92,6 +94,7 @@ function ScanContent({ eventId }: { eventId: Id<"events"> }) {
   const checkInTicket = useMutation(api.ticketCheckin.checkInTicket);
   const checkOutTicket = useMutation(api.ticketCheckin.checkOutTicket);
   const [mode, setMode] = useState<ScanMode>("in");
+  const [cameraOn, setCameraOn] = useState(false);
   const [outcome, setOutcome] = useState<ScanOutcome | null>(null);
   // Monotonic sequence so the result card re-mounts (and re-flashes) on every
   // scan, even when two identical verdicts land back to back.
@@ -103,12 +106,16 @@ function ScanContent({ eventId }: { eventId: Id<"events"> }) {
     defaultValues: { code: "" },
   });
 
-  async function onSubmit(values: ScanValues) {
+  // Shared by the manual field and the camera scanner, so both go through the
+  // same mode-aware check-in/out, feedback, and result-card path.
+  async function submitCode(code: string) {
+    const trimmed = code.trim();
+    if (!trimmed) return;
     try {
       const data =
         mode === "in"
-          ? await checkInTicket({ code: values.code.trim() })
-          : await checkOutTicket({ code: values.code.trim() });
+          ? await checkInTicket({ code: trimmed })
+          : await checkOutTicket({ code: trimmed });
       setOutcome({ mode, data } as ScanOutcome);
       setSeq((n) => n + 1);
       playScanFeedback(signalForResult(data.result));
@@ -125,45 +132,69 @@ function ScanContent({ eventId }: { eventId: Id<"events"> }) {
     }
   }
 
+  function onSubmit(values: ScanValues) {
+    void submitCode(values.code);
+  }
+
+  const insidePercent = data.total > 0 ? Math.round((data.currentlyInside / data.total) * 100) : 0;
+
   return (
-    <div className="mx-auto max-w-2xl p-4 sm:p-8">
-      <div className="flex items-center justify-between gap-2">
-        <h1 className="text-2xl font-semibold">Scan tickets</h1>
-        <div className="flex items-center gap-2">
-          <BoxOfficeSaleDialog eventId={eventId} currency={currency} />
-          <Button asChild variant="ghost" size="sm">
-            <Link to="/events/$id" params={{ id: eventId }}>
-              <ArrowLeft /> Back to event
-            </Link>
-          </Button>
-        </div>
+    <KioskShell>
+      <KioskHeader
+        eventTitle={eventData.event.title}
+        title="Scan tickets"
+        live
+        actions={
+          <>
+            <BoxOfficeSaleDialog eventId={eventId} currency={currency} />
+            <Button asChild variant="ghost" size="sm">
+              <Link to="/events/$id" params={{ id: eventId }}>
+                <ArrowLeft /> Back to event
+              </Link>
+            </Button>
+          </>
+        }
+      />
+
+      <StatMeterCard
+        icon={<Users />}
+        label="Currently inside"
+        value={data.currentlyInside}
+        total={data.total}
+        percent={insidePercent}
+        sub={`${data.currentlyInside} of ${data.total} checked in`}
+      />
+
+      <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <ToggleGroup
+          type="single"
+          value={mode}
+          onValueChange={(value) => value && setMode(value as ScanMode)}
+          variant="outline"
+          className="grid w-full grid-cols-2 sm:flex sm:w-fit"
+        >
+          <ToggleGroupItem value="in" className="h-10">Check in</ToggleGroupItem>
+          <ToggleGroupItem value="out" className="h-10">Check out</ToggleGroupItem>
+        </ToggleGroup>
+        <Button
+          type="button"
+          variant={cameraOn ? "default" : "outline"}
+          className="h-10 w-full sm:w-auto"
+          onClick={() => setCameraOn((v) => !v)}
+        >
+          <Camera /> {cameraOn ? "Stop camera" : "Scan with camera"}
+        </Button>
       </div>
 
-      <Card className="mt-6">
-        <CardHeader>
-          <CardDescription>Currently inside</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <p className="text-5xl font-bold tabular-nums">
-            {data.currentlyInside} / {data.total}
-          </p>
-          <p className="mt-1 text-sm text-muted-foreground">checked in</p>
-        </CardContent>
-      </Card>
-
-      <ToggleGroup
-        type="single"
-        value={mode}
-        onValueChange={(value) => value && setMode(value as ScanMode)}
-        variant="outline"
-        className="mt-6"
-      >
-        <ToggleGroupItem value="in">Check in</ToggleGroupItem>
-        <ToggleGroupItem value="out">Check out</ToggleGroupItem>
-      </ToggleGroup>
+      {cameraOn ? (
+        <CameraScanner onDecode={(value) => void submitCode(value)} className="mt-4" />
+      ) : null}
 
       <Form {...form}>
-        <form onSubmit={form.handleSubmit(onSubmit)} className="mt-4 flex items-start gap-2">
+        <form
+          onSubmit={form.handleSubmit(onSubmit)}
+          className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-start"
+        >
           <FormField
             control={form.control}
             name="code"
@@ -171,21 +202,30 @@ function ScanContent({ eventId }: { eventId: Id<"events"> }) {
               <FormItem className="flex-1">
                 <FormLabel className="sr-only">Ticket code</FormLabel>
                 <FormControl>
-                  <Input
-                    placeholder="Scan or enter ticket code"
-                    autoFocus
-                    {...field}
-                    ref={(el) => {
-                      field.ref(el);
-                      inputRef.current = el;
-                    }}
-                  />
+                  <div className="relative">
+                    <ScanLine className="pointer-events-none absolute left-3 top-1/2 size-5 -translate-y-1/2 text-muted-foreground" />
+                    <Input
+                      className="h-12 pl-10 text-base"
+                      placeholder="Scan or enter ticket code"
+                      autoFocus
+                      {...field}
+                      ref={(el) => {
+                        field.ref(el);
+                        inputRef.current = el;
+                      }}
+                    />
+                  </div>
                 </FormControl>
                 <FormMessage />
               </FormItem>
             )}
           />
-          <Button type="submit" disabled={form.formState.isSubmitting}>
+          <Button
+            type="submit"
+            size="lg"
+            className="h-12 w-full px-6 sm:w-auto"
+            disabled={form.formState.isSubmitting}
+          >
             {form.formState.isSubmitting && <LoaderCircle className="animate-spin" />}
             {mode === "in" ? "Check in" : "Check out"}
           </Button>
@@ -202,7 +242,7 @@ function ScanContent({ eventId }: { eventId: Id<"events"> }) {
           <ScanResultCard outcome={outcome} />
         </motion.div>
       )}
-    </div>
+    </KioskShell>
   );
 }
 

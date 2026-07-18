@@ -290,6 +290,6 @@ export const getDoorState = query({
       .slice(0, 10)
       .map((r) => ({ name: r.name, at: r.checkedInAt ?? r._creationTime }));
 
-    return { checkedIn: checkedInRows.length, confirmed, recent };
+    return { eventTitle: event.title, checkedIn: checkedInRows.length, confirmed, recent };
   },
 });
