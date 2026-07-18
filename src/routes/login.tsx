@@ -1,9 +1,10 @@
 import { useState } from "react";
-import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, Navigate, useNavigate } from "@tanstack/react-router";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useAuthActions } from "@convex-dev/auth/react";
+import { Authenticated, AuthLoading, Unauthenticated } from "convex/react";
 import { LoaderCircle } from "lucide-react";
 import { toast } from "sonner";
 
@@ -35,7 +36,31 @@ const credentialsSchema = z.object({
 
 type Credentials = z.infer<typeof credentialsSchema>;
 
+/**
+ * A persisted session (localStorage) survives a tab close, so a returning
+ * organizer who is still signed in should go straight to the dashboard rather
+ * than be shown the sign-in form again. While Convex Auth resolves the stored
+ * token we hold a minimal loader so the form never flashes before the redirect.
+ */
 function LoginPage() {
+  return (
+    <>
+      <AuthLoading>
+        <div className="flex min-h-svh items-center justify-center">
+          <LoaderCircle className="size-6 animate-spin text-muted-foreground" />
+        </div>
+      </AuthLoading>
+      <Authenticated>
+        <Navigate to="/events" replace />
+      </Authenticated>
+      <Unauthenticated>
+        <LoginForm />
+      </Unauthenticated>
+    </>
+  );
+}
+
+function LoginForm() {
   const [flow, setFlow] = useState<"signIn" | "signUp">("signIn");
   const { signIn } = useAuthActions();
   const navigate = useNavigate();
