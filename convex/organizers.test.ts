@@ -112,3 +112,49 @@ test("getPublicProfile resolves the uploaded image", async () => {
   const profile = await t.query(api.organizers.getPublicProfile, { organizerId });
   expect(profile?.image).toBeTruthy();
 });
+
+test("updatePreferences stores the three event-defaults fields", async () => {
+  const t = convexTest(schema, modules);
+  const as = await asOrganizer(t, "ada@example.com");
+  const organizerId = await as.mutation(api.organizers.ensureOrganizer, {});
+
+  await as.mutation(api.organizers.updatePreferences, {
+    defaultLocation: "Mornington Green",
+    defaultCapacity: 50,
+    defaultCurrency: "EUR",
+  });
+
+  const row = await t.run((ctx) => ctx.db.get(organizerId));
+  expect(row?.defaultLocation).toBe("Mornington Green");
+  expect(row?.defaultCapacity).toBe(50);
+  expect(row?.defaultCurrency).toBe("EUR");
+});
+
+test("updatePreferences clears defaultLocation when given an empty string", async () => {
+  const t = convexTest(schema, modules);
+  const as = await asOrganizer(t, "ada@example.com");
+  const organizerId = await as.mutation(api.organizers.ensureOrganizer, {});
+  await as.mutation(api.organizers.updatePreferences, { defaultLocation: "Mornington Green" });
+
+  await as.mutation(api.organizers.updatePreferences, { defaultLocation: "  " });
+
+  const row = await t.run((ctx) => ctx.db.get(organizerId));
+  expect(row?.defaultLocation).toBeUndefined();
+});
+
+test("updatePreferences rejects a defaultCapacity below 1", async () => {
+  const t = convexTest(schema, modules);
+  const as = await asOrganizer(t, "ada@example.com");
+  await as.mutation(api.organizers.ensureOrganizer, {});
+
+  await expect(as.mutation(api.organizers.updatePreferences, { defaultCapacity: 0 })).rejects.toThrow(
+    /at least 1/i,
+  );
+});
+
+test("updatePreferences requires authentication", async () => {
+  const t = convexTest(schema, modules);
+  await expect(
+    t.mutation(api.organizers.updatePreferences, { defaultLocation: "Somewhere" }),
+  ).rejects.toThrow(/not authenticated/i);
+});

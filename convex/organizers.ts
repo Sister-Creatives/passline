@@ -72,6 +72,43 @@ export const setImage = mutation({
 });
 
 /**
+ * Update the signed-in organizer's saved event defaults (location, capacity,
+ * currency), applied to prefill the create-event form. Only fields present in
+ * `args` are touched -- an omitted field is left unchanged, matching
+ * `updateProfile`'s narrow-patch style. Location and currency are trimmed and
+ * an empty/whitespace string clears the field (patched to `undefined`) so an
+ * organizer can unset a default without a separate "clear" affordance.
+ */
+export const updatePreferences = mutation({
+  args: {
+    defaultLocation: v.optional(v.string()),
+    defaultCapacity: v.optional(v.number()),
+    defaultCurrency: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const organizerId = await getAuthOrganizerId(ctx);
+    if (!organizerId) throw new Error("Not authenticated");
+    if (args.defaultCapacity !== undefined && args.defaultCapacity < 1) {
+      throw new Error("Capacity must be at least 1");
+    }
+    const patch: Record<string, unknown> = {};
+    if (args.defaultLocation !== undefined) {
+      const trimmed = args.defaultLocation.trim();
+      patch.defaultLocation = trimmed ? trimmed : undefined;
+    }
+    if (args.defaultCapacity !== undefined) {
+      patch.defaultCapacity = args.defaultCapacity;
+    }
+    if (args.defaultCurrency !== undefined) {
+      const trimmed = args.defaultCurrency.trim();
+      patch.defaultCurrency = trimmed ? trimmed : undefined;
+    }
+    await ctx.db.patch(organizerId, patch);
+    return null;
+  },
+});
+
+/**
  * The signed-in organizer. `image` is the resolved logo URL: the uploaded file
  * when present, otherwise the legacy URL, so callers keep receiving a plain
  * string and don't need to know which storage era a row is from.

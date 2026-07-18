@@ -117,6 +117,8 @@ interface EventFormProps {
   event?: Doc<"events">;
   /** Called after a successful edit save (edit mode only). */
   onDone?: () => void;
+  /** Create-mode only: prefill values from the organizer's saved event defaults. */
+  defaults?: { location?: string; capacity?: number; currency?: string };
 }
 
 /**
@@ -130,7 +132,7 @@ interface EventFormProps {
  * keywords -- which are passed to `updateEvent` alongside the base fields.
  * Create mode stays minimal (F19 model) and never renders or submits them.
  */
-export function EventForm({ event, onDone }: EventFormProps) {
+export function EventForm({ event, onDone, defaults }: EventFormProps) {
   const navigate = useNavigate();
   const createEvent = useMutation(api.events.createEvent);
   const updateEvent = useMutation(api.events.updateEvent);
@@ -160,12 +162,12 @@ export function EventForm({ event, onDone }: EventFormProps) {
       : {
           title: "",
           description: "",
-          location: "",
-          capacity: "1",
+          location: defaults?.location ?? "",
+          capacity: String(defaults?.capacity ?? 1),
           startsAt: "",
           endsAt: "",
           slug: "",
-          currency: "USD",
+          currency: defaults?.currency ?? "USD",
           eventType: NONE_VALUE,
           eventCategory: NONE_VALUE,
           hostProfileId: NONE_VALUE,
@@ -216,6 +218,7 @@ export function EventForm({ event, onDone }: EventFormProps) {
           capacity: Number(values.capacity),
           startsAt: new Date(values.startsAt).getTime(),
           endsAt: new Date(values.endsAt).getTime(),
+          currency: defaults?.currency ?? "USD",
         });
         toast.success("Event created");
         navigate({ to: "/events/$id", params: { id: eventId }, search: { section: "tickets" } });
