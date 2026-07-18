@@ -152,6 +152,17 @@ test("updatePreferences rejects a defaultCapacity below 1", async () => {
   );
 });
 
+test("updatePreferences stores defaultFeeMode", async () => {
+  const t = convexTest(schema, modules);
+  const as = await asOrganizer(t, "ada@example.com");
+  const organizerId = await as.mutation(api.organizers.ensureOrganizer, {});
+
+  await as.mutation(api.organizers.updatePreferences, { defaultFeeMode: "absorb" });
+
+  const row = await t.run((ctx) => ctx.db.get(organizerId));
+  expect(row?.defaultFeeMode).toBe("absorb");
+});
+
 test("updatePreferences requires authentication", async () => {
   const t = convexTest(schema, modules);
   await expect(

@@ -56,6 +56,7 @@ function NewEventPage() {
                   location: me?.defaultLocation,
                   capacity: me?.defaultCapacity,
                   currency: me?.defaultCurrency,
+                  feeMode: me?.defaultFeeMode,
                 }}
               />
             )}

@@ -40,6 +40,7 @@ import type * as marketing from "../marketing.js";
 import type * as migrations from "../migrations.js";
 import type * as orders from "../orders.js";
 import type * as organizers from "../organizers.js";
+import type * as payments from "../payments.js";
 import type * as promoCodes from "../promoCodes.js";
 import type * as rateLimits from "../rateLimits.js";
 import type * as reports from "../reports.js";
@@ -94,6 +95,7 @@ declare const fullApi: ApiFromModules<{
   migrations: typeof migrations;
   orders: typeof orders;
   organizers: typeof organizers;
+  payments: typeof payments;
   promoCodes: typeof promoCodes;
   rateLimits: typeof rateLimits;
   reports: typeof reports;

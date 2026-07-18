@@ -201,6 +201,41 @@ test("createEvent defaults currency to USD when omitted", async () => {
   expect(event?.currency).toBe("USD");
 });
 
+test("createEvent stores an explicit feeMode", async () => {
+  const t = convexTest(schema, modules);
+  const { as } = await asOrganizer(t, "ada@example.com");
+  await as.mutation(api.organizers.ensureOrganizer, {});
+
+  const eventId = await as.mutation(api.events.createEvent, {
+    title: "Absorb Fees Show",
+    description: "Live jazz night.",
+    startsAt: 100,
+    endsAt: 200,
+    location: "Rooftop",
+    capacity: 80,
+    feeMode: "absorb",
+  });
+  const event = await t.run((ctx) => ctx.db.get(eventId));
+  expect(event?.feeMode).toBe("absorb");
+});
+
+test("createEvent leaves feeMode unset when omitted", async () => {
+  const t = convexTest(schema, modules);
+  const { as } = await asOrganizer(t, "ada@example.com");
+  await as.mutation(api.organizers.ensureOrganizer, {});
+
+  const eventId = await as.mutation(api.events.createEvent, {
+    title: "Rooftop Jazz",
+    description: "Live jazz night.",
+    startsAt: 100,
+    endsAt: 200,
+    location: "Rooftop",
+    capacity: 80,
+  });
+  const event = await t.run((ctx) => ctx.db.get(eventId));
+  expect(event?.feeMode).toBeUndefined();
+});
+
 test("createEvent rejects when unauthenticated", async () => {
   const t = convexTest(schema, modules);
 

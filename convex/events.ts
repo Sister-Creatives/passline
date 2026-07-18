@@ -72,6 +72,7 @@ export const createEvent = mutation({
     location: v.string(),
     capacity: v.number(),
     currency: v.optional(v.string()),
+    feeMode: v.optional(v.union(v.literal("pass"), v.literal("absorb"))),
   },
   handler: async (ctx, args) => {
     const organizerId = await getAuthOrganizerId(ctx);
@@ -81,6 +82,7 @@ export const createEvent = mutation({
       organizerId,
       ...args,
       currency: args.currency ?? "USD",
+      feeMode: args.feeMode,
       status: "draft",
       slug: slugify(args.title, crypto.randomUUID()),
       seatsTaken: 0,

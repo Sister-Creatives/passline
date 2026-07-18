@@ -73,17 +73,20 @@ export const setImage = mutation({
 
 /**
  * Update the signed-in organizer's saved event defaults (location, capacity,
- * currency), applied to prefill the create-event form. Only fields present in
- * `args` are touched -- an omitted field is left unchanged, matching
- * `updateProfile`'s narrow-patch style. Location and currency are trimmed and
- * an empty/whitespace string clears the field (patched to `undefined`) so an
- * organizer can unset a default without a separate "clear" affordance.
+ * currency, fee mode), applied to prefill the create-event form. Only fields
+ * present in `args` are touched -- an omitted field is left unchanged,
+ * matching `updateProfile`'s narrow-patch style. Location and currency are
+ * trimmed and an empty/whitespace string clears the field (patched to
+ * `undefined`) so an organizer can unset a default without a separate
+ * "clear" affordance. `defaultFeeMode` is an enum, not a free-text field, so
+ * there's no empty-string clearing path -- a provided value simply sets it.
  */
 export const updatePreferences = mutation({
   args: {
     defaultLocation: v.optional(v.string()),
     defaultCapacity: v.optional(v.number()),
     defaultCurrency: v.optional(v.string()),
+    defaultFeeMode: v.optional(v.union(v.literal("pass"), v.literal("absorb"))),
   },
   handler: async (ctx, args) => {
     const organizerId = await getAuthOrganizerId(ctx);
@@ -102,6 +105,9 @@ export const updatePreferences = mutation({
     if (args.defaultCurrency !== undefined) {
       const trimmed = args.defaultCurrency.trim();
       patch.defaultCurrency = trimmed ? trimmed : undefined;
+    }
+    if (args.defaultFeeMode !== undefined) {
+      patch.defaultFeeMode = args.defaultFeeMode;
     }
     await ctx.db.patch(organizerId, patch);
     return null;

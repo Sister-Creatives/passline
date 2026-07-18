@@ -118,7 +118,7 @@ interface EventFormProps {
   /** Called after a successful edit save (edit mode only). */
   onDone?: () => void;
   /** Create-mode only: prefill values from the organizer's saved event defaults. */
-  defaults?: { location?: string; capacity?: number; currency?: string };
+  defaults?: { location?: string; capacity?: number; currency?: string; feeMode?: "pass" | "absorb" };
 }
 
 /**
@@ -219,6 +219,7 @@ export function EventForm({ event, onDone, defaults }: EventFormProps) {
           startsAt: new Date(values.startsAt).getTime(),
           endsAt: new Date(values.endsAt).getTime(),
           currency: defaults?.currency ?? "USD",
+          feeMode: defaults?.feeMode,
         });
         toast.success("Event created");
         navigate({ to: "/events/$id", params: { id: eventId }, search: { section: "tickets" } });
