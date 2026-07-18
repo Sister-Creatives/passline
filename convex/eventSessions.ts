@@ -64,6 +64,54 @@ export const create = mutation({
   },
 });
 
+/**
+ * Owner-only: bulk-create sessions from a pre-computed set of windows (the
+ * output of `generateRecurringDates`). Validates every window before
+ * inserting any -- the mutation is transactional, but validating up front
+ * keeps the rejection path a single clean throw instead of a partial insert
+ * followed by a rollback.
+ */
+export const createRecurring = mutation({
+  args: {
+    eventId: v.id("events"),
+    sessions: v.array(v.object({ startsAt: v.number(), endsAt: v.number() })),
+    capacity: v.number(),
+    label: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const event = await requireOwnedEvent(ctx, args.eventId);
+    if (args.sessions.length === 0) throw new Error("Add at least one date");
+    if (args.sessions.length > 100) throw new Error("Too many dates at once (max 100)");
+    validateSessionCapacity(args.capacity);
+    for (const session of args.sessions) {
+      validateSessionWindow(session.startsAt, session.endsAt);
+    }
+
+    const existing = await ctx.db
+      .query("eventSessions")
+      .withIndex("by_event", (q) => q.eq("eventId", args.eventId))
+      .collect();
+    let sortOrder = existing.reduce((max, s) => Math.max(max, s.sortOrder), -1) + 1;
+    const label = args.label?.trim() || undefined;
+
+    for (const session of args.sessions) {
+      await ctx.db.insert("eventSessions", {
+        eventId: args.eventId,
+        organizerId: event.organizerId,
+        startsAt: session.startsAt,
+        endsAt: session.endsAt,
+        capacity: args.capacity,
+        sold: 0,
+        label,
+        sortOrder,
+      });
+      sortOrder++;
+    }
+
+    return { created: args.sessions.length };
+  },
+});
+
 /** Owner-only: every session for the event, for the dashboard. */
 export const list = query({
   args: { eventId: v.id("events") },
