@@ -135,8 +135,10 @@ export const updatePreferences = mutation({
     defaultFeeMode: v.optional(v.union(v.literal("pass"), v.literal("absorb"))),
   },
   handler: async (ctx, args) => {
-    const organizerId = await getAuthOrganizerId(ctx);
-    if (!organizerId) throw new Error("Not authenticated");
+    const membership = await getMyMembership(ctx);
+    if (!membership) throw new Error("Not authenticated");
+    if (membership.role !== "owner") throw new Error("Only an owner can do this");
+    const organizerId = membership.organizerId;
     if (args.defaultCapacity !== undefined && args.defaultCapacity < 1) {
       throw new Error("Capacity must be at least 1");
     }
