@@ -48,6 +48,7 @@ import type * as rsvps from "../rsvps.js";
 import type * as seats from "../seats.js";
 import type * as seed from "../seed.js";
 import type * as sidebar from "../sidebar.js";
+import type * as team from "../team.js";
 import type * as ticketCheckin from "../ticketCheckin.js";
 import type * as ticketTypes from "../ticketTypes.js";
 import type * as tickets from "../tickets.js";
@@ -103,6 +104,7 @@ declare const fullApi: ApiFromModules<{
   seats: typeof seats;
   seed: typeof seed;
   sidebar: typeof sidebar;
+  team: typeof team;
   ticketCheckin: typeof ticketCheckin;
   ticketTypes: typeof ticketTypes;
   tickets: typeof tickets;

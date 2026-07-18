@@ -1,13 +1,21 @@
 import { mutation, query } from "./_generated/server";
 import { v } from "convex/values";
 import { getAuthUserId } from "@convex-dev/auth/server";
-import { getAuthOrganizerId } from "./auth";
+import { getAuthOrganizerId, getMyMembership } from "./auth";
 
 /**
- * Ensure an `organizers` row exists for the currently authenticated user.
+ * Ensure the currently authenticated user has an org membership.
  *
- * Called on first sign-in. Idempotent: if a row already exists for the user's
- * email it returns that row's id instead of inserting a duplicate.
+ * Called on first sign-in. Idempotent, with three paths:
+ * - Pending invite / returning member: a `memberships` row already exists for
+ *   this email. If it has no `userId` yet (a teammate added by email who is
+ *   signing in for the first time), link it to this user. Either way, return
+ *   its `organizerId` -- no new org is created.
+ * - Legacy self-heal: no membership, but a pre-migration `organizers` row
+ *   exists for this email (an owner from before the membership model). Create
+ *   the missing owner membership and return that org's id.
+ * - Brand-new solo user: no membership and no legacy org -- create both the
+ *   `organizers` row and an owner membership for this email.
  */
 export const ensureOrganizer = mutation({
   args: {},
@@ -16,21 +24,54 @@ export const ensureOrganizer = mutation({
     if (!userId) throw new Error("Not authenticated");
     const user = await ctx.db.get(userId);
     if (!user?.email) throw new Error("No email on account");
-    const existing = await ctx.db
+    const email = user.email.toLowerCase();
+
+    const membership = await ctx.db
+      .query("memberships")
+      .withIndex("by_email", (q) => q.eq("email", email))
+      .first();
+    if (membership) {
+      if (!membership.userId) {
+        await ctx.db.patch(membership._id, { userId });
+      }
+      return membership.organizerId;
+    }
+
+    const legacy = await ctx.db
       .query("organizers")
       .withIndex("by_email", (q) => q.eq("email", user.email!))
       .unique();
-    if (existing) return existing._id;
-    return await ctx.db.insert("organizers", {
+    if (legacy) {
+      await ctx.db.insert("memberships", {
+        organizerId: legacy._id,
+        email,
+        userId,
+        role: "owner",
+        createdAt: Date.now(),
+      });
+      return legacy._id;
+    }
+
+    const organizerId = await ctx.db.insert("organizers", {
       name: user.name ?? user.email,
       email: user.email,
       image: user.image ?? undefined,
     });
+    await ctx.db.insert("memberships", {
+      organizerId,
+      email,
+      userId,
+      role: "owner",
+      createdAt: Date.now(),
+    });
+    return organizerId;
   },
 });
 
 /**
  * Update the signed-in organizer's own name. Name is required and trimmed.
+ * Owner-only (org identity is a sensitive setting -- see the team-management
+ * design doc's enforcement list).
  *
  * The logo is deliberately NOT settable here -- it's a file now, applied
  * immediately by `setImage` (mirroring `eventContent.setCoverImage`) so an
@@ -39,8 +80,10 @@ export const ensureOrganizer = mutation({
 export const updateProfile = mutation({
   args: { name: v.string() },
   handler: async (ctx, { name }) => {
-    const organizerId = await getAuthOrganizerId(ctx);
-    if (!organizerId) throw new Error("Not authenticated");
+    const membership = await getMyMembership(ctx);
+    if (!membership) throw new Error("Not authenticated");
+    if (membership.role !== "owner") throw new Error("Only an owner can do this");
+    const organizerId = membership.organizerId;
     const trimmedName = name.trim();
     if (!trimmedName) throw new Error("Name is required");
     await ctx.db.patch(organizerId, { name: trimmedName });
@@ -49,7 +92,8 @@ export const updateProfile = mutation({
 });
 
 /**
- * Set (or clear, with null) the organizer's uploaded logo.
+ * Set (or clear, with null) the organizer's uploaded logo. Owner-only (see
+ * `updateProfile`).
  *
  * Deletes the blob it replaces so storage doesn't accumulate orphans, and
  * clears the legacy `image` URL so resolution is unambiguous -- the same
@@ -58,8 +102,10 @@ export const updateProfile = mutation({
 export const setImage = mutation({
   args: { storageId: v.union(v.id("_storage"), v.null()) },
   handler: async (ctx, { storageId }) => {
-    const organizerId = await getAuthOrganizerId(ctx);
-    if (!organizerId) throw new Error("Not authenticated");
+    const membership = await getMyMembership(ctx);
+    if (!membership) throw new Error("Not authenticated");
+    if (membership.role !== "owner") throw new Error("Only an owner can do this");
+    const organizerId = membership.organizerId;
     const organizer = await ctx.db.get(organizerId);
     const prev = organizer?.imageId;
     if (prev && prev !== storageId) await ctx.storage.delete(prev);

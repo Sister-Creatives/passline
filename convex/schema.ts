@@ -27,6 +27,16 @@ export default defineSchema({
     defaultFeeMode: v.optional(v.union(v.literal("pass"), v.literal("absorb"))),
   }).index("by_email", ["email"]),
 
+  memberships: defineTable({
+    organizerId: v.id("organizers"),
+    email: v.string(), // normalized lowercase
+    userId: v.optional(v.id("users")), // linked on first sign-in; unset = pending
+    role: v.union(v.literal("owner"), v.literal("member")),
+    createdAt: v.number(),
+  })
+    .index("by_email", ["email"])
+    .index("by_organizer", ["organizerId"]),
+
   events: defineTable({
     organizerId: v.id("organizers"),
     title: v.string(),
