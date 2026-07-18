@@ -1,7 +1,7 @@
 import { mutation, query } from "./_generated/server";
 import { v } from "convex/values";
 import { getAuthUserId } from "@convex-dev/auth/server";
-import { getAuthOrganizerId } from "./auth";
+import { getAuthOrganizerId, getMyMembership } from "./auth";
 
 /**
  * Ensure the currently authenticated user has an org membership.
@@ -70,6 +70,8 @@ export const ensureOrganizer = mutation({
 
 /**
  * Update the signed-in organizer's own name. Name is required and trimmed.
+ * Owner-only (org identity is a sensitive setting -- see the team-management
+ * design doc's enforcement list).
  *
  * The logo is deliberately NOT settable here -- it's a file now, applied
  * immediately by `setImage` (mirroring `eventContent.setCoverImage`) so an
@@ -78,8 +80,10 @@ export const ensureOrganizer = mutation({
 export const updateProfile = mutation({
   args: { name: v.string() },
   handler: async (ctx, { name }) => {
-    const organizerId = await getAuthOrganizerId(ctx);
-    if (!organizerId) throw new Error("Not authenticated");
+    const membership = await getMyMembership(ctx);
+    if (!membership) throw new Error("Not authenticated");
+    if (membership.role !== "owner") throw new Error("Only an owner can do this");
+    const organizerId = membership.organizerId;
     const trimmedName = name.trim();
     if (!trimmedName) throw new Error("Name is required");
     await ctx.db.patch(organizerId, { name: trimmedName });
@@ -88,7 +92,8 @@ export const updateProfile = mutation({
 });
 
 /**
- * Set (or clear, with null) the organizer's uploaded logo.
+ * Set (or clear, with null) the organizer's uploaded logo. Owner-only (see
+ * `updateProfile`).
  *
  * Deletes the blob it replaces so storage doesn't accumulate orphans, and
  * clears the legacy `image` URL so resolution is unambiguous -- the same
@@ -97,8 +102,10 @@ export const updateProfile = mutation({
 export const setImage = mutation({
   args: { storageId: v.union(v.id("_storage"), v.null()) },
   handler: async (ctx, { storageId }) => {
-    const organizerId = await getAuthOrganizerId(ctx);
-    if (!organizerId) throw new Error("Not authenticated");
+    const membership = await getMyMembership(ctx);
+    if (!membership) throw new Error("Not authenticated");
+    if (membership.role !== "owner") throw new Error("Only an owner can do this");
+    const organizerId = membership.organizerId;
     const organizer = await ctx.db.get(organizerId);
     const prev = organizer?.imageId;
     if (prev && prev !== storageId) await ctx.storage.delete(prev);

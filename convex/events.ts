@@ -1,7 +1,7 @@
 import { mutation, query, type QueryCtx, type MutationCtx } from "./_generated/server";
 import { v } from "convex/values";
 import type { Id } from "./_generated/dataModel";
-import { getAuthOrganizerId } from "./auth";
+import { getAuthOrganizerId, getMyMembership } from "./auth";
 import { slugify } from "./lib/slug";
 import { countSeatsTaken } from "./lib/capacity";
 import { promoteNext } from "./waitlist";
@@ -267,7 +267,11 @@ export const updateEvent = mutation({
 });
 
 /**
- * Delete an event and all of its rsvps (owner-only).
+ * Delete an event and all of its rsvps. Owner-role-only (destructive, per the
+ * team-management design doc's enforcement list) in addition to the usual
+ * event-ownership check (`requireOwnedEvent`) -- an owner trying to delete
+ * another org's event still gets "Not found", not a false "Only an owner"
+ * (the role check runs first, then ownership).
  *
  * Rsvps are not retained for a deleted event -- there is no cancellation email
  * or waitlist notice sent here, since the event itself is gone, not one seat
@@ -276,6 +280,9 @@ export const updateEvent = mutation({
 export const deleteEvent = mutation({
   args: { eventId: v.id("events") },
   handler: async (ctx, { eventId }) => {
+    const membership = await getMyMembership(ctx);
+    if (!membership) throw new Error("Not authenticated");
+    if (membership.role !== "owner") throw new Error("Only an owner can do this");
     const event = await requireOwnedEvent(ctx, eventId);
 
     // Recorded before the delete so the row can reference this (about-to-be
