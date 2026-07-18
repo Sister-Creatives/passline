@@ -131,6 +131,9 @@ test("a member calling owner-only mutations throws", async () => {
   await expect(member.mutation(api.organizers.setImage, { storageId: null })).rejects.toThrow(
     /only an owner/i,
   );
+  await expect(
+    member.mutation(api.organizers.updatePreferences, { defaultCurrency: "EUR" }),
+  ).rejects.toThrow(/only an owner/i);
   await expect(member.mutation(api.events.deleteEvent, { eventId })).rejects.toThrow(/only an owner/i);
 });
 
