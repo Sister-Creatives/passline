@@ -20,7 +20,7 @@ import { AuthGuard } from "@/components/AuthGuard";
 import { BoxOfficeSaleDialog } from "@/components/BoxOfficeSaleDialog";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Form,
   FormControl,
@@ -127,8 +127,11 @@ function ScanContent({ eventId }: { eventId: Id<"events"> }) {
 
   return (
     <div className="mx-auto max-w-2xl p-4 sm:p-8">
-      <div className="flex items-center justify-between gap-2">
-        <h1 className="text-2xl font-semibold">Scan tickets</h1>
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0">
+          <p className="truncate text-sm text-muted-foreground">{eventData.event.title}</p>
+          <h1 className="text-2xl font-semibold tracking-tight">Scan tickets</h1>
+        </div>
         <div className="flex items-center gap-2">
           <BoxOfficeSaleDialog eventId={eventId} currency={currency} />
           <Button asChild variant="ghost" size="sm">
@@ -142,12 +145,21 @@ function ScanContent({ eventId }: { eventId: Id<"events"> }) {
       <Card className="mt-6">
         <CardHeader>
           <CardDescription>Currently inside</CardDescription>
+          <CardTitle className="text-4xl font-bold tabular-nums">
+            {data.currentlyInside}
+            <span className="text-2xl font-medium text-muted-foreground"> / {data.total}</span>
+          </CardTitle>
         </CardHeader>
-        <CardContent>
-          <p className="text-5xl font-bold tabular-nums">
-            {data.currentlyInside} / {data.total}
+        <CardContent className="space-y-2">
+          <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
+            <div
+              className="h-full rounded-full bg-primary transition-[width] duration-500 ease-out motion-reduce:transition-none"
+              style={{ width: `${data.total > 0 ? Math.round((data.currentlyInside / data.total) * 100) : 0}%` }}
+            />
+          </div>
+          <p className="text-sm text-muted-foreground tabular-nums">
+            {data.currentlyInside} of {data.total} checked in
           </p>
-          <p className="mt-1 text-sm text-muted-foreground">checked in</p>
         </CardContent>
       </Card>
 
