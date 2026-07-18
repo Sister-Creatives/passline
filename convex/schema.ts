@@ -21,6 +21,10 @@ export default defineSchema({
     // Read-only fallback: `imageId` wins when set. Never written with a new value.
     image: v.optional(v.string()),
     imageId: v.optional(v.id("_storage")),
+    defaultLocation: v.optional(v.string()),
+    defaultCapacity: v.optional(v.number()),
+    defaultCurrency: v.optional(v.string()),
+    defaultFeeMode: v.optional(v.union(v.literal("pass"), v.literal("absorb"))),
   }).index("by_email", ["email"]),
 
   events: defineTable({
