@@ -9,6 +9,7 @@ import type { Doc } from "../../../convex/_generated/dataModel";
 import { isValidHexColor, parseVideoEmbed } from "../../../convex/lib/eventContent";
 import { ACCESSIBILITY_FEATURES } from "@/lib/accessibility";
 import { Checkout } from "@/components/Checkout";
+import { RichText } from "@/components/RichText";
 import { RsvpForm } from "@/components/RsvpForm";
 import { TrackingPixels } from "@/components/TrackingPixels";
 import { formatEventDateRange } from "@/lib/format-event-date";
@@ -215,7 +216,7 @@ function EventDetails({ slug, event }: { slug: string; event: Doc<"events"> }) {
           {formatEventDateRange(event.startsAt, event.endsAt)}
         </p>
         <p className="text-sm text-muted-foreground">{event.location}</p>
-        <p className="mt-4 text-sm whitespace-pre-line">{event.description}</p>
+        <RichText html={event.description} className="mt-4 text-sm" />
 
       {content && content.gallery && content.gallery.length > 0 && (
         <section className="mt-8">
