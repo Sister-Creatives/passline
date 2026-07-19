@@ -38,6 +38,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { RichTextEditor } from "@/components/RichTextEditor";
 
 // Common ISO 4217 currency codes offered in the edit-mode Currency select.
 const CURRENCY_CODES = ["USD", "EUR", "GBP", "AUD", "CAD", "NZD", "JPY"] as const;
@@ -253,7 +254,7 @@ export function EventForm({ event, onDone, defaults }: EventFormProps) {
             <FormItem>
               <FormLabel>Description</FormLabel>
               <FormControl>
-                <Textarea placeholder="Tell guests what to expect" {...field} />
+                <RichTextEditor value={field.value} onChange={field.onChange} />
               </FormControl>
               <FormMessage />
             </FormItem>
