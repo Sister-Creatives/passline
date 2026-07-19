@@ -402,4 +402,21 @@ export default defineSchema({
     expiresAt: v.number(),
     attempts: v.number(),
   }).index("by_user", ["userId"]),
+
+  notifications: defineTable({
+    organizerId: v.id("organizers"),
+    type: v.union(
+      v.literal("rsvp"),
+      v.literal("waitlist"),
+      v.literal("sold_out"),
+      v.literal("cancellation"),
+    ),
+    title: v.string(),
+    body: v.string(),
+    eventId: v.optional(v.id("events")),
+    read: v.boolean(),
+    createdAt: v.number(),
+  })
+    .index("by_organizer", ["organizerId", "createdAt"])
+    .index("by_organizer_unread", ["organizerId", "read"]),
 });
