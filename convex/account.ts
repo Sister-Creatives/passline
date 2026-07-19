@@ -133,6 +133,18 @@ export const bumpEmailChangeAttempts = internalMutation({
   },
 });
 
+export const discardEmailChangeRequest = internalMutation({
+  args: { userId: v.id("users") },
+  handler: async (ctx, { userId }): Promise<null> => {
+    const existing = await ctx.db
+      .query("emailChangeRequests")
+      .withIndex("by_user", (q) => q.eq("userId", userId))
+      .first();
+    if (existing) await ctx.db.delete(existing._id);
+    return null;
+  },
+});
+
 /**
  * The identity-key migration. Re-checks availability, then updates every
  * email-keyed record in one transaction and deletes the request.
@@ -230,8 +242,14 @@ export const confirmEmailChange = action({
     if (!userId) throw new Error("Not authenticated");
     const request = await ctx.runQuery(internal.account.readEmailChangeRequest, { userId });
     if (!request) throw new Error("No pending email change");
-    if (Date.now() > request.expiresAt) throw new Error("Verification code expired");
-    if (request.attempts >= MAX_CODE_ATTEMPTS) throw new Error("Too many attempts");
+    if (Date.now() > request.expiresAt) {
+      await ctx.runMutation(internal.account.discardEmailChangeRequest, { userId });
+      throw new Error("Verification code expired");
+    }
+    if (request.attempts >= MAX_CODE_ATTEMPTS) {
+      await ctx.runMutation(internal.account.discardEmailChangeRequest, { userId });
+      throw new Error("Too many attempts");
+    }
 
     const codeHash = await sha256Hex(code.trim());
     if (codeHash !== request.codeHash) {

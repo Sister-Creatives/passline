@@ -107,6 +107,17 @@ test("confirmEmailChange migrates every email-keyed record and keeps the organiz
     ctx.db.query("emailChangeRequests").withIndex("by_user", (q) => q.eq("userId", userId)).first(),
   );
   expect(leftover).toBeNull();
+
+  const acct = await t.run((ctx) =>
+    ctx.db
+      .query("authAccounts")
+      .withIndex("userIdAndProvider", (q) => q.eq("userId", userId).eq("provider", "password"))
+      .first(),
+  );
+  expect(acct?.providerAccountId).toEqual("new@example.com");
+
+  const org = await t.run((ctx) => ctx.db.get(organizerId));
+  expect(org?.email).toEqual("new@example.com");
 });
 
 test("confirmEmailChange rejects a wrong code and increments attempts", async () => {
@@ -141,4 +152,8 @@ test("confirmEmailChange rejects an expired code", async () => {
     }),
   );
   await expect(as.action(api.account.confirmEmailChange, { code: "000000" })).rejects.toThrow(/expired/i);
+  const leftover = await t.run((ctx) =>
+    ctx.db.query("emailChangeRequests").withIndex("by_user", (q) => q.eq("userId", userId)).first(),
+  );
+  expect(leftover).toBeNull();
 });
