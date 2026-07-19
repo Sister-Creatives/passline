@@ -394,4 +394,12 @@ export default defineSchema({
     resources: v.array(v.object({ title: v.string(), url: v.string() })),
     accessPassword: v.optional(v.string()), // optional shared password for non-ticket-holders
   }).index("by_event", ["eventId"]),
+
+  emailChangeRequests: defineTable({
+    userId: v.id("users"),
+    newEmail: v.string(), // normalized lowercase
+    codeHash: v.string(), // SHA-256 hex of the 6-digit code
+    expiresAt: v.number(),
+    attempts: v.number(),
+  }).index("by_user", ["userId"]),
 });

@@ -82,6 +82,23 @@ export const sendWaitlistEmail = internalAction({
 });
 
 /**
+ * Verification code for an in-progress email change. Scheduled from
+ * `startEmailChange` in convex/account.ts.
+ */
+export const sendEmailChangeCode = internalAction({
+  args: { to: v.string(), code: v.string() },
+  handler: async (ctx, { to, code }) => {
+    if (!emailConfigured()) return;
+    await resend.sendEmail(ctx, {
+      from: FROM,
+      to,
+      subject: "Confirm your new Passline email",
+      html: `Your Passline verification code is <strong>${escapeHtml(code)}</strong>. It expires in 10 minutes. If you didn't request this, you can ignore this email.`,
+    });
+  },
+});
+
+/**
  * Claim-link email for an attendee promoted off the waitlist. Scheduled from
  * `promoteNext` in convex/waitlist.ts; the link is time-limited by the claim
  * window enforced in claimSpot / the sweep.
