@@ -21,6 +21,7 @@ import { Route as SettingsProfileRouteImport } from './routes/settings/profile'
 import { Route as SettingsPaymentsRouteImport } from './routes/settings/payments'
 import { Route as SettingsHostProfilesRouteImport } from './routes/settings/host-profiles'
 import { Route as SettingsApiWebhooksRouteImport } from './routes/settings/api-webhooks'
+import { Route as SettingsAccountRouteImport } from './routes/settings/account'
 import { Route as RsvpTokenRouteImport } from './routes/rsvp/$token'
 import { Route as OrdersTokenRouteImport } from './routes/orders/$token'
 import { Route as HostOrganizerIdRouteImport } from './routes/host/$organizerId'
@@ -93,6 +94,11 @@ const SettingsApiWebhooksRoute = SettingsApiWebhooksRouteImport.update({
   path: '/settings/api-webhooks',
   getParentRoute: () => rootRouteImport,
 } as any)
+const SettingsAccountRoute = SettingsAccountRouteImport.update({
+  id: '/settings/account',
+  path: '/settings/account',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const RsvpTokenRoute = RsvpTokenRouteImport.update({
   id: '/rsvp/$token',
   path: '/rsvp/$token',
@@ -163,6 +169,7 @@ export interface FileRoutesByFullPath {
   '/host/$organizerId': typeof HostOrganizerIdRoute
   '/orders/$token': typeof OrdersTokenRoute
   '/rsvp/$token': typeof RsvpTokenRoute
+  '/settings/account': typeof SettingsAccountRoute
   '/settings/api-webhooks': typeof SettingsApiWebhooksRoute
   '/settings/host-profiles': typeof SettingsHostProfilesRoute
   '/settings/payments': typeof SettingsPaymentsRoute
@@ -187,6 +194,7 @@ export interface FileRoutesByTo {
   '/host/$organizerId': typeof HostOrganizerIdRoute
   '/orders/$token': typeof OrdersTokenRoute
   '/rsvp/$token': typeof RsvpTokenRoute
+  '/settings/account': typeof SettingsAccountRoute
   '/settings/api-webhooks': typeof SettingsApiWebhooksRoute
   '/settings/host-profiles': typeof SettingsHostProfilesRoute
   '/settings/payments': typeof SettingsPaymentsRoute
@@ -213,6 +221,7 @@ export interface FileRoutesById {
   '/host/$organizerId': typeof HostOrganizerIdRoute
   '/orders/$token': typeof OrdersTokenRoute
   '/rsvp/$token': typeof RsvpTokenRoute
+  '/settings/account': typeof SettingsAccountRoute
   '/settings/api-webhooks': typeof SettingsApiWebhooksRoute
   '/settings/host-profiles': typeof SettingsHostProfilesRoute
   '/settings/payments': typeof SettingsPaymentsRoute
@@ -240,6 +249,7 @@ export interface FileRouteTypes {
     | '/host/$organizerId'
     | '/orders/$token'
     | '/rsvp/$token'
+    | '/settings/account'
     | '/settings/api-webhooks'
     | '/settings/host-profiles'
     | '/settings/payments'
@@ -264,6 +274,7 @@ export interface FileRouteTypes {
     | '/host/$organizerId'
     | '/orders/$token'
     | '/rsvp/$token'
+    | '/settings/account'
     | '/settings/api-webhooks'
     | '/settings/host-profiles'
     | '/settings/payments'
@@ -289,6 +300,7 @@ export interface FileRouteTypes {
     | '/host/$organizerId'
     | '/orders/$token'
     | '/rsvp/$token'
+    | '/settings/account'
     | '/settings/api-webhooks'
     | '/settings/host-profiles'
     | '/settings/payments'
@@ -315,6 +327,7 @@ export interface RootRouteChildren {
   HostOrganizerIdRoute: typeof HostOrganizerIdRoute
   OrdersTokenRoute: typeof OrdersTokenRoute
   RsvpTokenRoute: typeof RsvpTokenRoute
+  SettingsAccountRoute: typeof SettingsAccountRoute
   SettingsApiWebhooksRoute: typeof SettingsApiWebhooksRoute
   SettingsHostProfilesRoute: typeof SettingsHostProfilesRoute
   SettingsPaymentsRoute: typeof SettingsPaymentsRoute
@@ -407,6 +420,13 @@ declare module '@tanstack/react-router' {
       path: '/settings/api-webhooks'
       fullPath: '/settings/api-webhooks'
       preLoaderRoute: typeof SettingsApiWebhooksRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/settings/account': {
+      id: '/settings/account'
+      path: '/settings/account'
+      fullPath: '/settings/account'
+      preLoaderRoute: typeof SettingsAccountRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/rsvp/$token': {
@@ -529,6 +549,7 @@ const rootRouteChildren: RootRouteChildren = {
   HostOrganizerIdRoute: HostOrganizerIdRoute,
   OrdersTokenRoute: OrdersTokenRoute,
   RsvpTokenRoute: RsvpTokenRoute,
+  SettingsAccountRoute: SettingsAccountRoute,
   SettingsApiWebhooksRoute: SettingsApiWebhooksRoute,
   SettingsHostProfilesRoute: SettingsHostProfilesRoute,
   SettingsPaymentsRoute: SettingsPaymentsRoute,

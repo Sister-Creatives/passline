@@ -5,6 +5,7 @@ import {
   ChartColumnIcon,
   MegaphoneIcon,
   SettingsIcon,
+  ShieldIcon,
   UserIcon,
   CreditCardIcon,
   UsersIcon,
@@ -44,6 +45,7 @@ export const settingsGroup = {
   title: "Settings",
   icon: <SettingsIcon />,
   items: [
+    { title: "Account", path: "/settings/account", icon: <ShieldIcon /> },
     { title: "Organization profile", path: "/settings/profile", icon: <UserIcon /> },
     { title: "Payments", path: "/settings/payments", icon: <CreditCardIcon /> },
     { title: "Team", path: "/settings/team", icon: <UsersIcon /> },
