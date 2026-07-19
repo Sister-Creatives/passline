@@ -163,3 +163,13 @@ test("cancelling an RSVP creates a cancellation notification", async () => {
   const list = await as.query(api.notifications.list, {});
   expect(list.some((n) => n.type === "cancellation")).toBe(true);
 });
+
+test("cancelling the same RSVP twice creates only one cancellation notification", async () => {
+  const t = convexTest(schema, modules);
+  const { as, slug } = await seedPublishedEvent(t, 5);
+  const { token } = await t.mutation(api.rsvps.rsvp, { slug, name: "Jane", email: "jane@x.com" });
+  await t.mutation(api.rsvps.cancelRsvp, { token });
+  await t.mutation(api.rsvps.cancelRsvp, { token });
+  const list = await as.query(api.notifications.list, {});
+  expect(list.filter((n) => n.type === "cancellation")).toHaveLength(1);
+});

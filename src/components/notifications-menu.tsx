@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 
@@ -52,13 +53,15 @@ export function NotificationsMenu() {
         <div className="flex items-center justify-between border-b px-3 py-2">
           <span className="text-sm font-medium">Notifications</span>
           {unread > 0 ? (
-            <button
-              type="button"
-              className="text-xs text-muted-foreground hover:text-foreground"
-              onClick={() => void markAllRead({})}
+            <DropdownMenuItem
+              onSelect={(e) => {
+                e.preventDefault();
+                void markAllRead({});
+              }}
+              className="w-auto justify-self-end px-1.5 py-0.5 text-xs text-muted-foreground hover:text-foreground"
             >
               Mark all read
-            </button>
+            </DropdownMenuItem>
           ) : null}
         </div>
         <div className="max-h-96 overflow-y-auto">
@@ -68,11 +71,10 @@ export function NotificationsMenu() {
             notifications.map((n) => {
               const Icon = ICONS[n.type];
               return (
-                <button
+                <DropdownMenuItem
                   key={n._id}
-                  type="button"
-                  onClick={() => openNotification(n)}
-                  className="flex w-full items-start gap-2.5 border-b border-border/50 px-3 py-2.5 text-left last:border-0 hover:bg-accent"
+                  onSelect={() => openNotification(n)}
+                  className="w-full cursor-pointer items-start gap-2.5 rounded-none border-b border-border/50 px-3 py-2.5 text-left last:border-0 hover:bg-accent"
                 >
                   <span className="mt-0.5 text-muted-foreground"><Icon className="size-4" /></span>
                   <span className="min-w-0 flex-1">
@@ -85,7 +87,7 @@ export function NotificationsMenu() {
                       {formatDistanceToNow(new Date(n.createdAt), { addSuffix: true })}
                     </span>
                   </span>
-                </button>
+                </DropdownMenuItem>
               );
             })
           )}

@@ -184,6 +184,7 @@ export const cancelRsvp = mutation({
   args: { token: v.string() },
   handler: async (ctx, { token }) => {
     const row = await rsvpByToken(ctx, token);
+    const wasAlreadyCancelled = row.status === "cancelled";
     const heldSeat = (SEAT_HOLDING_STATUSES as readonly string[]).includes(row.status);
     await ctx.db.patch(row._id, {
       status: "cancelled",
@@ -193,7 +194,7 @@ export const cancelRsvp = mutation({
     if (heldSeat) await promoteNext(ctx, row.eventId, Date.now());
     await recomputeEventStats(ctx, row.eventId);
     const cancelledEvent = await ctx.db.get(row.eventId);
-    if (cancelledEvent) {
+    if (cancelledEvent && !wasAlreadyCancelled) {
       await createNotification(ctx, {
         organizerId: cancelledEvent.organizerId,
         type: "cancellation",
