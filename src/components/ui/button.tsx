@@ -10,20 +10,15 @@ const buttonVariants = cva(
     variants: {
       variant: {
         default: [
-          "text-primary-foreground",
-          // Subtle top-lit gradient off the primary token (dark in light mode, light in dark mode)
-          "bg-[linear-gradient(180deg,color-mix(in_oklch,var(--primary),#fff_8%),var(--primary))]",
-          // One tight contact shadow + a single hairline top-rim highlight — clean, not busy
-          "shadow-[0_1px_2px_0_rgba(0,0,0,0.20),inset_0_1px_0_0_rgba(255,255,255,0.10)]",
-          "hover:bg-[linear-gradient(180deg,color-mix(in_oklch,var(--primary),#fff_14%),var(--primary))]",
-          "hover:shadow-[0_2px_4px_0_rgba(0,0,0,0.24),inset_0_1px_0_0_rgba(255,255,255,0.14)]",
-          // Active: flatten to a shallow inset press
-          "active:shadow-[inset_0_1px_2px_0_rgba(0,0,0,0.26)]",
-          // Dark mode (light button): brighter top rim, softer contact shadow
-          "dark:shadow-[0_1px_2px_0_rgba(0,0,0,0.12),inset_0_1px_0_0_rgba(255,255,255,0.45)]",
-          "dark:hover:bg-[linear-gradient(180deg,var(--primary),color-mix(in_oklch,var(--primary),#000_5%))]",
-          "dark:hover:shadow-[0_2px_4px_0_rgba(0,0,0,0.16),inset_0_1px_0_0_rgba(255,255,255,0.55)]",
-          "dark:active:shadow-[inset_0_1px_2px_0_rgba(0,0,0,0.10)]",
+          // PostHog-style "3D" button: flat fill, a darker-shade hairline border,
+          // and a hard un-blurred bottom edge (a darker shade of the fill). Hover
+          // lifts it a touch; pressing sinks it onto the edge.
+          "font-semibold text-primary-foreground",
+          "bg-primary hover:bg-[color-mix(in_oklch,var(--primary),#fff_6%)]",
+          "border-[color-mix(in_oklch,var(--primary),#000_30%)]",
+          "shadow-[0_4px_0_0_color-mix(in_oklch,var(--primary),#000_24%)]",
+          "hover:-translate-y-px hover:shadow-[0_5px_0_0_color-mix(in_oklch,var(--primary),#000_24%)]",
+          "active:not-aria-[haspopup]:translate-y-[3px] active:shadow-[0_1px_0_0_color-mix(in_oklch,var(--primary),#000_24%)]",
         ].join(" "),
         outline:
           "border-border bg-background hover:bg-muted hover:text-foreground aria-expanded:bg-muted aria-expanded:text-foreground dark:border-input dark:bg-input/30 dark:hover:bg-input/50",
