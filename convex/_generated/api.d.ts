@@ -40,6 +40,7 @@ import type * as lib_slug from "../lib/slug.js";
 import type * as lib_timeseries from "../lib/timeseries.js";
 import type * as marketing from "../marketing.js";
 import type * as migrations from "../migrations.js";
+import type * as notifications from "../notifications.js";
 import type * as orders from "../orders.js";
 import type * as organizers from "../organizers.js";
 import type * as payments from "../payments.js";
@@ -98,6 +99,7 @@ declare const fullApi: ApiFromModules<{
   "lib/timeseries": typeof lib_timeseries;
   marketing: typeof marketing;
   migrations: typeof migrations;
+  notifications: typeof notifications;
   orders: typeof orders;
   organizers: typeof organizers;
   payments: typeof payments;
