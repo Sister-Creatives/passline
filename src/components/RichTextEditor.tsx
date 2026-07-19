@@ -1,4 +1,4 @@
-import { useEffect, useReducer } from "react";
+import { useEffect, useReducer, useRef, useState, type FormEvent } from "react";
 import { useEditor, EditorContent, type Editor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import {
@@ -14,6 +14,16 @@ import {
 
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 
 /**
  * Tiptap rich-text editor for the event description. Controlled via `value`
@@ -83,15 +93,35 @@ function Toolbar({ editor }: { editor: Editor }) {
     };
   }, [editor]);
 
-  function setLink() {
+  // The link editor is our own Dialog rather than window.prompt, so it matches
+  // the app's styling and keyboard behavior. Opening the dialog moves DOM focus
+  // out of the editor, but ProseMirror keeps its selection in state -- the
+  // `.focus()` in each handler restores it before the link mark is applied.
+  const hasLink = editor.isActive("link");
+  const [linkOpen, setLinkOpen] = useState(false);
+  const [linkValue, setLinkValue] = useState("https://");
+  const linkInputRef = useRef<HTMLInputElement>(null);
+
+  function openLinkDialog() {
     const previous = editor.getAttributes("link").href as string | undefined;
-    const url = window.prompt("Link URL", previous ?? "https://");
-    if (url === null) return;
-    if (url.trim() === "") {
+    setLinkValue(previous ?? "https://");
+    setLinkOpen(true);
+  }
+
+  function applyLink(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const url = linkValue.trim();
+    if (url === "") {
       editor.chain().focus().extendMarkRange("link").unsetLink().run();
-      return;
+    } else {
+      editor.chain().focus().extendMarkRange("link").setLink({ href: url }).run();
     }
-    editor.chain().focus().extendMarkRange("link").setLink({ href: url.trim() }).run();
+    setLinkOpen(false);
+  }
+
+  function removeLink() {
+    editor.chain().focus().extendMarkRange("link").unsetLink().run();
+    setLinkOpen(false);
   }
 
   const items = [
@@ -102,24 +132,71 @@ function Toolbar({ editor }: { editor: Editor }) {
     { icon: List, label: "Bullet list", active: editor.isActive("bulletList"), run: () => editor.chain().focus().toggleBulletList().run() },
     { icon: ListOrdered, label: "Numbered list", active: editor.isActive("orderedList"), run: () => editor.chain().focus().toggleOrderedList().run() },
     { icon: Quote, label: "Quote", active: editor.isActive("blockquote"), run: () => editor.chain().focus().toggleBlockquote().run() },
-    { icon: LinkIcon, label: "Link", active: editor.isActive("link"), run: setLink },
+    { icon: LinkIcon, label: "Link", active: hasLink, run: openLinkDialog },
   ];
 
   return (
-    <div className="flex flex-wrap items-center gap-0.5 border-b border-border/60 p-1">
-      {items.map(({ icon: Icon, label, active, run }) => (
-        <Button
-          key={label}
-          type="button"
-          variant={active ? "secondary" : "ghost"}
-          size="icon-sm"
-          aria-label={label}
-          aria-pressed={active}
-          onClick={run}
+    <>
+      <div className="flex flex-wrap items-center gap-0.5 border-b border-border/60 p-1">
+        {items.map(({ icon: Icon, label, active, run }) => (
+          <Button
+            key={label}
+            type="button"
+            variant={active ? "secondary" : "ghost"}
+            size="icon-sm"
+            aria-label={label}
+            aria-pressed={active}
+            onClick={run}
+          >
+            <Icon />
+          </Button>
+        ))}
+      </div>
+
+      <Dialog open={linkOpen} onOpenChange={setLinkOpen}>
+        <DialogContent
+          className="sm:max-w-md"
+          // Focus the URL field (and select its contents) on open; keep focus
+          // from snapping back to the toolbar button on close so our handlers'
+          // editor.focus() wins and the caret returns to the text.
+          onOpenAutoFocus={(event) => {
+            event.preventDefault();
+            linkInputRef.current?.focus();
+            linkInputRef.current?.select();
+          }}
+          onCloseAutoFocus={(event) => event.preventDefault()}
         >
-          <Icon />
-        </Button>
-      ))}
-    </div>
+          <DialogHeader>
+            <DialogTitle>{hasLink ? "Edit link" : "Add link"}</DialogTitle>
+            <DialogDescription>Where should this text link to?</DialogDescription>
+          </DialogHeader>
+          <form onSubmit={applyLink} className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="rte-link-url">Link URL</Label>
+              <Input
+                id="rte-link-url"
+                ref={linkInputRef}
+                type="url"
+                inputMode="url"
+                placeholder="https://example.com"
+                value={linkValue}
+                onChange={(event) => setLinkValue(event.target.value)}
+              />
+            </div>
+            <DialogFooter className="gap-2 sm:gap-2">
+              {hasLink ? (
+                <Button type="button" variant="outline" onClick={removeLink} className="mr-auto">
+                  Remove link
+                </Button>
+              ) : null}
+              <Button type="button" variant="ghost" onClick={() => setLinkOpen(false)}>
+                Cancel
+              </Button>
+              <Button type="submit">Save link</Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }
