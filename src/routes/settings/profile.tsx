@@ -96,7 +96,7 @@ function OrganizationSection({ me }: { me: Me }) {
       </CardHeader>
       <CardContent className="space-y-5">
         <Avatar className="size-14">
-          {logoUrl ? <AvatarImage src={logoUrl} className="object-contain p-0.5" /> : null}
+          {logoUrl ? <AvatarImage src={logoUrl} className="object-cover" /> : null}
           <AvatarFallback className="text-lg">
             {(name || "?").charAt(0).toUpperCase()}
           </AvatarFallback>

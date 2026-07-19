@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useForm } from "react-hook-form";
+import { useForm, type FieldErrors } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useMutation } from "convex/react";
@@ -231,9 +231,20 @@ export function EventForm({ event, onDone, defaults }: EventFormProps) {
     }
   }
 
+  // A field failing validation makes handleSubmit a no-op with no feedback --
+  // and an invalid field can sit in a collapsed/scrolled-off section (dates,
+  // slug, sharing description) while the user is looking at the editor. Surface
+  // the first blocking message so "Save" never silently does nothing.
+  function onInvalid(errors: FieldErrors<EventFormValues>) {
+    const firstMessage = Object.values(errors)
+      .map((err) => err?.message)
+      .find((message): message is string => typeof message === "string");
+    toast.error(firstMessage ?? "Please fix the highlighted fields before saving.");
+  }
+
   return (
     <Form {...form}>
-      <form onSubmit={form.handleSubmit(onSubmit)} className="grid gap-4">
+      <form onSubmit={form.handleSubmit(onSubmit, onInvalid)} className="grid gap-4">
         <FormField
           control={form.control}
           name="title"
