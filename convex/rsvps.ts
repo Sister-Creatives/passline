@@ -9,6 +9,7 @@ import { getAuthOrganizerId } from "./auth";
 import { rateLimiter } from "./rateLimits";
 import { recomputeEventStats } from "./lib/eventStats";
 import { canViewEvent } from "./lib/preview";
+import { createNotification } from "./notifications";
 
 async function rsvpByToken(ctx: MutationCtx, token: string) {
   const row = await ctx.db
@@ -126,6 +127,22 @@ export const rsvp = mutation({
         eventTitle: event.title,
         token,
       });
+      await createNotification(ctx, {
+        organizerId: event.organizerId,
+        type: "rsvp",
+        title: "New RSVP",
+        body: `${name} RSVP'd to ${event.title}`,
+        eventId: event._id,
+      });
+      if (seatsTaken + 1 === event.capacity) {
+        await createNotification(ctx, {
+          organizerId: event.organizerId,
+          type: "sold_out",
+          title: "Event sold out",
+          body: `${event.title} is now sold out`,
+          eventId: event._id,
+        });
+      }
       await recomputeEventStats(ctx, event._id);
       return { status: "confirmed" as const, token };
     }
@@ -144,6 +161,13 @@ export const rsvp = mutation({
       name,
       eventTitle: event.title,
       waitlistPosition,
+    });
+    await createNotification(ctx, {
+      organizerId: event.organizerId,
+      type: "waitlist",
+      title: "New waitlist join",
+      body: `${name} joined the waitlist for ${event.title}`,
+      eventId: event._id,
     });
     await recomputeEventStats(ctx, event._id);
     return { status: "waitlisted" as const, token, waitlistPosition };
@@ -168,6 +192,16 @@ export const cancelRsvp = mutation({
     });
     if (heldSeat) await promoteNext(ctx, row.eventId, Date.now());
     await recomputeEventStats(ctx, row.eventId);
+    const cancelledEvent = await ctx.db.get(row.eventId);
+    if (cancelledEvent) {
+      await createNotification(ctx, {
+        organizerId: cancelledEvent.organizerId,
+        type: "cancellation",
+        title: "RSVP cancelled",
+        body: `An attendee cancelled their RSVP for ${cancelledEvent.title}`,
+        eventId: cancelledEvent._id,
+      });
+    }
     return null;
   },
 });

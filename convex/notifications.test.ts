@@ -102,3 +102,64 @@ test("list and unreadCount are empty/zero when unauthenticated", async () => {
   expect(await t.query(api.notifications.list, {})).toEqual([]);
   expect(await t.query(api.notifications.unreadCount, {})).toEqual(0);
 });
+
+test("markRead rejects when unauthenticated", async () => {
+  const t = convexTest(schema, modules);
+  const { organizerId } = await asOrganizer(t, "a@example.com");
+  const notificationId = await seedNotif(t, organizerId);
+  await expect(
+    t.mutation(api.notifications.markRead, { notificationId }),
+  ).rejects.toThrow(/not authenticated/i);
+});
+
+test("markAllRead rejects when unauthenticated", async () => {
+  const t = convexTest(schema, modules);
+  await expect(t.mutation(api.notifications.markAllRead, {})).rejects.toThrow(/not authenticated/i);
+});
+
+async function seedPublishedEvent(t: TestConvex<typeof schema>, capacity: number) {
+  const { as, organizerId } = await asOrganizer(t, "host@example.com");
+  await as.mutation(api.organizers.ensureOrganizer, {});
+  const eventId = await as.mutation(api.events.createEvent, {
+    title: "Room", description: "x", startsAt: 1, endsAt: 2, location: "x", capacity,
+  });
+  await as.mutation(api.events.publishEvent, { eventId });
+  const slug = await t.run(async (ctx) => (await ctx.db.get(eventId))!.slug);
+  return { as, organizerId, eventId, slug };
+}
+
+test("a confirmed RSVP creates one rsvp notification; a dedupe repeat creates none", async () => {
+  const t = convexTest(schema, modules);
+  const { as, slug } = await seedPublishedEvent(t, 5);
+  await t.mutation(api.rsvps.rsvp, { slug, name: "Jane", email: "jane@x.com" });
+  await t.mutation(api.rsvps.rsvp, { slug, name: "Jane", email: "jane@x.com" }); // dedupe
+  const list = await as.query(api.notifications.list, {});
+  expect(list.filter((n) => n.type === "rsvp")).toHaveLength(1);
+  expect(list[0].body).toContain("Jane");
+});
+
+test("the RSVP that fills the last seat also creates a sold_out notification", async () => {
+  const t = convexTest(schema, modules);
+  const { as, slug } = await seedPublishedEvent(t, 1);
+  await t.mutation(api.rsvps.rsvp, { slug, name: "Jane", email: "jane@x.com" });
+  const types = (await as.query(api.notifications.list, {})).map((n) => n.type).sort();
+  expect(types).toEqual(["rsvp", "sold_out"].sort());
+});
+
+test("an RSVP that lands on the waitlist creates a waitlist notification", async () => {
+  const t = convexTest(schema, modules);
+  const { as, slug } = await seedPublishedEvent(t, 1);
+  await t.mutation(api.rsvps.rsvp, { slug, name: "Jane", email: "jane@x.com" }); // fills seat
+  await t.mutation(api.rsvps.rsvp, { slug, name: "Bob", email: "bob@x.com" });   // waitlisted
+  const list = await as.query(api.notifications.list, {});
+  expect(list.some((n) => n.type === "waitlist" && n.body.includes("Bob"))).toBe(true);
+});
+
+test("cancelling an RSVP creates a cancellation notification", async () => {
+  const t = convexTest(schema, modules);
+  const { as, slug } = await seedPublishedEvent(t, 5);
+  const { token } = await t.mutation(api.rsvps.rsvp, { slug, name: "Jane", email: "jane@x.com" });
+  await t.mutation(api.rsvps.cancelRsvp, { token });
+  const list = await as.query(api.notifications.list, {});
+  expect(list.some((n) => n.type === "cancellation")).toBe(true);
+});
