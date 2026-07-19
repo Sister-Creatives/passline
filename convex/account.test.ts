@@ -1,11 +1,21 @@
 // @vitest-environment edge-runtime
-import { convexTest, type TestConvex } from "convex-test";
+import { convexTest as rawConvexTest, type TestConvex } from "convex-test";
+import { register as registerRateLimiter } from "@convex-dev/rate-limiter/test";
 import { expect, test } from "vitest";
 import schema from "./schema";
-import { api } from "./_generated/api";
+import { api, internal } from "./_generated/api";
 import { getAuthOrganizerId } from "./auth";
 
 const modules = import.meta.glob("./**/*.*s");
+
+// `upsertEmailChangeRequest` calls the rate limiter component (see
+// convex/rateLimits.ts and convex/account.ts), so every test instance needs
+// that component registered. Mirrors the same wrapper in rsvps.test.ts.
+function convexTest(schemaArg: typeof schema, modulesArg: typeof modules) {
+  const t = rawConvexTest(schemaArg, modulesArg);
+  registerRateLimiter(t);
+  return t;
+}
 
 // Reproduces the Convex Auth JWT subject `${userId}|${sessionId}` (see auth.test.ts).
 async function asUser(t: TestConvex<typeof schema>, email: string) {
@@ -156,4 +166,50 @@ test("confirmEmailChange rejects an expired code", async () => {
     ctx.db.query("emailChangeRequests").withIndex("by_user", (q) => q.eq("userId", userId)).first(),
   );
   expect(leftover).toBeNull();
+});
+
+test("checkEmailAvailable rejects an email that already has a pending-invite membership", async () => {
+  const t = convexTest(schema, modules);
+  await t.run(async (ctx) => {
+    const orgId = await ctx.db.insert("organizers", { name: "Org", email: "owner@example.com" });
+    await ctx.db.insert("memberships", {
+      organizerId: orgId,
+      email: "invited@example.com",
+      // userId unset: a pending invite, not yet linked to a signed-in user.
+      role: "member",
+      createdAt: Date.now(),
+    });
+  });
+
+  const invited = await t.query(internal.account.checkEmailAvailable, { email: "invited@example.com" });
+  expect(invited).toBe(false);
+
+  const unused = await t.query(internal.account.checkEmailAvailable, { email: "unused@example.com" });
+  expect(unused).toBe(true);
+});
+
+// Token bucket capacity 5, keyed by userId (see convex/rateLimits.ts), so 5
+// calls succeed and the 6th is rejected -- mirrors the rsvp rate-limit tests
+// in rsvps.test.ts.
+test("upsertEmailChangeRequest rate-limits repeated requests for the same user", async () => {
+  const t = convexTest(schema, modules);
+  const userId = await t.run((ctx) => ctx.db.insert("users", { email: "rl@example.com" }));
+
+  for (let i = 0; i < 5; i++) {
+    await t.mutation(internal.account.upsertEmailChangeRequest, {
+      userId,
+      newEmail: `rl-new-${i}@example.com`,
+      codeHash: "deadbeef",
+      expiresAt: Date.now() + 600_000,
+    });
+  }
+
+  await expect(
+    t.mutation(internal.account.upsertEmailChangeRequest, {
+      userId,
+      newEmail: "rl-new-overflow@example.com",
+      codeHash: "deadbeef",
+      expiresAt: Date.now() + 600_000,
+    }),
+  ).rejects.toThrow(/too many/i);
 });

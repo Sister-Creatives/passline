@@ -9,6 +9,7 @@ import {
 import { action, internalQuery, internalMutation } from "./_generated/server";
 import { internal } from "./_generated/api";
 import type { Doc } from "./_generated/dataModel";
+import { rateLimiter } from "./rateLimits";
 
 const PASSWORD_MIN = 8;
 const CODE_TTL_MS = 600_000;
@@ -92,7 +93,13 @@ export const checkEmailAvailable = internalQuery({
         q.eq("provider", "password").eq("providerAccountId", email),
       )
       .first();
-    return !byAccount;
+    if (byAccount) return false;
+    const byMembership = await ctx.db
+      .query("memberships")
+      .withIndex("by_email", (q) => q.eq("email", email))
+      .first();
+    if (byMembership) return false;
+    return true;
   },
 });
 
@@ -104,6 +111,9 @@ export const upsertEmailChangeRequest = internalMutation({
     expiresAt: v.number(),
   },
   handler: async (ctx, args): Promise<null> => {
+    const rl = await rateLimiter.limit(ctx, "emailChange", { key: args.userId });
+    if (!rl.ok) throw new Error("Too many email change requests. Please try again in a moment.");
+
     const existing = await ctx.db
       .query("emailChangeRequests")
       .withIndex("by_user", (q) => q.eq("userId", args.userId))
@@ -162,6 +172,15 @@ export const applyEmailChange = internalMutation({
       .withIndex("email", (q) => q.eq("email", newEmail))
       .first();
     if (taken && taken._id !== userId) throw new Error("That email is already in use");
+
+    // At this point the current user's own membership is still under the OLD
+    // email, so any membership row under newEmail belongs to someone else
+    // (e.g. a pending invite) -- taking it would corrupt getAuthOrganizerId.
+    const takenMembership = await ctx.db
+      .query("memberships")
+      .withIndex("by_email", (q) => q.eq("email", newEmail))
+      .first();
+    if (takenMembership) throw new Error("That email is already in use");
 
     // 1. Password account providerAccountId (found by user + provider, not old email).
     const account = await ctx.db

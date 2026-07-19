@@ -19,4 +19,5 @@ import { components } from "./_generated/api";
  */
 export const rateLimiter = new RateLimiter(components.rateLimiter, {
   rsvp: { kind: "token bucket", rate: 3, period: MINUTE, capacity: 5 },
+  emailChange: { kind: "token bucket", rate: 3, period: MINUTE, capacity: 5 },
 });
