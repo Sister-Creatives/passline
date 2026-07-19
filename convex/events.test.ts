@@ -55,6 +55,134 @@ test("create then publish makes the event findable by slug", async () => {
   expect(published?._id).toEqual(eventId);
 });
 
+test("createEvent stamps a non-empty previewToken", async () => {
+  const t = convexTest(schema, modules);
+  const { as } = await asOrganizer(t, "ada@example.com");
+  await as.mutation(api.organizers.ensureOrganizer, {});
+
+  const eventId = await as.mutation(api.events.createEvent, {
+    title: "Rooftop Jazz",
+    description: "Live jazz night.",
+    startsAt: 100,
+    endsAt: 200,
+    location: "Rooftop",
+    capacity: 80,
+  });
+  const event = await t.run((ctx) => ctx.db.get(eventId));
+  expect(event?.previewToken).toEqual(expect.any(String));
+  expect(event?.previewToken?.length).toBeGreaterThan(0);
+});
+
+test("ensurePreviewToken is idempotent and owner-gated", async () => {
+  const t = convexTest(schema, modules);
+  const { as: asAda } = await asOrganizer(t, "ada@example.com");
+  await asAda.mutation(api.organizers.ensureOrganizer, {});
+  const { as: asBob } = await asOrganizer(t, "bob@example.com");
+  await asBob.mutation(api.organizers.ensureOrganizer, {});
+
+  const eventId = await asAda.mutation(api.events.createEvent, {
+    title: "Ada's Gala",
+    description: "x",
+    startsAt: 10,
+    endsAt: 20,
+    location: "Ballroom",
+    capacity: 40,
+  });
+  const before = await t.run((ctx) => ctx.db.get(eventId));
+
+  const first = await asAda.mutation(api.events.ensurePreviewToken, { eventId });
+  expect(first.previewToken).toBe(before!.previewToken);
+  const second = await asAda.mutation(api.events.ensurePreviewToken, { eventId });
+  expect(second.previewToken).toBe(first.previewToken);
+
+  await expect(asBob.mutation(api.events.ensurePreviewToken, { eventId })).rejects.toThrow();
+});
+
+test("ensurePreviewToken mints a token lazily for a pre-existing event that lacks one", async () => {
+  const t = convexTest(schema, modules);
+  const { as } = await asOrganizer(t, "ada@example.com");
+  const organizerId = await as.mutation(api.organizers.ensureOrganizer, {});
+
+  // Simulate a pre-feature event with no previewToken.
+  const eventId = await t.run((ctx) =>
+    ctx.db.insert("events", {
+      organizerId,
+      title: "Legacy",
+      description: "x",
+      startsAt: 1,
+      endsAt: 2,
+      location: "x",
+      capacity: 5,
+      status: "draft",
+      slug: "legacy-event-xyz",
+    }),
+  );
+  expect((await t.run((ctx) => ctx.db.get(eventId)))?.previewToken).toBeUndefined();
+
+  const { previewToken } = await as.mutation(api.events.ensurePreviewToken, { eventId });
+  expect(previewToken.length).toBeGreaterThan(0);
+  expect((await t.run((ctx) => ctx.db.get(eventId)))?.previewToken).toBe(previewToken);
+});
+
+test("rotatePreviewToken always mints a fresh token and is owner-gated", async () => {
+  const t = convexTest(schema, modules);
+  const { as: asAda } = await asOrganizer(t, "ada@example.com");
+  await asAda.mutation(api.organizers.ensureOrganizer, {});
+  const { as: asBob } = await asOrganizer(t, "bob@example.com");
+  await asBob.mutation(api.organizers.ensureOrganizer, {});
+
+  const eventId = await asAda.mutation(api.events.createEvent, {
+    title: "Ada's Gala",
+    description: "x",
+    startsAt: 10,
+    endsAt: 20,
+    location: "Ballroom",
+    capacity: 40,
+  });
+  const before = await t.run((ctx) => ctx.db.get(eventId));
+
+  const { previewToken } = await asAda.mutation(api.events.rotatePreviewToken, { eventId });
+  expect(previewToken).not.toBe(before!.previewToken);
+  const after = await t.run((ctx) => ctx.db.get(eventId));
+  expect(after?.previewToken).toBe(previewToken);
+
+  await expect(asBob.mutation(api.events.rotatePreviewToken, { eventId })).rejects.toThrow();
+  // Bob's rejected call must not have rotated Ada's token.
+  const stillSame = await t.run((ctx) => ctx.db.get(eventId));
+  expect(stillSame?.previewToken).toBe(previewToken);
+});
+
+test("getEventBySlug returns null for a draft without a token, and the event with a matching preview token", async () => {
+  const t = convexTest(schema, modules);
+  const { as } = await asOrganizer(t, "ada@example.com");
+  await as.mutation(api.organizers.ensureOrganizer, {});
+
+  const eventId = await as.mutation(api.events.createEvent, {
+    title: "Draft Preview",
+    description: "x",
+    startsAt: 1,
+    endsAt: 2,
+    location: "x",
+    capacity: 5,
+  });
+  const draft = await t.run((ctx) => ctx.db.get(eventId));
+
+  const withoutToken = await t.query(api.events.getEventBySlug, { slug: draft!.slug });
+  expect(withoutToken).toBeNull();
+
+  const withWrongToken = await t.query(api.events.getEventBySlug, {
+    slug: draft!.slug,
+    previewToken: "prv_wrong",
+  });
+  expect(withWrongToken).toBeNull();
+
+  const withToken = await t.query(api.events.getEventBySlug, {
+    slug: draft!.slug,
+    previewToken: draft!.previewToken,
+  });
+  expect(withToken?._id).toEqual(eventId);
+});
+
 test("unpublished events are not returned by slug", async () => {
   const t = convexTest(schema, modules);
   const { as } = await asOrganizer(t, "ada@example.com");

@@ -3,6 +3,7 @@ import { v } from "convex/values";
 import type { Id } from "./_generated/dataModel";
 import { getAuthOrganizerId } from "./auth";
 import { isValidHexColor, parseVideoEmbed } from "./lib/eventContent";
+import { canViewEvent } from "./lib/preview";
 
 /** Load an event and enforce that it belongs to the authenticated organizer. */
 async function requireOwnedEvent(ctx: QueryCtx | MutationCtx, eventId: Id<"events">) {
@@ -325,13 +326,13 @@ export const updateAccessibility = mutation({
  * than throwing for a missing or unpublished event.
  */
 export const getBySlug = query({
-  args: { slug: v.string() },
-  handler: async (ctx, { slug }) => {
+  args: { slug: v.string(), previewToken: v.optional(v.string()) },
+  handler: async (ctx, { slug, previewToken }) => {
     const event = await ctx.db
       .query("events")
       .withIndex("by_slug", (q) => q.eq("slug", slug))
       .unique();
-    if (!event || event.status !== "published") return null;
+    if (!event || !canViewEvent(event, previewToken)) return null;
 
     const content = await ctx.db
       .query("eventContent")

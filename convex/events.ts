@@ -9,10 +9,16 @@ import { recordAudit } from "./audit";
 import { computeReadiness } from "./lib/readiness";
 import { isEventCategory, isEventType, isValidSlug } from "./lib/eventTaxonomy";
 import { buildPaceSpark } from "./lib/pace";
+import { canViewEvent } from "./lib/preview";
 
 const CURRENCY_RE = /^[A-Z]{3}$/;
 const MAX_KEYWORDS = 10;
 const MAX_SHARING_DESCRIPTION_LENGTH = 160;
+
+/** An opaque, unguessable per-event preview token (see convex/lib/preview.ts). */
+function generatePreviewToken() {
+  return `prv_${crypto.randomUUID()}${crypto.randomUUID()}`;
+}
 
 /** Trim a string; an empty (or omitted) value normalizes to `undefined` (i.e. "clear this field"), matching the `eventContent.ts` idiom. */
 function normalizeOptionalString(s: string | undefined): string | undefined {
@@ -85,11 +91,42 @@ export const createEvent = mutation({
       feeMode: args.feeMode,
       status: "draft",
       slug: slugify(args.title, crypto.randomUUID()),
+      previewToken: generatePreviewToken(),
       seatsTaken: 0,
       ticketsSold: 0,
       revenueCents: 0,
     });
     return eventId;
+  },
+});
+
+/**
+ * Owner-only: return the event's preview token, minting one first if it
+ * doesn't have one yet (existing events created before this feature). Safe
+ * to call repeatedly -- returns the same token once one exists.
+ */
+export const ensurePreviewToken = mutation({
+  args: { eventId: v.id("events") },
+  handler: async (ctx, { eventId }) => {
+    const event = await requireOwnedEvent(ctx, eventId);
+    if (event.previewToken) return { previewToken: event.previewToken };
+    const previewToken = generatePreviewToken();
+    await ctx.db.patch(eventId, { previewToken });
+    return { previewToken };
+  },
+});
+
+/**
+ * Owner-only: mint a fresh preview token, invalidating any previously shared
+ * preview link.
+ */
+export const rotatePreviewToken = mutation({
+  args: { eventId: v.id("events") },
+  handler: async (ctx, { eventId }) => {
+    await requireOwnedEvent(ctx, eventId);
+    const previewToken = generatePreviewToken();
+    await ctx.db.patch(eventId, { previewToken });
+    return { previewToken };
   },
 });
 
@@ -494,13 +531,13 @@ export const getEventReadiness = query({
 });
 
 export const getEventBySlug = query({
-  args: { slug: v.string() },
-  handler: async (ctx, { slug }) => {
+  args: { slug: v.string(), previewToken: v.optional(v.string()) },
+  handler: async (ctx, { slug, previewToken }) => {
     const event = await ctx.db
       .query("events")
       .withIndex("by_slug", (q) => q.eq("slug", slug))
       .unique();
-    if (!event || event.status !== "published") return null;
+    if (!event || !canViewEvent(event, previewToken)) return null;
     return event;
   },
 });

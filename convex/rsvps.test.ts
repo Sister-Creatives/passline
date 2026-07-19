@@ -111,6 +111,39 @@ test("rsvp rejects an unpublished (draft) event", async () => {
   ).rejects.toThrow();
 });
 
+test("rsvp on a draft still throws even with a valid preview token (writes stay gated)", async () => {
+  const t = convexTest(schema, modules);
+  const { as } = await asOrganizer(t, "organizer@example.com");
+  await as.mutation(api.organizers.ensureOrganizer, {});
+  const eventId = await as.mutation(api.events.createEvent, {
+    title: "Draft Room",
+    description: "x",
+    startsAt: 1,
+    endsAt: 2,
+    location: "x",
+    capacity: 5,
+  });
+  const draft = await t.run((ctx) => ctx.db.get(eventId));
+  expect(draft?.previewToken).toEqual(expect.any(String));
+
+  // getEventPublicState (a read) opens up with the token...
+  const state = await t.query(api.rsvps.getEventPublicState, {
+    slug: draft!.slug,
+    previewToken: draft!.previewToken,
+  });
+  expect(state).toMatchObject({ capacity: 5, seatsTaken: 0, waitlistCount: 0 });
+  // ...but getEventPublicState still throws without the token (draft stays hidden).
+  await expect(t.query(api.rsvps.getEventPublicState, { slug: draft!.slug })).rejects.toThrow();
+
+  // ...but rsvp (a write) has no previewToken arg and must still reject the draft.
+  await expect(
+    t.mutation(api.rsvps.rsvp, { slug: draft!.slug, name: "A", email: "a@x.com" }),
+  ).rejects.toThrow();
+
+  const rows = await t.run((ctx) => ctx.db.query("rsvps").collect());
+  expect(rows).toEqual([]);
+});
+
 test("getRsvpByToken returns the attendee's name, status, and event title", async () => {
   const t = convexTest(schema, modules);
   const slug = await seedPublishedEvent(t, 5);

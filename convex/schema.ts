@@ -47,6 +47,10 @@ export default defineSchema({
     capacity: v.number(),
     status: v.union(v.literal("draft"), v.literal("published")),
     slug: v.string(),
+    // Opaque, unguessable per-event token that opens a draft on the public
+    // read path (see convex/lib/preview.ts). Optional: existing events get
+    // one lazily via `ensurePreviewToken`; new ones get one at creation.
+    previewToken: v.optional(v.string()),
     currency: v.optional(v.string()), // ISO 4217; code default "USD"
     feeMode: v.optional(v.union(v.literal("pass"), v.literal("absorb"))),
     metaPixelId: v.optional(v.string()),
