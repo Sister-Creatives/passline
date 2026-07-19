@@ -109,6 +109,109 @@ test("create rejects a non-owner and an unauthenticated caller", async () => {
   ).rejects.toThrow();
 });
 
+// --- createRecurring -------------------------------------------------------
+
+test("createRecurring inserts N sessions with sold=0, given capacity, sortOrder continuing from existing", async () => {
+  const t = convexTest(schema, modules);
+  const { as } = await asOrganizer(t, "ada@example.com");
+  await as.mutation(api.organizers.ensureOrganizer, {});
+  const eventId = await makeEvent(as);
+
+  // One session already exists (sortOrder 0).
+  await as.mutation(api.eventSessions.create, {
+    eventId, startsAt: 100, endsAt: 200, capacity: 10,
+  });
+
+  const result = await as.mutation(api.eventSessions.createRecurring, {
+    eventId,
+    sessions: [
+      { startsAt: 1000, endsAt: 2000 },
+      { startsAt: 3000, endsAt: 4000 },
+      { startsAt: 5000, endsAt: 6000 },
+    ],
+    capacity: 30,
+    label: "Weekly class",
+  });
+  expect(result).toEqual({ created: 3 });
+
+  const rows = await t.run((ctx) =>
+    ctx.db.query("eventSessions").withIndex("by_event", (q) => q.eq("eventId", eventId)).collect(),
+  );
+  expect(rows).toHaveLength(4);
+  const recurring = rows.filter((r) => r.startsAt >= 1000);
+  expect(recurring).toHaveLength(3);
+  for (const row of recurring) {
+    expect(row.sold).toBe(0);
+    expect(row.capacity).toBe(30);
+    expect(row.label).toBe("Weekly class");
+  }
+  const sortOrders = recurring.map((r) => r.sortOrder).sort((a, b) => a - b);
+  expect(sortOrders).toEqual([1, 2, 3]);
+  const allSortOrders = rows.map((r) => r.sortOrder).sort((a, b) => a - b);
+  expect(new Set(allSortOrders).size).toBe(4); // no collisions
+});
+
+test("createRecurring rejects an empty sessions array", async () => {
+  const t = convexTest(schema, modules);
+  const { as } = await asOrganizer(t, "ada@example.com");
+  await as.mutation(api.organizers.ensureOrganizer, {});
+  const eventId = await makeEvent(as);
+  await expect(
+    as.mutation(api.eventSessions.createRecurring, { eventId, sessions: [], capacity: 10 }),
+  ).rejects.toThrow(/at least one date/i);
+});
+
+test("createRecurring rejects more than 100 sessions", async () => {
+  const t = convexTest(schema, modules);
+  const { as } = await asOrganizer(t, "ada@example.com");
+  await as.mutation(api.organizers.ensureOrganizer, {});
+  const eventId = await makeEvent(as);
+  const sessions = Array.from({ length: 101 }, (_, i) => ({
+    startsAt: 1000 + i * 10,
+    endsAt: 2000 + i * 10,
+  }));
+  await expect(
+    as.mutation(api.eventSessions.createRecurring, { eventId, sessions, capacity: 10 }),
+  ).rejects.toThrow(/max 100/i);
+});
+
+test("createRecurring rejects a batch with a bad window and creates none", async () => {
+  const t = convexTest(schema, modules);
+  const { as } = await asOrganizer(t, "ada@example.com");
+  await as.mutation(api.organizers.ensureOrganizer, {});
+  const eventId = await makeEvent(as);
+  await expect(
+    as.mutation(api.eventSessions.createRecurring, {
+      eventId,
+      sessions: [
+        { startsAt: 1000, endsAt: 2000 },
+        { startsAt: 3000, endsAt: 3000 }, // endsAt <= startsAt
+      ],
+      capacity: 10,
+    }),
+  ).rejects.toThrow();
+  const rows = await t.run((ctx) =>
+    ctx.db.query("eventSessions").withIndex("by_event", (q) => q.eq("eventId", eventId)).collect(),
+  );
+  expect(rows).toHaveLength(0);
+});
+
+test("createRecurring rejects a non-owner", async () => {
+  const t = convexTest(schema, modules);
+  const { as: asAda } = await asOrganizer(t, "ada@example.com");
+  await asAda.mutation(api.organizers.ensureOrganizer, {});
+  const { as: asBob } = await asOrganizer(t, "bob@example.com");
+  await asBob.mutation(api.organizers.ensureOrganizer, {});
+  const eventId = await makeEvent(asAda);
+  await expect(
+    asBob.mutation(api.eventSessions.createRecurring, {
+      eventId,
+      sessions: [{ startsAt: 1000, endsAt: 2000 }],
+      capacity: 10,
+    }),
+  ).rejects.toThrow();
+});
+
 // --- list (owner-only, all) --------------------------------------------
 
 test("list returns the owner's sessions sorted by sortOrder", async () => {

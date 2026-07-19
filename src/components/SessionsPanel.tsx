@@ -7,15 +7,22 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { toast } from "sonner";
 import { motion } from "motion/react";
-import { ChevronDown, ChevronUp, LoaderCircle, Plus, Trash2 } from "lucide-react";
+import { format } from "date-fns";
+import { CalendarIcon, ChevronDown, ChevronUp, LoaderCircle, Plus, Repeat, Trash2 } from "lucide-react";
 
 import { spring } from "@/lib/motion";
+import { cn } from "@/lib/utils";
+import { generateRecurringDates } from "@/lib/recurrence";
 
 import { api } from "../../convex/_generated/api";
 import type { Doc, Id } from "../../convex/_generated/dataModel";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Calendar } from "@/components/ui/calendar";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { DateTimePicker } from "@/components/DateTimePicker";
 import {
   Dialog,
@@ -171,6 +178,167 @@ function SessionForm({ eventId, onDone }: { eventId: Id<"events">; onDone: () =>
   );
 }
 
+const WEEKDAY_LABELS = ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"];
+
+/** Popover + Calendar date button returning "YYYY-MM-DD" (local). */
+function DateField({
+  value,
+  onChange,
+  placeholder,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  placeholder: string;
+}) {
+  const selected = value ? new Date(`${value}T00:00:00`) : undefined;
+  return (
+    <Popover>
+      <PopoverTrigger asChild>
+        <Button
+          type="button"
+          variant="outline"
+          className={cn("w-full justify-start font-normal", !value && "text-muted-foreground")}
+        >
+          <CalendarIcon className="size-4" />
+          {value ? format(selected as Date, "MMM d, yyyy") : placeholder}
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className="w-auto p-0" align="start">
+        <Calendar
+          mode="single"
+          selected={selected}
+          onSelect={(date) => date && onChange(format(date, "yyyy-MM-dd"))}
+        />
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+/**
+ * Recurring-dates generator: pick weekdays + a date range + a time window, and
+ * bulk-create one session per matching day. The exact dates are previewed
+ * (recomputed live via `generateRecurringDates`) before anything is created.
+ */
+function RecurringForm({ eventId, onDone }: { eventId: Id<"events">; onDone: () => void }) {
+  const createRecurring = useMutation(api.eventSessions.createRecurring);
+  const [weekdays, setWeekdays] = useState<number[]>([]);
+  const [fromDate, setFromDate] = useState("");
+  const [untilDate, setUntilDate] = useState("");
+  const [startTime, setStartTime] = useState("09:00");
+  const [endTime, setEndTime] = useState("10:00");
+  const [capacity, setCapacity] = useState("50");
+  const [label, setLabel] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  const sessions = useMemo(
+    () => generateRecurringDates({ weekdays, fromDate, untilDate, startTime, endTime }),
+    [weekdays, fromDate, untilDate, startTime, endTime],
+  );
+  const capacityNum = Number(capacity);
+  const capacityValid = Number.isInteger(capacityNum) && capacityNum >= 1;
+  const timeValid = endTime > startTime;
+  const tooMany = sessions.length > 100;
+  const canCreate = sessions.length > 0 && !tooMany && capacityValid && timeValid && !saving;
+
+  async function submit() {
+    setSaving(true);
+    try {
+      const result = await createRecurring({
+        eventId,
+        sessions,
+        capacity: capacityNum,
+        label: label.trim() === "" ? undefined : label.trim(),
+      });
+      toast.success(`Created ${result.created} session${result.created === 1 ? "" : "s"}`);
+      onDone();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to create sessions");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="space-y-2">
+        <Label>Repeat on</Label>
+        <ToggleGroup
+          type="multiple"
+          variant="outline"
+          value={weekdays.map(String)}
+          onValueChange={(values) => setWeekdays(values.map(Number).sort())}
+          className="grid grid-cols-7 gap-1"
+        >
+          {WEEKDAY_LABELS.map((day, i) => (
+            <ToggleGroupItem key={day} value={String(i)} className="h-9 px-0">
+              {day}
+            </ToggleGroupItem>
+          ))}
+        </ToggleGroup>
+      </div>
+
+      <div className="grid grid-cols-2 gap-3">
+        <div className="space-y-2">
+          <Label>From</Label>
+          <DateField value={fromDate} onChange={setFromDate} placeholder="Start date" />
+        </div>
+        <div className="space-y-2">
+          <Label>Until</Label>
+          <DateField value={untilDate} onChange={setUntilDate} placeholder="End date" />
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="rec-start">Start time</Label>
+          <Input id="rec-start" type="time" value={startTime} onChange={(e) => setStartTime(e.target.value)} />
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="rec-end">End time</Label>
+          <Input id="rec-end" type="time" value={endTime} onChange={(e) => setEndTime(e.target.value)} />
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="rec-cap">Capacity</Label>
+          <Input id="rec-cap" type="number" min={1} value={capacity} onChange={(e) => setCapacity(e.target.value)} />
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="rec-label">Label (optional)</Label>
+          <Input id="rec-label" placeholder="Matinee" value={label} onChange={(e) => setLabel(e.target.value)} />
+        </div>
+      </div>
+
+      <div className="rounded-lg border bg-muted/40 p-3 text-sm">
+        {!timeValid ? (
+          <span className="text-destructive">End time must be after start time.</span>
+        ) : tooMany ? (
+          <span className="text-destructive">
+            That&apos;s {sessions.length} dates — narrow the range (max 100 at once).
+          </span>
+        ) : sessions.length === 0 ? (
+          <span className="text-muted-foreground">
+            Pick weekdays and a date range to preview the sessions.
+          </span>
+        ) : (
+          <div className="space-y-1">
+            <p className="font-medium">
+              Creates {sessions.length} session{sessions.length === 1 ? "" : "s"}
+            </p>
+            <p className="text-xs text-muted-foreground">
+              {sessions
+                .slice(0, 4)
+                .map((s) => format(new Date(s.startsAt), "EEE MMM d"))
+                .join(" · ")}
+              {sessions.length > 4 ? ` · +${sessions.length - 4} more` : ""}
+            </p>
+          </div>
+        )}
+      </div>
+
+      <Button onClick={submit} disabled={!canCreate}>
+        {saving && <LoaderCircle className="animate-spin" />}
+        Create {sessions.length > 0 && !tooMany ? `${sessions.length} ` : ""}sessions
+      </Button>
+    </div>
+  );
+}
+
 // Motion-capable table row so reorders FLIP-animate to their new slot instead
 // of teleporting. Keys stay stable (session._id) so Motion can track each row.
 const MotionTableRow = motion.create(TableRow);
@@ -189,6 +357,7 @@ export function SessionsPanel({ eventId }: { eventId: Id<"events"> }) {
   const remove = useMutation(api.eventSessions.remove);
   const reorder = useMutation(api.eventSessions.reorder);
   const [creating, setCreating] = useState(false);
+  const [repeating, setRepeating] = useState(false);
   // Optimistic order: applied on the click frame so the row moves immediately,
   // then cleared once the server confirms (or reverted on failure).
   const [pendingOrder, setPendingOrder] = useState<Array<Id<"eventSessions">> | null>(null);
@@ -241,21 +410,36 @@ export function SessionsPanel({ eventId }: { eventId: Id<"events"> }) {
   // Rendered above both the table and the empty state so "New session" is
   // always reachable, even with zero sessions.
   const header = (
-    <div className="mb-4 flex items-center justify-between">
+    <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
       <h2 className="text-lg font-medium">Sessions</h2>
-      <Dialog open={creating} onOpenChange={setCreating}>
-        <DialogTrigger asChild>
-          <Button size="sm">
-            <Plus /> New session
-          </Button>
-        </DialogTrigger>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>New session</DialogTitle>
-          </DialogHeader>
-          <SessionForm eventId={eventId} onDone={() => setCreating(false)} />
-        </DialogContent>
-      </Dialog>
+      <div className="flex items-center gap-2">
+        <Dialog open={repeating} onOpenChange={setRepeating}>
+          <DialogTrigger asChild>
+            <Button size="sm" variant="outline">
+              <Repeat /> Repeat…
+            </Button>
+          </DialogTrigger>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Recurring dates</DialogTitle>
+            </DialogHeader>
+            <RecurringForm eventId={eventId} onDone={() => setRepeating(false)} />
+          </DialogContent>
+        </Dialog>
+        <Dialog open={creating} onOpenChange={setCreating}>
+          <DialogTrigger asChild>
+            <Button size="sm">
+              <Plus /> New session
+            </Button>
+          </DialogTrigger>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>New session</DialogTitle>
+            </DialogHeader>
+            <SessionForm eventId={eventId} onDone={() => setCreating(false)} />
+          </DialogContent>
+        </Dialog>
+      </div>
     </div>
   );
 
