@@ -9,6 +9,7 @@
  */
 
 import type * as accessCodes from "../accessCodes.js";
+import type * as account from "../account.js";
 import type * as addOns from "../addOns.js";
 import type * as analytics from "../analytics.js";
 import type * as apiHttp from "../apiHttp.js";
@@ -33,6 +34,7 @@ import type * as lib_eventStats from "../lib/eventStats.js";
 import type * as lib_eventTaxonomy from "../lib/eventTaxonomy.js";
 import type * as lib_fees from "../lib/fees.js";
 import type * as lib_pace from "../lib/pace.js";
+import type * as lib_preview from "../lib/preview.js";
 import type * as lib_readiness from "../lib/readiness.js";
 import type * as lib_slug from "../lib/slug.js";
 import type * as lib_timeseries from "../lib/timeseries.js";
@@ -65,6 +67,7 @@ import type {
 
 declare const fullApi: ApiFromModules<{
   accessCodes: typeof accessCodes;
+  account: typeof account;
   addOns: typeof addOns;
   analytics: typeof analytics;
   apiHttp: typeof apiHttp;
@@ -89,6 +92,7 @@ declare const fullApi: ApiFromModules<{
   "lib/eventTaxonomy": typeof lib_eventTaxonomy;
   "lib/fees": typeof lib_fees;
   "lib/pace": typeof lib_pace;
+  "lib/preview": typeof lib_preview;
   "lib/readiness": typeof lib_readiness;
   "lib/slug": typeof lib_slug;
   "lib/timeseries": typeof lib_timeseries;
