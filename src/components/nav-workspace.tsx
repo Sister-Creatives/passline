@@ -61,13 +61,13 @@ export function NavWorkspace() {
             >
               <div
                 className={`flex aspect-square size-8 shrink-0 items-center justify-center overflow-hidden rounded-full text-sm font-semibold ${
-                  me?.image ? "p-0.5" : "bg-primary text-primary-foreground"
+                  me?.image ? "" : "bg-primary text-primary-foreground"
                 }`}
               >
                 {me?.image ? (
-                  // object-contain so a non-square logo shows in full rather than
-                  // being cropped to fill the circle.
-                  <img src={me.image} alt="" className="size-full object-contain" />
+                  // object-cover fills the circle edge-to-edge (no letterbox gap or
+                  // clipped-square look); a centered brand logo reads cleanly.
+                  <img src={me.image} alt="" className="size-full object-cover" />
                 ) : (
                   initial
                 )}
