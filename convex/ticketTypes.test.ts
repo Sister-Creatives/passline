@@ -297,3 +297,23 @@ test("listPublicForEvent returns [] for an unpublished (draft) event and is call
   const anon = await t.query(api.ticketTypes.listPublicForEvent, { eventId });
   expect(anon.map((x) => x.name)).toEqual(["GA"]);
 });
+
+test("listPublicForEvent returns [] for a draft without a preview token, and data with the matching token", async () => {
+  const t = convexTest(schema, modules);
+  const { as } = await asOrganizer(t, "ada@example.com");
+  await as.mutation(api.organizers.ensureOrganizer, {});
+  const eventId = await makeEvent(as);
+  await as.mutation(api.ticketTypes.create, { eventId, name: "GA", kind: "free", priceCents: 0 });
+  const event = await t.run((ctx) => ctx.db.get(eventId));
+
+  expect(await t.query(api.ticketTypes.listPublicForEvent, { eventId })).toEqual([]);
+  expect(
+    await t.query(api.ticketTypes.listPublicForEvent, { eventId, previewToken: "wrong" }),
+  ).toEqual([]);
+
+  const withToken = await t.query(api.ticketTypes.listPublicForEvent, {
+    eventId,
+    previewToken: event!.previewToken,
+  });
+  expect(withToken.map((x) => x.name)).toEqual(["GA"]);
+});

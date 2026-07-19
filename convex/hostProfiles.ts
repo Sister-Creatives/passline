@@ -2,6 +2,7 @@ import { mutation, query, type QueryCtx, type MutationCtx } from "./_generated/s
 import { v } from "convex/values";
 import type { Id } from "./_generated/dataModel";
 import { getAuthOrganizerId } from "./auth";
+import { canViewEvent } from "./lib/preview";
 
 const MAX_BIO_LENGTH = 600;
 
@@ -174,10 +175,10 @@ export const remove = mutation({
  * leaks to attendees.
  */
 export const getForEvent = query({
-  args: { eventId: v.id("events") },
-  handler: async (ctx, { eventId }) => {
+  args: { eventId: v.id("events"), previewToken: v.optional(v.string()) },
+  handler: async (ctx, { eventId, previewToken }) => {
     const event = await ctx.db.get(eventId);
-    if (!event || event.status !== "published") return null;
+    if (!event || !canViewEvent(event, previewToken)) return null;
     if (!event.hostProfileId) return null;
 
     const profile = await ctx.db.get(event.hostProfileId);

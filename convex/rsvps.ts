@@ -8,6 +8,7 @@ import { promoteNext } from "./waitlist";
 import { getAuthOrganizerId } from "./auth";
 import { rateLimiter } from "./rateLimits";
 import { recomputeEventStats } from "./lib/eventStats";
+import { canViewEvent } from "./lib/preview";
 
 async function rsvpByToken(ctx: MutationCtx, token: string) {
   const row = await ctx.db
@@ -223,9 +224,17 @@ export const getRsvpByToken = query({
 });
 
 export const getEventPublicState = query({
-  args: { slug: v.string() },
-  handler: async (ctx, { slug }) => {
-    const event = await publishedEventBySlug(ctx, slug);
+  args: { slug: v.string(), previewToken: v.optional(v.string()) },
+  handler: async (ctx, { slug, previewToken }) => {
+    // Inlined (not publishedEventBySlug) so a valid preview token can open a
+    // draft here, without loosening the write-path helper that rsvp() still
+    // uses to reject draft RSVPs -- see the security invariant in the design
+    // doc (docs/superpowers/specs/2026-07-19-preview-link-design.md §3).
+    const event = await ctx.db
+      .query("events")
+      .withIndex("by_slug", (q) => q.eq("slug", slug))
+      .unique();
+    if (!event || !canViewEvent(event, previewToken)) throw new Error("Event not found");
     const seatsTaken = await countSeatsTaken(ctx, event._id);
     const waitlisted = await ctx.db
       .query("rsvps")

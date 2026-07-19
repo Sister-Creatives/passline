@@ -4,6 +4,7 @@ import type { Id } from "./_generated/dataModel";
 import { getAuthOrganizerId } from "./auth";
 import { emitTicketTypeEvent } from "./webhooks";
 import { recordAudit } from "./audit";
+import { canViewEvent } from "./lib/preview";
 
 const kindValidator = v.union(v.literal("paid"), v.literal("free"), v.literal("donation"));
 const visibilityValidator = v.union(v.literal("visible"), v.literal("hidden"));
@@ -237,10 +238,10 @@ export const remove = mutation({
  * this slice. Hidden/archived types and draft events never leak.
  */
 export const listPublicForEvent = query({
-  args: { eventId: v.id("events") },
-  handler: async (ctx, { eventId }) => {
+  args: { eventId: v.id("events"), previewToken: v.optional(v.string()) },
+  handler: async (ctx, { eventId, previewToken }) => {
     const event = await ctx.db.get(eventId);
-    if (!event || event.status !== "published") return [];
+    if (!event || !canViewEvent(event, previewToken)) return [];
     const types = await ctx.db
       .query("ticketTypes")
       .withIndex("by_event", (q) => q.eq("eventId", eventId))

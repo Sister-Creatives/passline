@@ -173,6 +173,7 @@ function EventManageContent({ eventId }: { eventId: Id<"events"> }) {
         activeSection={section}
         isPublished={isPublished}
         slug={event.slug}
+        previewToken={event.previewToken}
         onTogglePublish={handleTogglePublish}
       />
       <div className="min-w-0 flex-1 lg:max-w-5xl">
