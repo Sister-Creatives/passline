@@ -3,6 +3,7 @@ import type { CSSProperties } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useSuspenseQuery } from "@tanstack/react-query";
 import { convexQuery } from "@convex-dev/react-query";
+import { Eye } from "lucide-react";
 
 import { api } from "../../../convex/_generated/api";
 import type { Doc } from "../../../convex/_generated/dataModel";
@@ -27,13 +28,22 @@ import { Empty, EmptyHeader, EmptyTitle, EmptyDescription } from "@/components/u
 // PUBLIC route: no AuthGuard. Anyone with the link can view a published
 // event and RSVP -- this is the attendee-facing surface, not the organizer's.
 export const Route = createFileRoute("/e/$slug")({
+  // `?preview=<token>` opens a draft's public page for anyone with the link
+  // (see convex/lib/preview.ts). Absent → behaves exactly as before.
+  validateSearch: (search: Record<string, unknown>): { preview?: string } => ({
+    preview: typeof search.preview === "string" ? search.preview : undefined,
+  }),
+  loaderDeps: ({ search }) => ({ preview: search.preview }),
   // Prefetch the event for SSR/SEO: the crawler/first paint gets real HTML
   // instead of a loading state, and useSuspenseQuery below reads the same
   // cached entry so there's no duplicate fetch on hydration. The loader
   // also returns the event so `head` below can build a per-event <title>.
-  loader: async ({ params, context }) => {
+  loader: async ({ params, context, deps }) => {
     const event = await context.queryClient.ensureQueryData(
-      convexQuery(api.events.getEventBySlug, { slug: params.slug }),
+      convexQuery(api.events.getEventBySlug, {
+        slug: params.slug,
+        previewToken: deps.preview,
+      }),
     );
     return { event };
   },
@@ -78,7 +88,10 @@ function EventPage() {
 }
 
 function EventPageContent({ slug }: { slug: string }) {
-  const { data: event } = useSuspenseQuery(convexQuery(api.events.getEventBySlug, { slug }));
+  const { preview } = Route.useSearch();
+  const { data: event } = useSuspenseQuery(
+    convexQuery(api.events.getEventBySlug, { slug, previewToken: preview }),
+  );
 
   if (!event) {
     return (
@@ -95,7 +108,7 @@ function EventPageContent({ slug }: { slug: string }) {
     );
   }
 
-  return <EventDetails slug={slug} event={event} />;
+  return <EventDetails slug={slug} event={event} previewToken={preview} />;
 }
 
 // eventContent.getBySlug returns either the real doc or a plain "empty
@@ -116,20 +129,28 @@ type PublicEventContent = {
   accessibility?: Doc<"eventContent">["accessibility"];
 };
 
-function EventDetails({ slug, event }: { slug: string; event: Doc<"events"> }) {
+function EventDetails({
+  slug,
+  event,
+  previewToken,
+}: {
+  slug: string;
+  event: Doc<"events">;
+  previewToken?: string;
+}) {
   // Separate hook, separate component: keeps this query out of the branch
   // above so hook order never depends on whether the event was found.
   const { data: publicState } = useSuspenseQuery(
-    convexQuery(api.rsvps.getEventPublicState, { slug }),
+    convexQuery(api.rsvps.getEventPublicState, { slug, previewToken }),
   );
   const { data: rawContent } = useSuspenseQuery(
-    convexQuery(api.eventContent.getBySlug, { slug }),
+    convexQuery(api.eventContent.getBySlug, { slug, previewToken }),
   );
   const { data: ticketTypes } = useSuspenseQuery(
-    convexQuery(api.ticketTypes.listPublicForEvent, { eventId: event._id }),
+    convexQuery(api.ticketTypes.listPublicForEvent, { eventId: event._id, previewToken }),
   );
   const { data: host } = useSuspenseQuery(
-    convexQuery(api.hostProfiles.getForEvent, { eventId: event._id }),
+    convexQuery(api.hostProfiles.getForEvent, { eventId: event._id, previewToken }),
   );
   const content = rawContent as PublicEventContent | null;
   const isFull = publicState.seatsTaken >= publicState.capacity;
@@ -170,6 +191,12 @@ function EventDetails({ slug, event }: { slug: string; event: Doc<"events"> }) {
 
   return (
     <div style={brandColor ? ({ "--brand": brandColor } as CSSProperties) : undefined}>
+      {event.status !== "published" ? (
+        <div className="flex items-center justify-center gap-2 bg-amber-500/15 px-4 py-2 text-center text-xs font-medium text-amber-700 dark:text-amber-400">
+          <Eye className="size-3.5 shrink-0" />
+          <span>Preview — this event isn&apos;t published yet. Only people with this link can see it.</span>
+        </div>
+      ) : null}
       {/* Translucent sticky chrome: a persistent home link + CTA so the page
           is never a wayfinding dead-end and tickets are always one tap away. */}
       <header className="sticky top-0 z-30 border-b border-border/50 bg-background/70 backdrop-blur-md supports-[backdrop-filter]:bg-background/60">
